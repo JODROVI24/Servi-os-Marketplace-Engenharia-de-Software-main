@@ -114,6 +114,12 @@
         <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Junte-se à maior rede de profissionais e clientes locais da sua região.</p>
       </div>
 
+      <!-- Alerta Informativo de Autenticação Necessária para Pedido -->
+      <div id="alerta-redirect" class="p-3.5 mb-5 bg-perto-sea/10 border border-perto-sea/30 rounded-xl text-xs sm:text-sm font-semibold text-perto-ink flex items-center gap-2.5" style="display: none;">
+        <span class="material-symbols-outlined text-perto-sea text-xl shrink-0" aria-hidden="true">how_to_reg</span>
+        <span id="texto-alerta-redirect">Cadastre-se para concluir a contratação do serviço. Seus itens e localização estão salvos!</span>
+      </div>
+
       <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
       <div id="mensagem-erro" role="alert" class="alerta-erro" style="display: none;"></div>
 
@@ -260,7 +266,7 @@
 
       <!-- Chamada para Login -->
       <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/70 font-body">
-        <p>Já possui cadastro no PertoJá? <a href="login.html" class="text-perto-sea font-bold hover:underline">Faça login aqui</a></p>
+        <p>Já possui cadastro no PertoJá? <a href="login.html" id="linkParaLogin" class="text-perto-sea font-bold hover:underline">Faça login aqui</a></p>
       </div>
 
     </div>
@@ -285,8 +291,22 @@
   </footer>
 
   <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
   <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectParam = urlParams.get('redirect');
+    const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
+
+    if (redirectParam || hasPendingOrder) {
+      const alerta = document.getElementById('alerta-redirect');
+      if (alerta) alerta.style.display = 'flex';
+
+      const linkLogin = document.getElementById('linkParaLogin');
+      if (linkLogin) {
+        const dest = redirectParam || 'pedido.html';
+        linkLogin.href = `login.html?redirect=${encodeURIComponent(dest)}${hasPendingOrder ? '&pending_order=true' : ''}`;
+      }
+    }
+
     function alternarTipo(tipo) {
       const camposPrestador = document.getElementById('campos-prestador');
       const lblCliente = document.getElementById('lblCliente');
@@ -393,7 +413,14 @@
         if (tipo === 'prestador') {
           window.location.href = 'portal-prestador.html';
         } else {
-          window.location.href = 'portal-cliente.html';
+          // Validação defensiva contra open-redirect
+          if (redirectParam && !redirectParam.startsWith('//') && !redirectParam.includes('://')) {
+            window.location.href = redirectParam;
+          } else if (hasPendingOrder) {
+            window.location.href = 'pedido.html?restore_order=true';
+          } else {
+            window.location.href = 'portal-cliente.html';
+          }
         }
       } catch (err) {
         erroDiv.textContent = 'Erro ao conectar ao servidor.';

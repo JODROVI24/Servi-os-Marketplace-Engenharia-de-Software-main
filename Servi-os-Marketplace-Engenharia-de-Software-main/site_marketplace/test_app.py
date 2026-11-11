@@ -419,5 +419,77 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertIn('public', res_static.headers.get('Cache-Control', ''))
         self.assertIn('max-age', res_static.headers.get('Cache-Control', ''))
 
+    def test_12_blindagem_autenticacao_checkout(self):
+        # Garante logout prévio
+        self.client.post('/api/auth/logout')
+
+        # 1. Usuário Deslogado: Tentativa direta contra POST /api/orders
+        res_anon = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'observacoes': 'Tentativa anônima'
+        })
+        self.assertEqual(res_anon.status_code, 401, 'Usuário anônimo deveria receber 401 Unauthorized')
+        data_anon = json.loads(res_anon.data)
+        self.assertEqual(data_anon.get('code'), 'UNAUTHORIZED')
+        self.assertIn('login_url', data_anon)
+
+        # 2. Usuário Deslogado: Tentativa com injeção forjada de cliente_id
+        res_anon_forged = self.client.post('/api/orders', json={
+            'cliente_id': 2,
+            'servico_id': 1
+        })
+        self.assertEqual(res_anon_forged.status_code, 401)
+        self.assertEqual(json.loads(res_anon_forged.data).get('code'), 'UNAUTHORIZED')
+
+        # 3. Usuário Prestador Autenticado: Tentativa de solicitar serviço (não permitido para prestador)
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res_prest = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'observacoes': 'Prestador tentando criar chamado'
+        })
+        self.assertEqual(res_prest.status_code, 403, 'Prestador deveria receber 403 Forbidden ao tentar solicitar serviço')
+        data_prest = json.loads(res_prest.data)
+        self.assertEqual(data_prest.get('code'), 'FORBIDDEN')
+
+        # 4. Usuário Cliente Autenticado: Tentativa de criar pedido forjando cliente_id de outro usuário
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_forged_cli = self.client.post('/api/orders', json={
+            'cliente_id': 9999,
+            'servico_id': 1,
+            'observacoes': 'Tentativa de forjar cliente_id'
+        })
+        self.assertEqual(res_forged_cli.status_code, 403, 'Tentativa de forjar cliente_id deve ser rejeitada com 403')
+
+        # 5. Usuário Cliente Autenticado: Criação legítima de pedido
+        res_order = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'observacoes': 'Pedido legítimo de cliente autenticado'
+        })
+        self.assertEqual(res_order.status_code, 201)
+        data_order = json.loads(res_order.data)
+        order_id = data_order['order_id']
+        self.assertEqual(data_order['status'], 'solicitado')
+
+        # 6. Expiração de Sessão / Logout durante o fluxo
+        self.client.post('/api/auth/logout')
+        res_expired = self.client.post('/api/orders', json={'servico_id': 1})
+        self.assertEqual(res_expired.status_code, 401, 'Após logout, tentativa de pedido deve retornar 401')
+
+        # 7. Pagamento de Pedido: Bloqueio para usuário não autenticado
+        res_pay_anon = self.client.post(f'/api/orders/{order_id}/pay')
+        self.assertEqual(res_pay_anon.status_code, 401)
+
+        # 8. Pagamento de Pedido: Bloqueio para prestador de serviços
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res_pay_prest = self.client.post(f'/api/orders/{order_id}/pay')
+        self.assertEqual(res_pay_prest.status_code, 403)
+
+        # 9. Pagamento de Pedido: Confirmação bem-sucedida pelo cliente dono da ordem
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_pay_owner = self.client.post(f'/api/orders/{order_id}/pay')
+        self.assertEqual(res_pay_owner.status_code, 200)
+        data_pay = json.loads(res_pay_owner.data)
+        self.assertEqual(data_pay['status'], 'finalizado')
+
 if __name__ == '__main__':
     unittest.main()

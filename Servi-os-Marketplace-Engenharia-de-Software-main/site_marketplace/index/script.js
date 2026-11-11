@@ -392,6 +392,122 @@ function info(h) {
   if (infoEl) infoEl.innerHTML = '<p>' + h + '</p>';
 }
 
+// Modal Acessível de Autenticação Obrigatória no Checkout
+function exibirModalAuthObrigatoria(pendingOrder) {
+  let modalBackdrop = document.getElementById('modalAuthCheckout');
+  if (!modalBackdrop) {
+    modalBackdrop = document.createElement('div');
+    modalBackdrop.id = 'modalAuthCheckout';
+    modalBackdrop.className = 'modal-backdrop';
+    modalBackdrop.setAttribute('role', 'dialog');
+    modalBackdrop.setAttribute('aria-modal', 'true');
+    modalBackdrop.setAttribute('aria-labelledby', 'modalAuthTitulo');
+    document.body.appendChild(modalBackdrop);
+  }
+
+  modalBackdrop.innerHTML = `
+    <div class="modal-conteudo" style="max-width: 460px; text-align: center;">
+      <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(0, 150, 166, 0.12); color: var(--sea); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+        <span class="material-symbols-outlined" style="font-size: 28px;">lock</span>
+      </div>
+      <h3 id="modalAuthTitulo" style="color: var(--ink); font-size: 1.35rem; font-weight: 900; margin: 0 0 8px;">Identificação Obrigatória</h3>
+      <p style="color: #4b6073; font-size: 0.9rem; margin: 0 0 16px; line-height: 1.45;">
+        Para concluir a solicitação de <b>${escapeHtml(pendingOrder.titulo)}</b> por <b>${brl(pendingOrder.preco)}</b> com <b>${escapeHtml(pendingOrder.prestador_nome)}</b>, você precisa estar conectado como Cliente.
+      </p>
+      <div style="background: var(--bg); border: 1px solid var(--road); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 0.8rem; color: #2e384d; text-align: left; display: flex; align-items: center; gap: 8px;">
+        <span class="material-symbols-outlined" style="font-size: 18px; color: var(--sea);">bookmark_check</span>
+        <span>Seus itens selecionados e endereço foram salvos e serão restaurados após o acesso!</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <a href="login.html?redirect=pedido.html&pending_order=true" class="btn" style="width: 100%; padding: 12px; font-weight: 800; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ink);">
+          <span class="material-symbols-outlined" style="font-size: 18px;">login</span> Entrar na Minha Conta
+        </a>
+        <a href="cadastro.html?redirect=pedido.html&pending_order=true" class="btn2" style="width: 100%; padding: 10px; font-weight: 700; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span class="material-symbols-outlined" style="font-size: 18px;">person_add</span> Criar Cadastro Gratuito
+        </a>
+        <button id="btnFecharModalAuth" style="background: none; border: none; font-size: 0.85rem; color: #718096; cursor: pointer; padding: 6px; margin-top: 4px;">
+          Cancelar e Continuar Navegando
+        </button>
+      </div>
+    </div>
+  `;
+
+  modalBackdrop.style.display = 'flex';
+  const btnFechar = modalBackdrop.querySelector('#btnFecharModalAuth');
+  if (btnFechar) {
+    btnFechar.onclick = () => {
+      modalBackdrop.style.display = 'none';
+    };
+  }
+  modalBackdrop.onclick = (e) => {
+    if (e.target === modalBackdrop) {
+      modalBackdrop.style.display = 'none';
+    }
+  };
+}
+
+// Banner e Restauração de Pedido Pendente Pós-autenticação
+async function verificarERestaurarPedidoPendente() {
+  const rawPending = sessionStorage.getItem('pertoja_pending_order') || localStorage.getItem('pertoja_pending_order');
+  if (!rawPending) return;
+
+  let pending;
+  try {
+    pending = JSON.parse(rawPending);
+  } catch (e) {
+    sessionStorage.removeItem('pertoja_pending_order');
+    localStorage.removeItem('pertoja_pending_order');
+    return;
+  }
+
+  // Verifica se o usuário atual está autenticado como cliente
+  const user = typeof obterUsuarioLogado === 'function' ? await obterUsuarioLogado() : null;
+  if (!user || user.tipo !== 'cliente') return;
+
+  const mainContainer = document.getElementById('main-content');
+  if (!mainContainer || document.getElementById('bannerRestaurarPedido')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'bannerRestaurarPedido';
+  banner.className = 'panel border-2 border-perto-sea bg-perto-sea/5 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm mb-4';
+  banner.innerHTML = `
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-perto-sea text-white flex items-center justify-center font-bold shrink-0">
+        <span class="material-symbols-outlined text-lg">restore</span>
+      </div>
+      <div>
+        <div class="text-xs font-extrabold text-perto-sea uppercase tracking-wider">Pedido Pendente Recuperado</div>
+        <div class="text-sm font-bold text-perto-ink">${escapeHtml(pending.titulo)} · ${brl(pending.preco)} (${escapeHtml(pending.prestador_nome)})</div>
+        <div class="text-xs text-perto-ink/70">Você já está conectado! Deseja concluir a solicitação agora?</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button id="btnConfirmarPedidoPendente" class="btn text-xs font-bold px-4 py-2 rounded-xl text-perto-ink shadow-sm">
+        Confirmar e Solicitar
+      </button>
+      <button id="btnDescartarPedidoPendente" class="btn2 text-xs font-semibold px-3 py-2 rounded-xl">
+        Descartar
+      </button>
+    </div>
+  `;
+
+  mainContainer.insertBefore(banner, mainContainer.firstChild);
+
+  banner.querySelector('#btnConfirmarPedidoPendente').onclick = async () => {
+    banner.remove();
+    sessionStorage.removeItem('pertoja_pending_order');
+    localStorage.removeItem('pertoja_pending_order');
+    await request(pending.service_id);
+  };
+
+  banner.querySelector('#btnDescartarPedidoPendente').onclick = () => {
+    banner.remove();
+    sessionStorage.removeItem('pertoja_pending_order');
+    localStorage.removeItem('pertoja_pending_order');
+    toast('Pedido pendente descartado.');
+  };
+}
+
 async function request(id) {
   const sel = P.find(p => p.id === id);
   if (!sel || !sel.a) {
@@ -399,7 +515,39 @@ async function request(id) {
     return;
   }
 
-  // Se houver API, envia o pedido para persistir no banco
+  // 1. Client-side Gate: validação de autenticação obrigatória do cliente
+  const user = typeof obterUsuarioLogado === 'function' ? await obterUsuarioLogado() : null;
+  if (!user) {
+    const pendingOrder = {
+      service_id: sel.service_id || sel.id,
+      titulo: sel.s,
+      categoria: sel.c,
+      preco: sel.p,
+      prestador_nome: sel.n,
+      prestador_id: sel.id,
+      lat: centerLat,
+      lng: centerLng,
+      endereco: currentSearchAddress || 'São Paulo - SP',
+      raio: radius,
+      observacoes: 'Solicitado via monitoramento ao vivo',
+      salvo_em: Date.now()
+    };
+    try {
+      sessionStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
+      localStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
+    } catch (e) {}
+
+    exibirModalAuthObrigatoria(pendingOrder);
+    return;
+  }
+
+  if (user.tipo !== 'cliente') {
+    toast('⚠️ Apenas contas de Cliente podem contratar serviços. Você está conectado como Prestador.');
+    return;
+  }
+
+  // 2. Criação do pedido com validação estrita no backend
+  let orderDbId = null;
   try {
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -411,14 +559,47 @@ async function request(id) {
         observacoes: 'Solicitado via monitoramento ao vivo'
       })
     });
-    if (res.status === 401 || res.status === 403) {
-      toast('💡 Dica: faça login como Cliente para salvar o histórico no seu portal!');
+    const data = await res.json();
+    if (res.status === 401) {
+      toast('Sua sessão expirou. Redirecionando para login...');
+      const pendingOrder = {
+        service_id: sel.service_id || sel.id,
+        titulo: sel.s,
+        categoria: sel.c,
+        preco: sel.p,
+        prestador_nome: sel.n,
+        prestador_id: sel.id,
+        lat: centerLat,
+        lng: centerLng,
+        observacoes: 'Solicitado via monitoramento ao vivo',
+        salvo_em: Date.now()
+      };
+      sessionStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
+      setTimeout(() => {
+        window.location.href = 'login.html?redirect=pedido.html&pending_order=true';
+      }, 1200);
+      return;
     }
-  } catch (err) {}
+    if (res.status === 403) {
+      toast(data.error || 'Apenas clientes autenticados podem solicitar serviços.');
+      return;
+    }
+    if (!res.ok) {
+      toast(data.error || 'Erro ao processar pedido no servidor.');
+      return;
+    }
+    orderDbId = data.order_id;
+    sessionStorage.removeItem('pertoja_pending_order');
+    localStorage.removeItem('pertoja_pending_order');
+  } catch (err) {
+    console.error('Falha de rede ao criar pedido:', err);
+    toast('Erro de conexão com o servidor ao registrar pedido.');
+    return;
+  }
 
   busy = true;
   const best = sel;
-  order = { best, pos: { lat: best.lat, lng: best.lng }, gps: 0 };
+  order = { best, pos: { lat: best.lat, lng: best.lng }, gps: 0, db_id: orderDbId };
   best.a = false;
 
   if ($('#painel-lista')) $('#painel-lista').hidden = true;
@@ -640,10 +821,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if ($('#pay')) {
-    $('#pay').onclick = () => {
+    $('#pay').onclick = async () => {
+      const user = typeof obterUsuarioLogado === 'function' ? await obterUsuarioLogado() : null;
+      if (!user) {
+        toast('Sua sessão expirou. Faça login para concluir o pagamento.');
+        window.location.href = 'login.html?redirect=pedido.html';
+        return;
+      }
+      try {
+        if (order && order.db_id) {
+          const res = await fetch(`/api/orders/${order.db_id}/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (res.status === 401) {
+            toast('Sua sessão expirou. Faça login para confirmar o pagamento.');
+            window.location.href = 'login.html?redirect=pedido.html';
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao registrar pagamento na API:', e);
+      }
       $('#pay').hidden = true;
       toast('Transação processada com sucesso via PertoJá Pagamentos.');
-      info('Pagamento registrado. Obrigado por utilizar a plataforma!');
+      info('Pagamento registrado. Chamado concluído com sucesso!');
     };
   }
 
@@ -664,6 +866,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   gpsBtns.forEach(btn => {
     btn.onclick = ativarGeolocalizacaoGPS;
   });
+
+  // Restaura e sugere pedidos pendentes caso o cliente tenha acabado de autenticar
+  await verificarERestaurarPedidoPendente();
 });
 
 // Expõe globalmente para navegação, handlers HTML e testes
@@ -674,3 +879,5 @@ window.carregarPrestadoresAPI = carregarPrestadoresAPI;
 window.renderAll = renderAll;
 window.renderDestaques = renderDestaques;
 window.clearAllSimulationTimers = clearAllSimulationTimers;
+window.exibirModalAuthObrigatoria = exibirModalAuthObrigatoria;
+window.verificarERestaurarPedidoPendente = verificarERestaurarPedidoPendente;

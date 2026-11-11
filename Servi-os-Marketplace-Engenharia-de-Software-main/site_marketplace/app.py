@@ -830,14 +830,53 @@ def delete_service(service_id):
 @app.route('/api/orders', methods=['POST'])
 def create_order():
     user = get_current_user()
-    if not user or user['tipo'] != 'cliente':
-        return jsonify({'error': 'Apenas clientes autenticados podem solicitar serviços.'}), 403
+    if not user:
+        return jsonify({
+            'error': 'Autenticação obrigatória. Faça login para concluir o pedido.',
+            'code': 'UNAUTHORIZED',
+            'login_url': '/login.html?redirect=/pedido.html'
+        }), 401
+
+    if user['tipo'] != 'cliente':
+        return jsonify({
+            'error': 'Apenas clientes autenticados podem solicitar serviços. Prestadores de serviços não têm permissão para criar chamados.',
+            'code': 'FORBIDDEN'
+        }), 403
 
     data = request.get_json() or {}
+    
+    # Blindagem contra requisições forjadas com cliente_id arbitrário
+    if data.get('cliente_id') is not None:
+        try:
+            if int(data.get('cliente_id')) != int(user['id']):
+                return jsonify({
+                    'error': 'Tentativa de forjar cliente_id arbitrária detectada. O pedido só pode ser associado à sessão autenticada.',
+                    'code': 'FORBIDDEN'
+                }), 403
+        except (ValueError, TypeError):
+            return jsonify({'error': 'cliente_id inválido.', 'code': 'BAD_REQUEST'}), 400
+
     servico_id = data.get('servico_id')
+    if not servico_id:
+        return jsonify({'error': 'servico_id é obrigatório.', 'code': 'BAD_REQUEST'}), 400
+
+    conn = get_db_connection()
+    service = conn.execute('SELECT * FROM services WHERE id = ? AND ativo = 1', (servico_id,)).fetchone()
+    if not service:
+        conn.close()
+        return jsonify({'error': 'Serviço selecionado não está disponível.', 'code': 'NOT_FOUND'}), 404
+
+    # Prestador não pode solicitar seu próprio serviço
+    if service['prestador_id'] == user['id']:
+        conn.close()
+        return jsonify({
+            'error': 'Não é permitido solicitar seu próprio serviço.',
+            'code': 'SELF_HIRE_NOT_ALLOWED'
+        }), 400
+
     observacoes = str(data.get('observacoes') or '').strip()
     
-    # Endereço onde o serviço será realizado
+    # Endereço onde o serviço será realizado (com fallbacks dos dados cadastrais do cliente)
     cep_cli = str(data.get('cep') or user['cep'] or '').strip()
     end_cli = str(data.get('endereco') or user['endereco'] or '').strip()
     num_cli = str(data.get('numero') or user['numero'] or '').strip()
@@ -849,12 +888,6 @@ def create_order():
     user_lng_fallback = safe_coord(user['lng'], -46.6517)
     lat_cliente = safe_coord(data.get('lat'), user_lat_fallback)
     lng_cliente = safe_coord(data.get('lng'), user_lng_fallback)
-
-    conn = get_db_connection()
-    service = conn.execute('SELECT * FROM services WHERE id = ? AND ativo = 1', (servico_id,)).fetchone()
-    if not service:
-        conn.close()
-        return jsonify({'error': 'Serviço selecionado não está disponível.'}), 404
 
     cursor = conn.cursor()
     cursor.execute('''
@@ -868,8 +901,42 @@ def create_order():
     return jsonify({
         'message': 'Pedido solicitado com sucesso!',
         'order_id': order_id,
-        'status': 'solicitado'
+        'status': 'solicitado',
+        'cliente_id': user['id']
     }), 201
+
+@app.route('/api/orders/<int:order_id>/pay', methods=['POST'])
+def pay_order(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória para efetuar pagamento.', 'code': 'UNAUTHORIZED'}), 401
+
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas clientes podem efetuar pagamento de pedidos.', 'code': 'FORBIDDEN'}), 403
+
+    conn = get_db_connection()
+    order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({'error': 'Pedido não encontrado.', 'code': 'NOT_FOUND'}), 404
+
+    if order['cliente_id'] != user['id']:
+        conn.close()
+        return jsonify({'error': 'Sem permissão para pagar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
+
+    conn.execute('''
+        UPDATE orders 
+        SET status = 'finalizado', atualizado_em = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    ''', (order_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'message': 'Pagamento confirmado e pedido finalizado com sucesso!',
+        'order_id': order_id,
+        'status': 'finalizado'
+    }), 200
 
 @app.route('/api/orders', methods=['GET'])
 def list_orders():
