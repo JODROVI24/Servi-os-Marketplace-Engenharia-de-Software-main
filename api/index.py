@@ -19,29 +19,6 @@ if marketplace_dir not in sys.path:
 if os.environ.get('VERCEL') == '1' or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ:
     os.environ['VERCEL'] = '1'
 
-try:
-    # Carregamento direto e explícito do módulo para evitar qualquer colisão de import circular
-    app_file = os.path.join(marketplace_dir, 'app.py')
-    spec = importlib.util.spec_from_file_location("pertoja_marketplace_backend", app_file)
-    backend_module = importlib.util.module_from_spec(spec)
-    sys.modules["pertoja_marketplace_backend"] = backend_module
-    spec.loader.exec_module(backend_module)
-    app = backend_module.app
-except Exception as exc:
-    print(f"❌ [CRITICAL] Falha ao importar aplicação Flask no Serverless Vercel: {exc}", file=sys.stderr)
-    traceback.print_exc()
-    from flask import Flask, jsonify
-    app = Flask(__name__)
-    
-    @app.route('/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
-    @app.route('/', methods=['GET', 'POST'])
-    def vercel_import_error(subpath=''):
-        return jsonify({
-            'error': 'Falha na inicialização da função Serverless no Vercel',
-            'detail': str(exc),
-            'traceback': traceback.format_exc()
-        }), 500
-
 
 class VercelPathNormalizerWSGI:
     """
@@ -90,6 +67,40 @@ class VercelPathNormalizerWSGI:
         return self.wsgi_app(environ, start_response)
 
 
-# Envolve o wsgi_app do Flask
-if not isinstance(app.wsgi_app, VercelPathNormalizerWSGI):
-    app.wsgi_app = VercelPathNormalizerWSGI(app.wsgi_app)
+def _init_marketplace_app():
+    """
+    Carrega a aplicação Flask do Marketplace e acopla o middleware WSGI.
+    Retorna a instância Flask ou uma aplicação de erro estruturada caso ocorra exceção.
+    """
+    try:
+        app_file = os.path.join(marketplace_dir, 'app.py')
+        spec = importlib.util.spec_from_file_location("pertoja_marketplace_backend", app_file)
+        backend_module = importlib.util.module_from_spec(spec)
+        sys.modules["pertoja_marketplace_backend"] = backend_module
+        spec.loader.exec_module(backend_module)
+        target_app = backend_module.app
+        if not isinstance(target_app.wsgi_app, VercelPathNormalizerWSGI):
+            target_app.wsgi_app = VercelPathNormalizerWSGI(target_app.wsgi_app)
+        return target_app
+    except Exception as exc:
+        print(f"❌ [CRITICAL] Falha ao importar aplicação Flask no Serverless Vercel: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        from flask import Flask, jsonify
+        err_app = Flask(__name__)
+
+        @err_app.route('/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+        @err_app.route('/', methods=['GET', 'POST'])
+        def vercel_import_error(subpath=''):
+            return jsonify({
+                'error': 'Falha na inicialização da função Serverless no Vercel',
+                'detail': str(exc),
+                'traceback': traceback.format_exc()
+            }), 500
+        return err_app
+
+
+# Atribuição estrita em nível superior (top-level module scope) para atendimento
+# obrigatório ao parser AST do Vercel (@vercel/python-analysis / ruff_python_ast)
+app = _init_marketplace_app()
+application = app
+handler = app
