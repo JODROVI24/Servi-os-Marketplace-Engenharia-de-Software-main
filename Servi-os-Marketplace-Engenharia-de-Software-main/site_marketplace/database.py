@@ -178,6 +178,27 @@ def atualizar_enderecos_existentes(conn):
             ''', (cep, end, num, bairro, cid, uf, lat, lng, email))
         conn.commit()
 
+    # Verifica se os prestadores de Guarulhos já existem na base; caso contrário, insere-os
+    cursor.execute("SELECT id FROM users WHERE email = 'juliana@pertoja.com'")
+    if not cursor.fetchone():
+        pwd_hash = generate_password_hash('123456')
+        guarulhos_prestadores = [
+            ('Juliana Clean', 'juliana@pertoja.com', '(11) 97000-1122', 'Especialista em higienização e limpeza residencial em Guarulhos e região.', 'Limpeza', 'Limpeza e higienização residencial', 85.0, 4.9, '07141-430', 'Rua do Araújo', '150', 'Jardim Beirute', 'Guarulhos', 'SP', -23.4628, -46.5333, 1),
+            ('Marcos Reparos', 'marcos@pertoja.com', '(11) 97000-3344', 'Eletricista residencial e predial com atendimento rápido em Guarulhos.', 'Elétrica', 'Instalação e reparos elétricos', 95.0, 4.7, '07010-010', 'Rua Dom Pedro II', '300', 'Centro', 'Guarulhos', 'SP', -23.4650, -46.5300, 1),
+            ('Fabio Tintas', 'fabio@pertoja.com', '(11) 97000-5566', 'Pintura residencial fina, texturas e impermeabilização.', 'Pintura', 'Pintura residencial e texturização', 320.0, 4.8, '07055-000', 'Rua Treze de Maio', '450', 'Vila Galvão', 'Guarulhos', 'SP', -23.4560, -46.5450, 1)
+        ]
+        for nome, email, tel, bio, cat, s_titulo, preco, rating, cep, end, num, bairro, cid, uf, lat, lng, disp in guarulhos_prestadores:
+            cursor.execute('''
+                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel)
+                VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 12, ?)
+            ''', (nome, email, pwd_hash, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp))
+            p_id = cursor.lastrowid
+            cursor.execute('''
+                INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, lat, lng, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ''', (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng))
+        conn.commit()
+
 def seed_data(conn):
     cursor = conn.cursor()
     pwd_hash = generate_password_hash('123456')
@@ -202,7 +223,10 @@ def seed_data(conn):
         ('Lia Cores', 'lia@pertoja.com', '(11) 97666-7788', 'Pintora profissional com acabamento premium para interiores.', 'Pintura', 'Pintura residencial e texturização de paredes', 380.0, 4.6, '05010-000', 'Rua Turiassu', '400', 'Perdizes', 'São Paulo', 'SP', -23.5320, -46.6710, 1),
         ('Dona Flor', 'donaflor@pertoja.com', '(11) 97777-8899', 'Paisagista e especialista em corte, poda técnica e adubação.', 'Jardinagem', 'Jardinagem, poda e manutenção paisagística', 450.0, 5.0, '04538-133', 'Rua Bandeira Paulista', '700', 'Itaim Bibi', 'São Paulo', 'SP', -23.5840, -46.6780, 1),
         ('Téo Suporte', 'teo@pertoja.com', '(11) 97888-9900', 'Técnico em informática e redes residenciais.', 'Tecnologia', 'Suporte técnico de computadores e redes Wi-Fi', 110.0, 4.4, '01228-000', 'Rua da Consolação', '2400', 'Consolação', 'São Paulo', 'SP', -23.5550, -46.6600, 0),
-        ('Nina Montagens', 'nina@pertoja.com', '(11) 97999-0011', 'Marcenaria fina, restauração de móveis e montagens de alta precisão.', 'Marcenaria', 'Marcenaria e montagem de móveis planejados', 260.0, 4.3, '03104-000', 'Rua da Mooca', '1500', 'Mooca', 'São Paulo', 'SP', -23.5535, -46.6020, 1)
+        ('Nina Montagens', 'nina@pertoja.com', '(11) 97999-0011', 'Marcenaria fina, restauração de móveis e montagens de alta precisão.', 'Marcenaria', 'Marcenaria e montagem de móveis planejados', 260.0, 4.3, '03104-000', 'Rua da Mooca', '1500', 'Mooca', 'São Paulo', 'SP', -23.5535, -46.6020, 1),
+        ('Juliana Clean', 'juliana@pertoja.com', '(11) 97000-1122', 'Especialista em higienização e limpeza residencial em Guarulhos e região.', 'Limpeza', 'Limpeza e higienização residencial', 85.0, 4.9, '07141-430', 'Rua do Araújo', '150', 'Jardim Beirute', 'Guarulhos', 'SP', -23.4628, -46.5333, 1),
+        ('Marcos Reparos', 'marcos@pertoja.com', '(11) 97000-3344', 'Eletricista residencial e predial com atendimento rápido em Guarulhos.', 'Elétrica', 'Instalação e reparos elétricos', 95.0, 4.7, '07010-010', 'Rua Dom Pedro II', '300', 'Centro', 'Guarulhos', 'SP', -23.4650, -46.5300, 1),
+        ('Fabio Tintas', 'fabio@pertoja.com', '(11) 97000-5566', 'Pintura residencial fina, texturas e impermeabilização.', 'Pintura', 'Pintura residencial e texturização', 320.0, 4.8, '07055-000', 'Rua Treze de Maio', '450', 'Vila Galvão', 'Guarulhos', 'SP', -23.4560, -46.5450, 1)
     ]
 
     for nome, email, tel, bio, cat, s_titulo, preco, rating, cep, end, num, bairro, cid, uf, lat, lng, disp in prestadores_seed:

@@ -153,11 +153,30 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertIsNotNone(data_cep.get('lat'))
         self.assertIsNotNone(data_cep.get('lng'))
 
-        # 2. CEP inválido / inexistente
+        # 2. Consulta CEP de Guarulhos (Rua do Araújo - 07141430)
+        res_guarulhos = self.client.get('/api/cep/07141430')
+        self.assertEqual(res_guarulhos.status_code, 200)
+        data_g = json.loads(res_guarulhos.data)
+        self.assertEqual(data_g.get('localidade'), 'Guarulhos')
+        self.assertIsNotNone(data_g.get('lat'))
+        self.assertIsNotNone(data_g.get('lng'))
+        # Garante que não foi retornado o fallback estático de SP (-23.5653, -46.6517)
+        self.assertNotAlmostEqual(data_g.get('lat'), -23.5653, places=3)
+        self.assertAlmostEqual(data_g.get('lat'), -23.46, delta=0.08)
+
+        # 3. Busca de serviços próximos a Guarulhos com raio de 8 km
+        res_serv_g = self.client.get(f"/api/services?radius=8&lat={data_g['lat']}&lng={data_g['lng']}")
+        self.assertEqual(res_serv_g.status_code, 200)
+        servicos_g = json.loads(res_serv_g.data)
+        self.assertTrue(len(servicos_g) > 0)
+        nomes_prestadores = [s['prestador']['nome'] for s in servicos_g]
+        self.assertIn('Juliana Clean', nomes_prestadores)
+
+        # 4. CEP inválido / inexistente
         res_invalido = self.client.get('/api/cep/00000000')
         self.assertEqual(res_invalido.status_code, 404)
 
-        # 3. Geocodificação Nominatim
+        # 5. Geocodificação Nominatim
         res_geo = self.client.get('/api/geocode?q=Avenida+Paulista+1000+Sao+Paulo')
         self.assertEqual(res_geo.status_code, 200)
         data_geo = json.loads(res_geo.data)

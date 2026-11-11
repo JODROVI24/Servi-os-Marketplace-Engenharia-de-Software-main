@@ -2,6 +2,7 @@
 
 let centerLat = -23.5653;
 let centerLng = -46.6517;
+let currentSearchAddress = 'Avenida Paulista, 1000 · Bela Vista · São Paulo - SP';
 let mapInstance = null;
 let layerMarkers = null;
 
@@ -14,7 +15,10 @@ let P = [
   { id: 6, n: 'Lia Cores', s: 'Pintura residencial e texturização de paredes', c: 'Pintura', p: 380, r: 4.6, lat: -23.5320, lng: -46.6710, a: true, endereco: 'Rua Turiassu, 400 · Perdizes · São Paulo - SP' },
   { id: 7, n: 'Dona Flor', s: 'Jardinagem, poda e manutenção paisagística', c: 'Jardinagem', p: 450, r: 5.0, lat: -23.5840, lng: -46.6780, a: true, endereco: 'Rua Bandeira Paulista, 700 · Itaim Bibi · São Paulo - SP' },
   { id: 8, n: 'Téo Suporte', s: 'Suporte técnico de computadores e redes Wi-Fi', c: 'Tecnologia', p: 110, r: 4.4, lat: -23.5550, lng: -46.6600, a: false, endereco: 'Rua da Consolação, 2400 · Consolação · São Paulo - SP' },
-  { id: 9, n: 'Nina Montagens', s: 'Marcenaria e montagem de móveis planejados', c: 'Marcenaria', p: 260, r: 4.3, lat: -23.5535, lng: -46.6020, a: true, endereco: 'Rua da Mooca, 1500 · Mooca · São Paulo - SP' }
+  { id: 9, n: 'Nina Montagens', s: 'Marcenaria e montagem de móveis planejados', c: 'Marcenaria', p: 260, r: 4.3, lat: -23.5535, lng: -46.6020, a: true, endereco: 'Rua da Mooca, 1500 · Mooca · São Paulo - SP' },
+  { id: 10, n: 'Juliana Clean', s: 'Limpeza e higienização residencial', c: 'Limpeza', p: 85, r: 4.9, lat: -23.4628, lng: -46.5333, a: true, endereco: 'Rua do Araújo, 150 · Jardim Beirute · Guarulhos - SP' },
+  { id: 11, n: 'Marcos Reparos', s: 'Instalação e reparos elétricos', c: 'Elétrica', p: 95, r: 4.7, lat: -23.4650, lng: -46.5300, a: true, endereco: 'Rua Dom Pedro II, 300 · Centro · Guarulhos - SP' },
+  { id: 12, n: 'Fabio Tintas', s: 'Pintura residencial e texturização', c: 'Pintura', p: 320, r: 4.8, lat: -23.4560, lng: -46.5450, a: true, endereco: 'Rua Treze de Maio, 450 · Vila Galvão · Guarulhos - SP' }
 ];
 
 const $ = s => document.querySelector(s);
@@ -102,17 +106,40 @@ function renderList() {
      <div class="meta"><span>👤 ${p.n}</span><span>Avaliação: ★ ${p.r.toFixed(1)}</span><span>${dist(p).toFixed(1)} km</span>
        <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span></div>
      <div style="margin-top: 10px;"><button class="btn btn-requisitar" data-req="${p.id}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button></div>
-   </div>`).join('') : '<p style="color: #666; padding: 12px 0;">Nenhum prestador encontrado com estes filtros na sua região.</p>';
+    </div>`).join('') : `
+     <div style="color: #666; padding: 16px 8px; text-align: center;">
+       <p style="font-weight: 700; color: #10243e; margin: 0 0 6px;">Nenhum prestador encontrado neste raio de ${radius} km.</p>
+       <p style="font-size: 0.85rem; color: #666; margin: 0 0 12px;">Experimente aumentar o raio de atendimento para visualizar prestadores próximos.</p>
+       <button class="btn" style="font-size: 0.8rem; padding: 6px 14px; border-radius: 9999px;" onclick="const r = document.getElementById('raio'); if(r){ r.value = 15; r.dispatchEvent(new Event('input')); }">
+         Expandir raio para 15 km
+       </button>
+     </div>`;
 }
 
 function renderMap(posAtual) {
   if (!mapInstance || !layerMarkers) return;
   layerMarkers.clearLayers();
 
+  // Círculo de cobertura do raio de busca selecionado
   L.circle([centerLat, centerLng], { radius: radius * 1000, color: '#1f6f8b', fillOpacity: 0.07, weight: 2 }).addTo(layerMarkers);
-  L.circleMarker([centerLat, centerLng], { radius: 10, color: '#fff', fillColor: '#1f6f8b', fillOpacity: 1, weight: 3 })
-    .bindTooltip("Sua Localização de Busca", { permanent: true, direction: 'right', className: 'map-label' })
-    .addTo(layerMarkers);
+
+  // Marcador da posição pesquisada pelo cliente
+  const searchMarker = L.circleMarker([centerLat, centerLng], {
+    radius: 11,
+    color: '#ffffff',
+    fillColor: '#1f6f8b',
+    fillOpacity: 1,
+    weight: 3
+  });
+  searchMarker.bindTooltip("Sua Localização de Busca", { permanent: true, direction: 'right', className: 'map-label' });
+  searchMarker.bindPopup(`
+    <div style="font-family: inherit; font-size: 0.85rem; min-width: 190px;">
+      <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">📍 Local Pesquisado</h4>
+      <div style="color: var(--sea); font-weight: 700; margin-bottom: 4px;">${currentSearchAddress || 'Endereço atual'}</div>
+      <div style="font-size: 0.75rem; color: #666;">Coordenadas: ${centerLat.toFixed(5)}, ${centerLng.toFixed(5)}</div>
+    </div>
+  `);
+  searchMarker.addTo(layerMarkers);
 
   visible().forEach(p => {
     const isBest = order && order.best.id === p.id;
@@ -158,39 +185,133 @@ async function buscarPorEnderecoCliente() {
   toast('Buscando localização...');
   try {
     let lat = null, lng = null, label = q;
+
+    // 1. Caso o termo seja um CEP numérico com 8 dígitos
     if (cleanCep.length === 8) {
-      const res = await fetch(`/api/cep/${cleanCep}`);
-      if (res.ok) {
-        const d = await res.json();
-        lat = d.lat;
-        lng = d.lng;
-        const partes = [d.logradouro, d.bairro, d.localidade ? `${d.localidade}${d.uf ? ' - ' + d.uf : ''}` : ''].filter(Boolean);
-        label = partes.length ? partes.join(', ') : q;
+      try {
+        const res = await fetch(`/api/cep/${cleanCep}`);
+        if (res.ok) {
+          const d = await res.json();
+          lat = d.lat != null ? parseFloat(d.lat) : null;
+          lng = d.lng != null ? parseFloat(d.lng) : null;
+          const partes = [d.logradouro, d.bairro, d.localidade ? `${d.localidade}${d.uf ? ' - ' + d.uf : ''}` : ''].filter(Boolean);
+          label = partes.length ? partes.join(', ') : (d.cep || q);
+        }
+      } catch (errApi) {
+        console.warn('API local de CEP indisponível, recorrendo a fallbacks cliente:', errApi);
+      }
+
+      // Fallback cliente 1: BrasilAPI v2 direta se a API local falhar ou não tiver coordenadas
+      if ((lat == null || lng == null || isNaN(lat) || isNaN(lng)) && typeof fetch !== 'undefined') {
+        try {
+          const resB = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+          if (resB.ok) {
+            const dB = await resB.json();
+            if (dB.location && dB.location.coordinates) {
+              const cLat = parseFloat(dB.location.coordinates.latitude);
+              const cLng = parseFloat(dB.location.coordinates.longitude);
+              if (!isNaN(cLat) && !isNaN(cLng)) {
+                lat = cLat;
+                lng = cLng;
+                const partes = [dB.street, dB.neighborhood, dB.city ? `${dB.city}${dB.state ? ' - ' + dB.state : ''}` : ''].filter(Boolean);
+                label = partes.length ? partes.join(', ') : label;
+              }
+            }
+          }
+        } catch (errB) {}
+      }
+
+      // Fallback cliente 2: ViaCEP + Nominatim caso ainda sem coordenadas
+      if ((lat == null || lng == null || isNaN(lat) || isNaN(lng)) && typeof fetch !== 'undefined') {
+        try {
+          const resV = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+          if (resV.ok) {
+            const dV = await resV.json();
+            if (!dV.erro) {
+              const partes = [dV.logradouro, dV.bairro, dV.localidade ? `${dV.localidade}${dV.uf ? ' - ' + dV.uf : ''}` : ''].filter(Boolean);
+              label = partes.length ? partes.join(', ') : label;
+              const cands = [
+                [dV.logradouro, dV.localidade, dV.uf].filter(Boolean).join(', ') + ', Brasil',
+                [dV.logradouro, dV.bairro, dV.localidade, dV.uf].filter(Boolean).join(', ') + ', Brasil',
+                [dV.localidade, dV.uf].filter(Boolean).join(' - ') + ', Brasil'
+              ];
+              for (const cand of cands) {
+                try {
+                  const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cand)}&limit=1`);
+                  if (rNom.ok) {
+                    const resNom = await rNom.json();
+                    if (resNom && resNom.length > 0) {
+                      lat = parseFloat(resNom[0].lat);
+                      lng = parseFloat(resNom[0].lon);
+                      break;
+                    }
+                  }
+                } catch (eN) {}
+              }
+            }
+          }
+        } catch (errV) {}
       }
     }
-    if (!lat || !lng) {
-      const resG = await fetch(`/api/geocode?q=${encodeURIComponent(q + ', Brasil')}`);
-      if (resG.ok) {
-        const d = await resG.json();
-        lat = d.lat;
-        lng = d.lng;
+
+    // 2. Se não for CEP ou se o CEP ainda não tiver coordenadas: busca por geocodificação
+    if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
+      try {
+        const resG = await fetch(`/api/geocode?q=${encodeURIComponent(q + ', Brasil')}`);
+        if (resG.ok) {
+          const d = await resG.json();
+          if (d.lat != null && d.lng != null) {
+            lat = parseFloat(d.lat);
+            lng = parseFloat(d.lng);
+          }
+        }
+      } catch (errG) {}
+
+      // Fallback direto Nominatim cliente para busca livre
+      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
+        try {
+          const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q + ', Brasil')}&limit=1`);
+          if (rNom.ok) {
+            const resNom = await rNom.json();
+            if (resNom && resNom.length > 0) {
+              lat = parseFloat(resNom[0].lat);
+              lng = parseFloat(resNom[0].lon);
+            }
+          }
+        } catch (eN) {}
       }
     }
-    if (lat && lng) {
+
+    // 3. Aplica coordenadas reais no mapa e atualiza interface
+    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
       centerLat = lat;
       centerLng = lng;
+      currentSearchAddress = label;
+
       if (mapInstance) {
-        mapInstance.setView([centerLat, centerLng], 14);
+        mapInstance.setView([centerLat, centerLng], 14, { animate: true });
+        setTimeout(() => {
+          if (mapInstance) mapInstance.invalidateSize();
+        }, 200);
       }
+
       const locInfo = document.getElementById('locInfo');
       if (locInfo) locInfo.textContent = `Ponto de busca: ${label}`;
+
+      const statusBox = document.getElementById('statusBuscaEndereco');
+      if (statusBox) {
+        statusBox.style.display = 'flex';
+        statusBox.innerHTML = `<span class="material-symbols-outlined text-sm text-perto-ok">check_circle</span> <span>Endereço localizado: <b>${label}</b></span>`;
+      }
+
       toast(`Localização definida: ${label}`);
       await carregarPrestadoresAPI();
       renderAll();
     } else {
-      toast('Endereço não localizado no mapa.');
+      toast('Endereço ou CEP não localizado no mapa.');
     }
   } catch (e) {
+    console.error('Erro ao buscar localização:', e);
     toast('Erro ao buscar localização.');
   }
 }

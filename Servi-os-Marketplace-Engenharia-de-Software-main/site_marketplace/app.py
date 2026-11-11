@@ -75,20 +75,61 @@ def calcular_distancia(lat1, lng1, lat2, lng2):
     except (ValueError, TypeError):
         return 0.0
 
-# Helper para geocodificação de endereços no OpenStreetMap Nominatim
-def geocode_address(address_str):
-    try:
-        headers = {'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'}
-        url = f'https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(address_str)}&limit=1'
-        r = requests.get(url, headers=headers, timeout=3.5)
-        if r.status_code == 200:
-            res = r.json()
-            if res and len(res) > 0:
-                return float(res[0]['lat']), float(res[0]['lon'])
-    except Exception:
-        pass
-    # Coordenadas padrão de fallback (Av. Paulista, São Paulo)
-    return -23.5653, -46.6517
+# Helper para geocodificação de endereços no OpenStreetMap Nominatim com resolução multinível
+def geocode_address(address_str, street=None, neighborhood=None, city=None, state=None, fallback=None):
+    """
+    Geocodifica endereço no OpenStreetMap Nominatim com tentativas progressivas:
+    1. Endereço completo (com logradouro, bairro, cidade, estado)
+    2. Logradouro + Cidade + Estado (sem bairro, eliminando a principal causa de falhas no OSM Brasil)
+    3. Bairro + Cidade + Estado
+    4. Cidade + Estado (garante ao menos a centralização na cidade correta)
+    5. fallback explicitamente fornecido (None por padrão)
+    """
+    candidates = []
+
+    # Monta candidatos por componentes estruturados se fornecidos
+    if street and city:
+        if neighborhood:
+            candidates.append(f"{street}, {neighborhood}, {city} - {state or ''}, Brasil".strip(' ,-'))
+        candidates.append(f"{street}, {city} - {state or ''}, Brasil".strip(' ,-'))
+    if neighborhood and city:
+        candidates.append(f"{neighborhood}, {city} - {state or ''}, Brasil".strip(' ,-'))
+    if city:
+        candidates.append(f"{city} - {state or ''}, Brasil".strip(' ,-'))
+    if state and not city:
+        candidates.append(f"{state}, Brasil".strip(' ,-'))
+
+    # Se uma string de busca livre foi passada
+    if address_str and address_str.strip():
+        raw = address_str.strip()
+        if raw not in candidates:
+            candidates.insert(0, raw)
+        parts = [p.strip() for p in re.split(r'[,–-]', raw) if p.strip()]
+        if len(parts) >= 3:
+            simplified = f"{parts[0]}, {parts[-1]}, Brasil"
+            if simplified not in candidates:
+                candidates.append(simplified)
+            city_only = f"{parts[-1]}, Brasil"
+            if city_only not in candidates:
+                candidates.append(city_only)
+
+    headers = {'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'}
+    for cand in candidates:
+        if not cand:
+            continue
+        try:
+            url = f'https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(cand)}&limit=1'
+            r = requests.get(url, headers=headers, timeout=3.0)
+            if r.status_code == 200:
+                res = r.json()
+                if res and len(res) > 0:
+                    return float(res[0]['lat']), float(res[0]['lon'])
+        except Exception:
+            continue
+
+    if fallback is not None:
+        return fallback
+    return None, None
 
 # ================= Rotas para servir páginas estáticas =================
 
@@ -109,23 +150,72 @@ def consultar_cep(cep):
     clean_cep = re.sub(r'\D', '', cep)
     if len(clean_cep) != 8:
         return jsonify({'error': 'CEP inválido. Deve conter 8 dígitos numéricos.'}), 400
+
+    data = None
+    lat = None
+    lng = None
+
+    # 1. Tenta BrasilAPI v2 (retorna coordenadas geográficas precisas para CEPs no Brasil)
     try:
-        resp = requests.get(f'https://viacep.com.br/ws/{clean_cep}/json/', timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            if 'erro' in data and data['erro']:
-                return jsonify({'error': 'CEP não encontrado na base dos Correios.'}), 404
-            
-            # Busca latitude e longitude para o endereço encontrado
-            partes = [p for p in [data.get('logradouro'), data.get('bairro'), f"{data.get('localidade', '')} - {data.get('uf', '')}".strip(' -')] if p]
-            endereco_busca = ", ".join(partes) + ", Brasil" if partes else "São Paulo, Brasil"
-            lat, lng = geocode_address(endereco_busca)
-            data['lat'] = lat
-            data['lng'] = lng
-            return jsonify(data)
-        return jsonify({'error': 'Serviço dos Correios indisponível no momento.'}), 502
-    except Exception as e:
-        return jsonify({'error': f'Falha ao consultar CEP: {str(e)}'}), 500
+        r_brasil = requests.get(
+            f'https://brasilapi.com.br/api/cep/v2/{clean_cep}',
+            headers={'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'},
+            timeout=3.5
+        )
+        if r_brasil.status_code == 200:
+            b_json = r_brasil.json()
+            coords = b_json.get('location', {}).get('coordinates', {})
+            raw_lat = coords.get('latitude')
+            raw_lng = coords.get('longitude')
+            if raw_lat and raw_lng:
+                try:
+                    lat = float(raw_lat)
+                    lng = float(raw_lng)
+                except (ValueError, TypeError):
+                    lat, lng = None, None
+
+            data = {
+                'cep': b_json.get('cep') or clean_cep,
+                'logradouro': b_json.get('street') or '',
+                'bairro': b_json.get('neighborhood') or '',
+                'localidade': b_json.get('city') or '',
+                'uf': b_json.get('state') or '',
+                'ibge': str(b_json.get('ibge', {}).get('city', '') if isinstance(b_json.get('ibge'), dict) else (b_json.get('ibge') or ''))
+            }
+    except Exception:
+        pass
+
+    # 2. Se BrasilAPI falhar ou não trouxer localidade, consulta ViaCEP
+    if not data or not data.get('localidade'):
+        try:
+            resp = requests.get(f'https://viacep.com.br/ws/{clean_cep}/json/', timeout=4)
+            if resp.status_code == 200:
+                v_data = resp.json()
+                if not v_data.get('erro'):
+                    data = v_data
+        except Exception:
+            pass
+
+    if not data or data.get('erro'):
+        return jsonify({'error': 'CEP não encontrado na base oficial dos Correios.'}), 404
+
+    # 3. Se ainda sem coordenadas, geocodifica via estratégia multinível no Nominatim
+    if lat is None or lng is None:
+        street = data.get('logradouro') or ''
+        bairro = data.get('bairro') or ''
+        city = data.get('localidade') or ''
+        uf = data.get('uf') or ''
+        lat, lng = geocode_address(
+            address_str=f"{street}, {bairro}, {city} - {uf}".strip(', -'),
+            street=street,
+            neighborhood=bairro,
+            city=city,
+            state=uf
+        )
+
+    data['lat'] = lat
+    data['lng'] = lng
+    return jsonify(data)
 
 @app.route('/api/geocode', methods=['GET'])
 def geocode_endpoint():
@@ -133,6 +223,8 @@ def geocode_endpoint():
     if not query.strip():
         return jsonify({'error': 'Parâmetro de endereço obrigatório.'}), 400
     lat, lng = geocode_address(query.strip())
+    if lat is None or lng is None:
+        return jsonify({'error': 'Endereço não localizado no mapa.', 'lat': None, 'lng': None}), 404
     return jsonify({'lat': lat, 'lng': lng, 'query': query.strip()})
 
 # ================= Rotas de Autenticação =================
@@ -175,7 +267,9 @@ def register():
     # Se não passou coordenadas mas passou endereço, geocodifica
     if (raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '') and (endereco or cep):
         busca = f"{endereco} {numero}, {bairro}, {cidade} - {estado}" if endereco else f"{cep}, Brasil"
-        lat, lng = geocode_address(busca)
+        lat, lng = geocode_address(busca, street=endereco, neighborhood=bairro, city=cidade, state=estado)
+        if lat is None or lng is None:
+            lat, lng = -23.5653, -46.6517
     elif raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '':
         lat, lng = -23.5653, -46.6517
     else:
@@ -372,7 +466,9 @@ def profile():
     # Se as coordenadas não vieram explícitas mas o endereço mudou, busca geocodificação
     if raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '':
         if endereco:
-            lat, lng = geocode_address(f"{endereco} {numero}, {bairro}, {cidade} - {estado}")
+            g_lat, g_lng = geocode_address(f"{endereco} {numero}, {bairro}, {cidade} - {estado}", street=endereco, neighborhood=bairro, city=cidade, state=estado)
+            lat = g_lat if g_lat is not None else safe_coord(user['lat'], -23.5653)
+            lng = g_lng if g_lng is not None else safe_coord(user['lng'], -46.6517)
         else:
             lat = safe_coord(user['lat'], -23.5653)
             lng = safe_coord(user['lng'], -46.6517)
