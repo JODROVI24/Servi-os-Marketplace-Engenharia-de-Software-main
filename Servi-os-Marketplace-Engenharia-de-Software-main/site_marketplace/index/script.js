@@ -19,11 +19,21 @@ let P = [
 
 const $ = s => document.querySelector(s);
 const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const dist = p => mapInstance ? (mapInstance.distance([centerLat, centerLng], [p.lat, p.lng]) / 1000) : 0;
+const dist = p => {
+  if (!mapInstance || p.lat == null || p.lng == null || isNaN(p.lat) || isNaN(p.lng)) return 9999;
+  return mapInstance.distance([centerLat, centerLng], [p.lat, p.lng]) / 1000;
+};
 const score = p => 1000 * (1 - Math.min(dist(p) / 10, 1)) + p.r * 100 + (p.a ? 200 : 0);
 const STEPS = ['Requisitado', 'Localizado', 'Confirmado', 'Em Trânsito', 'Em Execução', 'Finalizado'];
 
 let cat = 'Todos', radius = 8, busy = false, order = null, timer = null;
+let simulationTimers = [];
+
+function clearAllSimulationTimers() {
+  clearTimeout(timer);
+  simulationTimers.forEach(t => clearTimeout(t));
+  simulationTimers = [];
+}
 const catURL = new URLSearchParams(location.search).get('cat');
 if (catURL) cat = catURL;
 
@@ -43,21 +53,21 @@ async function carregarPrestadoresAPI() {
     const res = await fetch(`/api/services?cat=${encodeURIComponent(cat)}&radius=${radius}&lat=${centerLat}&lng=${centerLng}`);
     if (res.ok) {
       const data = await res.json();
-      if (data && data.length) {
+      if (Array.isArray(data)) {
         P = data.map(item => ({
           id: item.id,
           service_id: item.id,
-          n: item.prestador.nome,
+          n: item.prestador ? item.prestador.nome : 'Profissional',
           s: item.titulo,
           c: item.categoria,
           p: item.preco,
-          r: item.prestador.avaliacao,
-          lat: item.prestador.lat,
-          lng: item.prestador.lng,
-          a: item.prestador.disponivel,
-          endereco: item.endereco ? item.endereco.completo : 'São Paulo - SP',
-          bairro: item.endereco ? item.endereco.bairro : '',
-          cidade: item.endereco ? item.endereco.cidade : 'São Paulo',
+          r: item.prestador ? item.prestador.avaliacao : 5.0,
+          lat: (item.prestador && item.prestador.lat != null) ? item.prestador.lat : item.lat,
+          lng: (item.prestador && item.prestador.lng != null) ? item.prestador.lng : item.lng,
+          a: item.prestador ? item.prestador.disponivel : true,
+          endereco: item.endereco ? item.endereco.completo : (item.endereco_completo || 'São Paulo - SP'),
+          bairro: item.endereco ? item.endereco.bairro : (item.bairro || ''),
+          cidade: item.endereco ? item.endereco.cidade : (item.cidade || 'São Paulo'),
           distancia: item.distancia_km
         }));
       }
@@ -116,6 +126,7 @@ function renderMap(posAtual) {
       weight: isBest ? 3 : 1.5
     });
     marker.bindTooltip(p.n.split(' ')[0], { permanent: true, direction: 'right', className: 'map-label' });
+    const isAvail = p.a && !busy;
     marker.bindPopup(`
       <div style="font-family: inherit; font-size: 0.85rem; min-width: 170px;">
         <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">${p.s}</h4>
@@ -123,7 +134,9 @@ function renderMap(posAtual) {
         <div style="color: #444; margin-bottom: 3px;">👤 <b>${p.n}</b> · ★ ${p.r.toFixed(1)}</div>
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${p.endereco || 'São Paulo - SP'}</div>
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
-        <button class="btn" style="width: 100%; font-size: 0.75rem; padding: 6px;" onclick="request(${p.id})">Requisitar Agora</button>
+        <button class="btn" style="width: 100%; font-size: 0.75rem; padding: 6px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
+          ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
+        </button>
       </div>
     `);
     marker.addTo(layerMarkers);
@@ -151,7 +164,8 @@ async function buscarPorEnderecoCliente() {
         const d = await res.json();
         lat = d.lat;
         lng = d.lng;
-        label = `${d.logradouro || ''}, ${d.bairro || ''} - ${d.localidade || ''}`;
+        const partes = [d.logradouro, d.bairro, d.localidade ? `${d.localidade}${d.uf ? ' - ' + d.uf : ''}` : ''].filter(Boolean);
+        label = partes.length ? partes.join(', ') : q;
       }
     }
     if (!lat || !lng) {
@@ -241,22 +255,27 @@ async function request(id) {
   renderAll();
   info('Processando solicitação para <b>' + sel.s + '</b> com <b>' + best.n + '</b>…');
 
-  setTimeout(() => {
+  clearAllSimulationTimers();
+
+  simulationTimers.push(setTimeout(() => {
+    if (!order) return;
     renderSteps(1);
     info('Profissional designado: <b>' + best.n + '</b> a ' + dist(best).toFixed(1) + ' km.');
     toast('Notificando prestador e cliente.');
-  }, 900);
+  }, 900));
 
-  setTimeout(() => {
+  simulationTimers.push(setTimeout(() => {
+    if (!order) return;
     renderSteps(2);
     toast(best.n + ' confirmou o atendimento.');
-  }, 2200);
+  }, 2200));
 
-  setTimeout(() => {
+  simulationTimers.push(setTimeout(() => {
+    if (!order) return;
     renderSteps(3);
     toast(best.n + ' iniciou o deslocamento até seu endereço.');
     drive(best);
-  }, 3300);
+  }, 3300));
 }
 
 function drive(best) {
@@ -278,23 +297,27 @@ function drive(best) {
     if (k < n) {
       const isBat = $('#bat') && $('#bat').checked;
       timer = setTimeout(tick, isBat ? 2500 : 1000);
+      simulationTimers.push(timer);
     } else {
       arrive();
     }
   };
   timer = setTimeout(tick, 1000);
+  simulationTimers.push(timer);
 }
 
 function arrive() {
   toast('O profissional chegou ao local do serviço.');
   renderSteps(4);
-  setTimeout(() => {
+  timer = setTimeout(() => {
+    if (!order) return;
     renderSteps(5);
     info('Ordem de serviço concluída com sucesso! Prossiga com o encerramento financeiro.');
     toast('Serviço finalizado.');
     if ($('#pay')) $('#pay').hidden = false;
     if ($('#novo')) $('#novo').hidden = false;
   }, 2500);
+  simulationTimers.push(timer);
 }
 
 function renderAll() {
@@ -327,11 +350,41 @@ function renderDestaques() {
 document.addEventListener('DOMContentLoaded', async () => {
   const mapEl = document.getElementById('map');
   if (mapEl && typeof L !== 'undefined') {
-    mapInstance = L.map('map').setView([centerLat, centerLng], 13);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Dados geoespaciais &copy; Esri'
-    }).addTo(mapInstance);
+    mapInstance = L.map('map', {
+      scrollWheelZoom: false, // Usabilidade: rolagem fluida sem interceptar scroll da página
+      touchZoom: true,
+      tap: true,
+      dragging: true
+    }).setView([centerLat, centerLng], 13);
+
+    const tileLayerEsri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Dados geoespaciais &copy; Esri, OpenStreetMap',
+      maxZoom: 18
+    });
+
+    // Fallback gracioso para OpenStreetMap caso ArcGIS encontre erro de conexão
+    tileLayerEsri.on('tileerror', () => {
+      if (!window.mapTileFallbackActivated && mapInstance) {
+        window.mapTileFallbackActivated = true;
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 18
+        }).addTo(mapInstance);
+      }
+    });
+
+    tileLayerEsri.addTo(mapInstance);
     layerMarkers = L.layerGroup().addTo(mapInstance);
+
+    // Ajusta o mapa de forma fluida ao redimensionar a tela
+    window.addEventListener('resize', () => {
+      if (mapInstance) mapInstance.invalidateSize();
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        if (mapInstance) mapInstance.invalidateSize();
+      }, 250);
+    });
   }
 
   await carregarPrestadoresAPI();
@@ -340,23 +393,57 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderAll();
   renderDestaques();
 
+  // Função reutilizável para geolocalização por satélite/dispositivo
+  async function ativarGeolocalizacaoGPS() {
+    if (!navigator.geolocation) {
+      toast('O navegador atual não suporta geolocalização.');
+      return;
+    }
+    const locInfo = $('#locInfo');
+    if (locInfo) locInfo.textContent = 'Obtendo sinal do satélite GPS...';
+    navigator.geolocation.getCurrentPosition(
+      async (g) => {
+        centerLat = g.coords.latitude;
+        centerLng = g.coords.longitude;
+        if (mapInstance) mapInstance.setView([centerLat, centerLng], 14);
+        if (locInfo) locInfo.textContent = 'Precisão obtida: ±' + Math.round(g.coords.accuracy) + ' metros.';
+        toast('Posição geográfica atualizada via GPS.');
+        await carregarPrestadoresAPI();
+        renderAll();
+      },
+      (erro) => {
+        let motivo = erro.code === erro.PERMISSION_DENIED ? "Acesso não permitido pelo usuário." : "Falha na comunicação de rede/GPS.";
+        if (locInfo) locInfo.textContent = 'Erro: ' + motivo;
+        toast('Geolocalização indisponível: ' + motivo);
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
   // Event Listeners protegidos
   if ($('#chips')) {
-    $('#chips').onclick = e => {
+    $('#chips').onclick = async e => {
       const c = e.target.dataset.c;
       if (!c) return;
       cat = c;
       renderChips();
+      await carregarPrestadoresAPI();
       renderAll();
     };
   }
 
+  let timerRaioDebounce = null;
   if ($('#raio')) {
     $('#raio').oninput = e => {
       radius = +e.target.value;
       if ($('#raioV')) $('#raioV').textContent = radius + ' km';
       if (mapInstance) mapInstance.setZoom(radius > 8 ? 12 : (radius < 4 ? 14 : 13));
       renderAll();
+      clearTimeout(timerRaioDebounce);
+      timerRaioDebounce = setTimeout(async () => {
+        await carregarPrestadoresAPI();
+        renderAll();
+      }, 350);
     };
   }
 
@@ -376,46 +463,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if ($('#novo')) {
-    $('#novo').onclick = () => {
-      clearTimeout(timer);
-      P.forEach(p => p.a = true);
+    $('#novo').onclick = async () => {
+      clearAllSimulationTimers();
       busy = false;
       order = null;
       if ($('#pedidoBox')) $('#pedidoBox').hidden = true;
       if ($('#painel-lista')) $('#painel-lista').hidden = false;
+      await carregarPrestadoresAPI();
       renderAll();
     };
   }
 
-  if ($('#btnLoc')) {
-    $('#btnLoc').onclick = () => {
-      if (!navigator.geolocation) {
-        toast('O navegador atual não suporta geolocalização.');
-        return;
-      }
-      if ($('#locInfo')) $('#locInfo').textContent = 'Obtendo sinal do satélite GPS...';
-      navigator.geolocation.getCurrentPosition(
-        (g) => {
-          centerLat = g.coords.latitude;
-          centerLng = g.coords.longitude;
-          if (mapInstance) mapInstance.setView([centerLat, centerLng], 14);
-          P.forEach(p => {
-            if (p.x !== undefined && p.y !== undefined) {
-              p.lat = centerLat + (p.y * -0.009);
-              p.lng = centerLng + (p.x * 0.009);
-            }
-          });
-          renderAll();
-          if ($('#locInfo')) $('#locInfo').textContent = 'Precisão obtida: ±' + Math.round(g.coords.accuracy) + ' metros.';
-          toast('Posição geográfica atualizada.');
-        },
-        (erro) => {
-          let motivo = erro.code === erro.PERMISSION_DENIED ? "Acesso não permitido pelo usuário." : "Falha na comunicação de rede/GPS.";
-          if ($('#locInfo')) $('#locInfo').textContent = 'Erro: ' + motivo;
-          toast('Geolocalização indisponível: ' + motivo);
-        },
-        { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
-      );
-    };
-  }
+  // Vincula evento de GPS a todos os botões de disparo de geolocalização
+  const gpsBtns = document.querySelectorAll('#btnLoc, #btnGpsBusca, .btn-gps-trigger');
+  gpsBtns.forEach(btn => {
+    btn.onclick = ativarGeolocalizacaoGPS;
+  });
 });
+
+// Expõe globalmente para navegação, handlers HTML e testes
+window.request = request;
+window.irParaCategoria = irParaCategoria;
+window.buscarPorEnderecoCliente = buscarPorEnderecoCliente;
+window.carregarPrestadoresAPI = carregarPrestadoresAPI;
+window.renderAll = renderAll;
+window.renderDestaques = renderDestaques;
+window.clearAllSimulationTimers = clearAllSimulationTimers;

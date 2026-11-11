@@ -59,8 +59,27 @@
       </div>
     </div>
 
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
     <!-- Navegação consumida pelo auth.js -->
-    <nav class="menu-principal">
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
       <a href="index.html" class="ativo">Início</a>
       <a href="pedido.html">Buscar Serviços</a>
       <a href="como-funciona.html">Como Funciona</a>
@@ -164,7 +183,7 @@
 
       <div class="grid-home">
         <!-- Categoria 1: Limpeza -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Limpeza')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Limpeza')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Limpeza');}" aria-label="Ver serviços da categoria Limpeza">
           <div class="relative overflow-hidden">
             <img src="img/limpeza.jpg" alt="Limpeza Profissional" class="img-servico">
             <span class="absolute top-3 left-3 bg-perto-sun text-perto-ink text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
@@ -181,7 +200,7 @@
         </div>
 
         <!-- Categoria 2: Elétrica -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Elétrica')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Elétrica')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Elétrica');}" aria-label="Ver serviços da categoria Elétrica">
           <div class="relative overflow-hidden">
             <img src="img/eletrica.jpg" alt="Serviços Elétricos" class="img-servico">
             <span class="absolute top-3 left-3 bg-perto-sea text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
@@ -198,7 +217,7 @@
         </div>
 
         <!-- Categoria 3: Encanamento -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Encanamento')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Encanamento')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Encanamento');}" aria-label="Ver serviços da categoria Encanamento">
           <div class="relative overflow-hidden">
             <img src="img/encanamento.jpg" alt="Serviços de Encanamento" class="img-servico">
             <span class="absolute top-3 left-3 bg-perto-ok text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
@@ -215,7 +234,7 @@
         </div>
 
         <!-- Categoria 4: Pintura -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Pintura')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Pintura')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Pintura');}" aria-label="Ver serviços da categoria Pintura">
           <div class="relative overflow-hidden">
             <img src="img/pintura.jpg" alt="Serviços de Pintura" class="img-servico">
             <span class="absolute top-3 left-3 bg-perto-ink text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
@@ -232,7 +251,7 @@
         </div>
 
         <!-- Categoria 5: Jardinagem -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Jardinagem')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Jardinagem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Jardinagem');}" aria-label="Ver serviços da categoria Jardinagem">
           <div class="relative overflow-hidden">
             <img src="img/jardinagem.jpg" alt="Serviços de Jardinagem" class="img-servico">
           </div>
@@ -246,7 +265,7 @@
         </div>
 
         <!-- Categoria 6: Tecnologia -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Tecnologia')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Tecnologia')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Tecnologia');}" aria-label="Ver serviços da categoria Tecnologia">
           <div class="relative overflow-hidden">
             <img src="img/tecnologia.jpg" alt="Suporte Tecnológico" class="img-servico">
           </div>
@@ -260,7 +279,7 @@
         </div>
 
         <!-- Categoria 7: Marcenaria -->
-        <div class="card-home clicavel group" onclick="irParaCategoria('Marcenaria')">
+        <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Marcenaria')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Marcenaria');}" aria-label="Ver serviços da categoria Marcenaria">
           <div class="relative overflow-hidden">
             <img src="img/marcenaria.jpg" alt="Serviços de Marcenaria" class="img-servico">
             <span class="absolute top-3 left-3 bg-perto-sun text-perto-ink text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">

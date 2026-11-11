@@ -37,6 +37,7 @@ class TestMarketplaceFull(unittest.TestCase):
         for page in pages:
             res = self.client.get(page)
             self.assertEqual(res.status_code, 200, f'Falha ao carregar página {page}')
+            res.close()
 
     def test_02_categoria_marcenaria_sync(self):
         res = self.client.get('/api/services?cat=Marcenaria')
@@ -270,6 +271,85 @@ class TestMarketplaceFull(unittest.TestCase):
         if pedido:
             self.assertEqual(pedido['endereco_cliente'], 'Rua Haddock Lobo')
             self.assertEqual(pedido['bairro_cliente'], 'Cerqueira César')
+
+    def test_08_order_edge_cases_coordinates_fallback(self):
+        # 1. Login com cliente
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+
+        # 2. Criar pedido passando explicitamente lat: None e lng: None
+        res_order = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'observacoes': 'Teste de robustez coordenadas nulas',
+            'lat': None,
+            'lng': None
+        })
+        self.assertEqual(res_order.status_code, 201)
+        data = json.loads(res_order.data)
+        self.assertIn('order_id', data)
+
+        # 3. Criar pedido com coordenadas como strings inválidas
+        res_order2 = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'observacoes': 'Teste de robustez coordenadas string',
+            'lat': '',
+            'lng': 'invalido'
+        })
+        self.assertEqual(res_order2.status_code, 201)
+
+    def test_09_profile_and_service_defensive_updates(self):
+        # 1. Login com prestador
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+
+        # 2. Atualizar perfil com coordenadas vazias/inválidas
+        res_prof = self.client.put('/api/profile', json={
+            'nome': 'Carlos Mendes Resiliente',
+            'lat': '',
+            'lng': 'invalido'
+        })
+        self.assertEqual(res_prof.status_code, 200)
+
+        # 3. Criar serviço com preço e coordenadas defensivas
+        res_svc = self.client.post('/api/services', json={
+            'titulo': 'Serviço com Coordenadas Resilientes',
+            'categoria': 'Limpeza',
+            'preco': 150.0,
+            'lat': None,
+            'lng': ''
+        })
+        self.assertEqual(res_svc.status_code, 201)
+        svc_id = json.loads(res_svc.data)['id']
+
+        # 4. Atualizar serviço com valores de borda
+        res_up = self.client.put(f'/api/services/{svc_id}', json={
+            'titulo': 'Serviço Atualizado Resiliente',
+            'categoria': 'Limpeza',
+            'preco': 160.0,
+            'lat': None,
+            'lng': None
+        })
+        self.assertEqual(res_up.status_code, 200)
+
+    def test_10_my_services_filtering_and_soft_delete(self):
+        # 1. Login com prestador Carlos
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+
+        # 2. Criar novo serviço temporário
+        res_create = self.client.post('/api/services', json={
+            'titulo': 'Serviço Temporário para Exclusão',
+            'categoria': 'Limpeza',
+            'preco': 99.0
+        })
+        self.assertEqual(res_create.status_code, 201)
+        temp_svc_id = json.loads(res_create.data)['id']
+
+        # 3. Excluir o serviço criado (sem ordens -> delete físico)
+        res_del = self.client.delete(f'/api/services/{temp_svc_id}')
+        self.assertEqual(res_del.status_code, 200)
+
+        # 4. Verificar que não aparece mais em my-services
+        res_list = self.client.get('/api/my-services')
+        ids_ativos = [s['id'] for s in json.loads(res_list.data)]
+        self.assertNotIn(temp_svc_id, ids_ativos)
 
 if __name__ == '__main__':
     unittest.main()

@@ -51,8 +51,27 @@
       <span>Perto<b>Já</b></span>
     </a>
 
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
     <!-- Navegação consumida pelo auth.js -->
-    <nav class="menu-principal">
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
       <a href="index.html">Início</a>
       <a href="pedido.html">Buscar Serviços</a>
       <a href="como-funciona.html">Como Funciona</a>
@@ -323,9 +342,16 @@
         lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null
       };
 
+      if (!payload.senha || payload.senha.length < 6) {
+        erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
+        erroDiv.style.display = 'block';
+        return;
+      }
+
       if (tipo === 'prestador') {
         payload.categoria = document.getElementById('categoria').value;
-        payload.preco_inicial = document.getElementById('preco_inicial').value || 100.0;
+        const precoVal = parseFloat(document.getElementById('preco_inicial').value);
+        payload.preco_inicial = (!isNaN(precoVal) && precoVal > 0) ? precoVal : 100.0;
         payload.bio = document.getElementById('bio').value;
       }
 

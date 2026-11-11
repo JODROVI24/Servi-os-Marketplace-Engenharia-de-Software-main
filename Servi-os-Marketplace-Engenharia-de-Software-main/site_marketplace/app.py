@@ -2,6 +2,7 @@ import os
 import re
 import math
 import hashlib
+import sqlite3
 import requests
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -52,12 +53,27 @@ def get_current_user():
     return user
 
 # Helper de cálculo de distância euclidiana/haversine simplificada em km
+def safe_coord(val, default=-23.5653):
+    if val is None or val == '':
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 def calcular_distancia(lat1, lng1, lat2, lng2):
-    if lat1 is None or lng1 is None or lat2 is None or lng2 is None:
+    try:
+        if lat1 is None or lng1 is None or lat2 is None or lng2 is None:
+            return 0.0
+        lat1, lng1, lat2, lng2 = float(lat1), float(lng1), float(lat2), float(lng2)
+        d_lat = (lat2 - lat1) * 111.0
+        d_lng = (lng2 - lng1) * (111.0 * math.cos(math.radians(lat1)))
+        return math.sqrt(d_lat**2 + d_lng**2)
+    except (ValueError, TypeError):
         return 0.0
-    d_lat = (lat2 - lat1) * 111.0
-    d_lng = (lng2 - lng1) * (111.0 * math.cos(math.radians(lat1)))
-    return math.sqrt(d_lat**2 + d_lng**2)
 
 # Helper para geocodificação de endereços no OpenStreetMap Nominatim
 def geocode_address(address_str):
@@ -101,7 +117,8 @@ def consultar_cep(cep):
                 return jsonify({'error': 'CEP não encontrado na base dos Correios.'}), 404
             
             # Busca latitude e longitude para o endereço encontrado
-            endereco_busca = f"{data.get('logradouro', '')}, {data.get('bairro', '')}, {data.get('localidade', '')} - {data.get('uf', '')}, Brasil"
+            partes = [p for p in [data.get('logradouro'), data.get('bairro'), f"{data.get('localidade', '')} - {data.get('uf', '')}".strip(' -')] if p]
+            endereco_busca = ", ".join(partes) + ", Brasil" if partes else "São Paulo, Brasil"
             lat, lng = geocode_address(endereco_busca)
             data['lat'] = lat
             data['lng'] = lng
@@ -123,38 +140,47 @@ def geocode_endpoint():
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json() or {}
-    nome = data.get('nome', '').strip()
-    email = data.get('email', '').strip().lower()
-    senha = data.get('senha', '')
-    tipo = data.get('tipo', 'cliente')
-    telefone = data.get('telefone', '').strip()
-    bio = data.get('bio', '').strip()
+    nome = str(data.get('nome') or '').strip()
+    email = str(data.get('email') or '').strip().lower()
+    senha = str(data.get('senha') or '')
+    tipo = str(data.get('tipo') or 'cliente').strip()
+    telefone = str(data.get('telefone') or '').strip()
+    bio = str(data.get('bio') or '').strip()
     
     # Endereço real
-    cep = data.get('cep', '').strip()
-    endereco = data.get('endereco', '').strip()
-    numero = data.get('numero', '').strip()
-    complemento = data.get('complemento', '').strip()
-    bairro = data.get('bairro', '').strip()
-    cidade = data.get('cidade', '').strip()
-    estado = data.get('estado', '').strip()
+    cep = str(data.get('cep') or '').strip()
+    endereco = str(data.get('endereco') or '').strip()
+    numero = str(data.get('numero') or '').strip()
+    complemento = str(data.get('complemento') or '').strip()
+    bairro = str(data.get('bairro') or '').strip()
+    cidade = str(data.get('cidade') or '').strip()
+    estado = str(data.get('estado') or '').strip()
     
     # Coordenadas
-    lat = data.get('lat')
-    lng = data.get('lng')
+    raw_lat = data.get('lat')
+    raw_lng = data.get('lng')
 
     if not nome or not email or not senha:
         return jsonify({'error': 'Nome, e-mail e senha são obrigatórios.'}), 400
+
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({'error': 'Formato de e-mail inválido.'}), 400
+
+    if len(senha) < 6:
+        return jsonify({'error': 'A senha deve conter no mínimo 6 caracteres.'}), 400
 
     if tipo not in ('cliente', 'prestador'):
         return jsonify({'error': 'Tipo de usuário inválido. Escolha cliente ou prestador.'}), 400
 
     # Se não passou coordenadas mas passou endereço, geocodifica
-    if (lat is None or lng is None) and (endereco or cep):
+    if (raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '') and (endereco or cep):
         busca = f"{endereco} {numero}, {bairro}, {cidade} - {estado}" if endereco else f"{cep}, Brasil"
         lat, lng = geocode_address(busca)
-    elif lat is None or lng is None:
+    elif raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '':
         lat, lng = -23.5653, -46.6517
+    else:
+        lat = safe_coord(raw_lat, -23.5653)
+        lng = safe_coord(raw_lng, -46.6517)
 
     categoria = data.get('categoria', '').strip()
     preco_inicial = data.get('preco_inicial')
@@ -163,7 +189,6 @@ def register():
     try:
         user_exist = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
         if user_exist:
-            conn.close()
             return jsonify({'error': 'Este e-mail já está cadastrado.'}), 409
 
         senha_hash = generate_password_hash(senha)
@@ -176,7 +201,12 @@ def register():
 
         # Se for prestador e informou categoria e preço inicial, cria o primeiro serviço com endereço real
         if tipo == 'prestador' and categoria:
-            preco = float(preco_inicial) if preco_inicial else 100.0
+            try:
+                preco = float(preco_inicial) if preco_inicial else 100.0
+                if preco <= 0:
+                    preco = 100.0
+            except (ValueError, TypeError):
+                preco = 100.0
             titulo_svc = f'Serviço profissional de {categoria}'
             desc_svc = bio or f'Atendimento especializado em {categoria} na região de {cidade or "São Paulo"}.'
             cursor.execute('''
@@ -210,7 +240,6 @@ def register():
             }
         }), 201
     except Exception as e:
-        conn.close()
         return jsonify({'error': f'Erro ao cadastrar usuário: {str(e)}'}), 500
     finally:
         conn.close()
@@ -337,18 +366,19 @@ def profile():
     cidade = data.get('cidade', user['cidade'] or '').strip()
     estado = data.get('estado', user['estado'] or '').strip()
 
-    lat = data.get('lat')
-    lng = data.get('lng')
+    raw_lat = data.get('lat')
+    raw_lng = data.get('lng')
 
     # Se as coordenadas não vieram explícitas mas o endereço mudou, busca geocodificação
-    if lat is None or lng is None:
+    if raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '':
         if endereco:
             lat, lng = geocode_address(f"{endereco} {numero}, {bairro}, {cidade} - {estado}")
         else:
-            lat, lng = user['lat'], user['lng']
+            lat = safe_coord(user['lat'], -23.5653)
+            lng = safe_coord(user['lng'], -46.6517)
     else:
-        lat = float(lat)
-        lng = float(lng)
+        lat = safe_coord(raw_lat, safe_coord(user['lat'], -23.5653))
+        lng = safe_coord(raw_lng, safe_coord(user['lng'], -46.6517))
 
     disponivel = 1 if data.get('disponivel', bool(user['disponivel'])) else 0
 
@@ -500,9 +530,15 @@ def my_services():
         return jsonify({'error': 'Acesso exclusivo para prestadores de serviço.'}), 403
 
     conn = get_db_connection()
-    services = conn.execute('''
-        SELECT * FROM services WHERE prestador_id = ? ORDER BY criado_em DESC
-    ''', (user['id'],)).fetchall()
+    include_all = request.args.get('all', '0') == '1'
+    if include_all:
+        services = conn.execute('''
+            SELECT * FROM services WHERE prestador_id = ? ORDER BY criado_em DESC
+        ''', (user['id'],)).fetchall()
+    else:
+        services = conn.execute('''
+            SELECT * FROM services WHERE prestador_id = ? AND ativo = 1 ORDER BY criado_em DESC
+        ''', (user['id'],)).fetchall()
     conn.close()
 
     return jsonify([dict(s) for s in services])
@@ -514,20 +550,20 @@ def create_service():
         return jsonify({'error': 'Apenas prestadores podem cadastrar serviços.'}), 403
 
     data = request.get_json() or {}
-    titulo = data.get('titulo', '').strip()
-    descricao = data.get('descricao', '').strip()
-    categoria = data.get('categoria', '').strip()
+    titulo = str(data.get('titulo') or '').strip()
+    descricao = str(data.get('descricao') or '').strip()
+    categoria = str(data.get('categoria') or '').strip()
     preco = data.get('preco')
 
     # Dados de endereço do serviço (herda do prestador se não informados)
-    cep = data.get('cep', user['cep'] or '').strip()
-    endereco = data.get('endereco', user['endereco'] or '').strip()
-    numero = data.get('numero', user['numero'] or '').strip()
-    bairro = data.get('bairro', user['bairro'] or '').strip()
-    cidade = data.get('cidade', user['cidade'] or 'São Paulo').strip()
-    estado = data.get('estado', user['estado'] or 'SP').strip()
-    lat = data.get('lat') or user['lat'] or -23.5653
-    lng = data.get('lng') or user['lng'] or -46.6517
+    cep = str(data.get('cep') or user['cep'] or '').strip()
+    endereco = str(data.get('endereco') or user['endereco'] or '').strip()
+    numero = str(data.get('numero') or user['numero'] or '').strip()
+    bairro = str(data.get('bairro') or user['bairro'] or '').strip()
+    cidade = str(data.get('cidade') or user['cidade'] or 'São Paulo').strip()
+    estado = str(data.get('estado') or user['estado'] or 'SP').strip()
+    lat = safe_coord(data.get('lat'), safe_coord(user['lat'], -23.5653))
+    lng = safe_coord(data.get('lng'), safe_coord(user['lng'], -46.6517))
 
     if not titulo or not categoria or preco is None:
         return jsonify({'error': 'Título, categoria e preço são obrigatórios.'}), 400
@@ -568,20 +604,20 @@ def update_service(service_id):
         return jsonify({'error': 'Você não tem permissão para alterar este serviço.'}), 403
 
     data = request.get_json() or {}
-    titulo = data.get('titulo', service['titulo']).strip()
-    descricao = data.get('descricao', service['descricao']).strip()
-    categoria = data.get('categoria', service['categoria']).strip()
+    titulo = str(data.get('titulo') or service['titulo']).strip()
+    descricao = str(data.get('descricao') or service['descricao'] or '').strip()
+    categoria = str(data.get('categoria') or service['categoria']).strip()
     preco = data.get('preco', service['preco'])
     ativo = 1 if data.get('ativo', bool(service['ativo'])) else 0
 
-    cep = data.get('cep', service['cep'] or user['cep'] or '')
-    endereco = data.get('endereco', service['endereco'] or user['endereco'] or '')
-    numero = data.get('numero', service['numero'] or user['numero'] or '')
-    bairro = data.get('bairro', service['bairro'] or user['bairro'] or '')
-    cidade = data.get('cidade', service['cidade'] or user['cidade'] or 'São Paulo')
-    estado = data.get('estado', service['estado'] or user['estado'] or 'SP')
-    lat = data.get('lat', service['lat'] or user['lat'])
-    lng = data.get('lng', service['lng'] or user['lng'])
+    cep = str(data.get('cep') or service['cep'] or user['cep'] or '').strip()
+    endereco = str(data.get('endereco') or service['endereco'] or user['endereco'] or '').strip()
+    numero = str(data.get('numero') or service['numero'] or user['numero'] or '').strip()
+    bairro = str(data.get('bairro') or service['bairro'] or user['bairro'] or '').strip()
+    cidade = str(data.get('cidade') or service['cidade'] or user['cidade'] or 'São Paulo').strip()
+    estado = str(data.get('estado') or service['estado'] or user['estado'] or 'SP').strip()
+    lat = safe_coord(data.get('lat'), safe_coord(service['lat'] or user['lat'], -23.5653))
+    lng = safe_coord(data.get('lng'), safe_coord(service['lng'] or user['lng'], -46.6517))
 
     try:
         preco = float(preco)
@@ -617,9 +653,15 @@ def delete_service(service_id):
         conn.close()
         return jsonify({'error': 'Acesso negado.'}), 403
 
-    conn.execute('DELETE FROM services WHERE id = ?', (service_id,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('DELETE FROM services WHERE id = ?', (service_id,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Se houver pedidos vinculados a este serviço, desativa para manter integridade dos pedidos
+        conn.execute('UPDATE services SET ativo = 0 WHERE id = ?', (service_id,))
+        conn.commit()
+    finally:
+        conn.close()
 
     return jsonify({'message': 'Serviço excluído com sucesso.'})
 
@@ -633,17 +675,20 @@ def create_order():
 
     data = request.get_json() or {}
     servico_id = data.get('servico_id')
-    observacoes = data.get('observacoes', '').strip()
+    observacoes = str(data.get('observacoes') or '').strip()
     
     # Endereço onde o serviço será realizado
-    cep_cli = data.get('cep', user['cep'] or '')
-    end_cli = data.get('endereco', user['endereco'] or '')
-    num_cli = data.get('numero', user['numero'] or '')
-    bairro_cli = data.get('bairro', user['bairro'] or '')
-    cidade_cli = data.get('cidade', user['cidade'] or 'São Paulo')
-    estado_cli = data.get('estado', user['estado'] or 'SP')
-    lat_cliente = float(data.get('lat', user['lat'] or -23.5653))
-    lng_cliente = float(data.get('lng', user['lng'] or -46.6517))
+    cep_cli = str(data.get('cep') or user['cep'] or '').strip()
+    end_cli = str(data.get('endereco') or user['endereco'] or '').strip()
+    num_cli = str(data.get('numero') or user['numero'] or '').strip()
+    bairro_cli = str(data.get('bairro') or user['bairro'] or '').strip()
+    cidade_cli = str(data.get('cidade') or user['cidade'] or 'São Paulo').strip()
+    estado_cli = str(data.get('estado') or user['estado'] or 'SP').strip()
+    
+    user_lat_fallback = safe_coord(user['lat'], -23.5653)
+    user_lng_fallback = safe_coord(user['lng'], -46.6517)
+    lat_cliente = safe_coord(data.get('lat'), user_lat_fallback)
+    lng_cliente = safe_coord(data.get('lng'), user_lng_fallback)
 
     conn = get_db_connection()
     service = conn.execute('SELECT * FROM services WHERE id = ? AND ativo = 1', (servico_id,)).fetchone()
@@ -681,10 +726,10 @@ def list_orders():
                 o.preco_total,
                 o.observacoes,
                 o.criado_em,
-                s.titulo AS servico_titulo,
-                s.categoria AS servico_categoria,
+                COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
+                COALESCE(s.categoria, 'Geral') AS servico_categoria,
                 u.id AS prestador_id,
-                u.nome AS prestador_nome,
+                COALESCE(u.nome, 'Profissional') AS prestador_nome,
                 u.telefone AS prestador_telefone,
                 COALESCE(s.endereco, u.endereco) AS prestador_endereco,
                 COALESCE(s.numero, u.numero) AS prestador_numero,
@@ -694,8 +739,8 @@ def list_orders():
                 COALESCE(s.lat, u.lat) AS prestador_lat,
                 COALESCE(s.lng, u.lng) AS prestador_lng
             FROM orders o
-            JOIN services s ON o.servico_id = s.id
-            JOIN users u ON o.prestador_id = u.id
+            LEFT JOIN services s ON o.servico_id = s.id
+            LEFT JOIN users u ON o.prestador_id = u.id
             WHERE o.cliente_id = ?
             ORDER BY o.criado_em DESC
         '''
@@ -717,14 +762,14 @@ def list_orders():
                 o.lat_cliente,
                 o.lng_cliente,
                 o.criado_em,
-                s.titulo AS servico_titulo,
-                s.categoria AS servico_categoria,
+                COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
+                COALESCE(s.categoria, 'Geral') AS servico_categoria,
                 u.id AS cliente_id,
-                u.nome AS cliente_nome,
+                COALESCE(u.nome, 'Cliente') AS cliente_nome,
                 u.telefone AS cliente_telefone
             FROM orders o
-            JOIN services s ON o.servico_id = s.id
-            JOIN users u ON o.cliente_id = u.id
+            LEFT JOIN services s ON o.servico_id = s.id
+            LEFT JOIN users u ON o.cliente_id = u.id
             WHERE o.prestador_id = ?
             ORDER BY o.criado_em DESC
         '''
