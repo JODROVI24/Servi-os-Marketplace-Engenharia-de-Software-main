@@ -214,15 +214,23 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, senha })
         });
-        const data = await res.json();
-
-        if (!res.ok) {
-          erroDiv.textContent = data.error || 'Erro ao efetuar login.';
+        const rawText = await res.text();
+        let data = {};
+        try {
+          data = rawText ? JSON.parse(rawText) : {};
+        } catch (parseErr) {
+          erroDiv.textContent = `Erro na resposta da API (HTTP ${res.status}).`;
           erroDiv.style.display = 'block';
           return;
         }
 
-        if (data.user.tipo === 'prestador') {
+        if (!res.ok) {
+          erroDiv.textContent = data.error || `Erro ao efetuar login (HTTP ${res.status}).`;
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        if (data.user && data.user.tipo === 'prestador') {
           window.location.href = 'portal-prestador.html';
         } else {
           // Validação defensiva contra open-redirect

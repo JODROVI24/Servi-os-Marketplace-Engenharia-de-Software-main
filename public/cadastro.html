@@ -405,10 +405,18 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const rawText = await res.text();
+        let data = {};
+        try {
+          data = rawText ? JSON.parse(rawText) : {};
+        } catch (parseErr) {
+          erroDiv.textContent = `Erro na resposta da API (HTTP ${res.status}).`;
+          erroDiv.style.display = 'block';
+          return;
+        }
 
         if (!res.ok) {
-          erroDiv.textContent = data.error || 'Erro ao realizar cadastro.';
+          erroDiv.textContent = data.error || `Erro ao realizar cadastro (HTTP ${res.status}).`;
           erroDiv.style.display = 'block';
           return;
         }

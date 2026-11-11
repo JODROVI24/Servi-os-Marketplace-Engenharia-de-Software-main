@@ -48,7 +48,7 @@ def _load_dotenv():
 _load_dotenv()
 
 app = Flask(__name__, static_folder=STATIC_DIR)
-app.secret_key = os.environ.get('SECRET_KEY') or hashlib.sha256(BASE_DIR.encode('utf-8')).hexdigest()
+app.secret_key = os.environ.get('SECRET_KEY') or 'pertoja-marketplace-production-secret-key-2026'
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
@@ -74,9 +74,11 @@ def add_performance_and_security_headers(response):
     else:
         response.headers['Cache-Control'] = 'public, max-age=3600, must-revalidate'
 
-    # Compressão Gzip automática se suportada pelo cliente
+    # Compressão Gzip automática (somente fora da Vercel, pois o Edge da Vercel já comprime nativamente)
+    is_vercel = os.environ.get('VERCEL') == '1' or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
     accept_encoding = request.headers.get('Accept-Encoding', '')
-    if ('gzip' in accept_encoding and 
+    if (not is_vercel and
+        'gzip' in accept_encoding and 
         response.status_code < 300 and 
         not response.headers.get('Content-Encoding') and 
         response.mimetype in ('text/html', 'text/css', 'text/javascript', 'application/javascript', 'application/json', 'image/svg+xml')):
