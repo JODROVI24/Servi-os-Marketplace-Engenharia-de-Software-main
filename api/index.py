@@ -65,7 +65,8 @@ class VercelPathNormalizerWSGI:
                 return self.wsgi_app(environ, start_response)
 
         # 2. Caso PATH_INFO tenha sido reescrito diretamente para o arquivo
-        if path in ('/api/index.py', '/api/index', '/index.py', '/index'):
+        clean_path = path.strip('/')
+        if clean_path in ('api/index.py', 'api/index', 'index.py', 'index'):
             orig_url = (
                 environ.get('HTTP_X_MATCHED_PATH')
                 or environ.get('HTTP_X_VERCEL_ORIGINAL_PATH')
@@ -73,9 +74,12 @@ class VercelPathNormalizerWSGI:
                 or environ.get('RAW_URI')
                 or ''
             )
-            if orig_url and orig_url.startswith('/api') and orig_url not in ('/api/index.py', '/api/index'):
+            if orig_url:
                 orig_path = orig_url.split('?', 1)[0]
-                environ['PATH_INFO'] = orig_path
+                if orig_path not in ('/api/index.py', '/api/index', '/index.py', '/index', ''):
+                    if not orig_path.startswith('/api'):
+                        orig_path = '/api/' + orig_path.lstrip('/')
+                    environ['PATH_INFO'] = orig_path
 
         # 3. Caso a Vercel tenha removido o prefixo /api ao despachar para a função
         elif not path.startswith('/api') and path.lstrip('/').split('/')[0] in (

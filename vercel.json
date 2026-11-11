@@ -1,19 +1,35 @@
 {
   "version": 2,
   "cleanUrls": true,
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "Servi-os-Marketplace-Engenharia-de-Software-main/**"
-    }
-  },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api",
-      "destination": "/api/index.py?__path="
+      "src": "public/**",
+      "use": "@vercel/static"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py?__path=$1"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["Servi-os-Marketplace-Engenharia-de-Software-main/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.py?__path=$1"
+    },
+    {
+      "src": "/api",
+      "dest": "api/index.py?__path="
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
     }
   ]
 }
