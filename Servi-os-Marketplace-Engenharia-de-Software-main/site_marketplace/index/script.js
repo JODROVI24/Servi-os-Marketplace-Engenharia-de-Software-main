@@ -101,7 +101,7 @@ function renderList() {
      </div>
      <div class="meta"><span>👤 ${p.n}</span><span>Avaliação: ★ ${p.r.toFixed(1)}</span><span>${dist(p).toFixed(1)} km</span>
        <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span></div>
-     <div style="margin-top: 8px;"><button class="btn" data-req="${p.id}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button></div>
+     <div style="margin-top: 10px;"><button class="btn btn-requisitar" data-req="${p.id}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button></div>
    </div>`).join('') : '<p style="color: #666; padding: 12px 0;">Nenhum prestador encontrado com estes filtros na sua região.</p>';
 }
 
@@ -134,7 +134,7 @@ function renderMap(posAtual) {
         <div style="color: #444; margin-bottom: 3px;">👤 <b>${p.n}</b> · ★ ${p.r.toFixed(1)}</div>
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${p.endereco || 'São Paulo - SP'}</div>
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
-        <button class="btn" style="width: 100%; font-size: 0.75rem; padding: 6px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
+        <button class="btn btn-requisitar" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
         </button>
       </div>
