@@ -44,8 +44,8 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = json.loads(res.data)
         self.assertGreater(len(data), 0)
-        marcenaria = next((s for s in data if s['categoria'] == 'Marcenaria'), None)
-        self.assertIsNotNone(marcenaria, 'Serviço de Marcenaria não foi encontrado na API')
+        marcenaria = next((s for s in data if s['categoria'] == 'Marcenaria' and 'Nina' in s['prestador']['nome']), None)
+        self.assertIsNotNone(marcenaria, 'Serviço de Marcenaria da Nina não foi encontrado na API')
         self.assertIn('Nina', marcenaria['prestador']['nome'])
 
     def test_03_fluxo_completo_prestador_servico_preco(self):
