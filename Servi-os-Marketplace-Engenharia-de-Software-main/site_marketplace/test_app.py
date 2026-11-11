@@ -172,7 +172,22 @@ class TestMarketplaceFull(unittest.TestCase):
         nomes_prestadores = [s['prestador']['nome'] for s in servicos_g]
         self.assertIn('Juliana Clean', nomes_prestadores)
 
-        # 4. CEP inválido / inexistente
+        # 4. Consulta CEP de Santana (Rua Dr. Olavo Egídio - 02037000) próximo ao Beto
+        res_santana = self.client.get('/api/cep/02037000')
+        self.assertEqual(res_santana.status_code, 200)
+        data_s = json.loads(res_santana.data)
+        self.assertEqual(data_s.get('bairro'), 'Santana')
+        self.assertAlmostEqual(data_s.get('lat'), -23.50, delta=0.03)
+        self.assertAlmostEqual(data_s.get('lng'), -46.625, delta=0.03)
+
+        res_serv_s = self.client.get(f"/api/services?radius=8&lat={data_s['lat']}&lng={data_s['lng']}")
+        self.assertEqual(res_serv_s.status_code, 200)
+        servicos_s = json.loads(res_serv_s.data)
+        self.assertTrue(len(servicos_s) > 0)
+        self.assertEqual(servicos_s[0]['prestador']['nome'], 'Beto Hidráulica')
+        self.assertLess(servicos_s[0]['distancia_km'], 1.0)
+
+        # 5. CEP inválido / inexistente
         res_invalido = self.client.get('/api/cep/00000000')
         self.assertEqual(res_invalido.status_code, 404)
 

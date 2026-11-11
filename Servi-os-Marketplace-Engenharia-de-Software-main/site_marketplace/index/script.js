@@ -201,56 +201,61 @@ async function buscarPorEnderecoCliente() {
         console.warn('API local de CEP indisponível, recorrendo a fallbacks cliente:', errApi);
       }
 
-      // Fallback cliente 1: BrasilAPI v2 direta se a API local falhar ou não tiver coordenadas
+      // Fallback cliente: dados do logradouro via ViaCEP/BrasilAPI + geocodificação de rua via Nominatim
       if ((lat == null || lng == null || isNaN(lat) || isNaN(lng)) && typeof fetch !== 'undefined') {
-        try {
-          const resB = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
-          if (resB.ok) {
-            const dB = await resB.json();
-            if (dB.location && dB.location.coordinates) {
-              const cLat = parseFloat(dB.location.coordinates.latitude);
-              const cLng = parseFloat(dB.location.coordinates.longitude);
-              if (!isNaN(cLat) && !isNaN(cLng)) {
-                lat = cLat;
-                lng = cLng;
-                const partes = [dB.street, dB.neighborhood, dB.city ? `${dB.city}${dB.state ? ' - ' + dB.state : ''}` : ''].filter(Boolean);
-                label = partes.length ? partes.join(', ') : label;
-              }
-            }
-          }
-        } catch (errB) {}
-      }
-
-      // Fallback cliente 2: ViaCEP + Nominatim caso ainda sem coordenadas
-      if ((lat == null || lng == null || isNaN(lat) || isNaN(lng)) && typeof fetch !== 'undefined') {
+        let street = '', bairro = '', city = '', uf = '';
         try {
           const resV = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
           if (resV.ok) {
             const dV = await resV.json();
             if (!dV.erro) {
-              const partes = [dV.logradouro, dV.bairro, dV.localidade ? `${dV.localidade}${dV.uf ? ' - ' + dV.uf : ''}` : ''].filter(Boolean);
+              street = dV.logradouro || '';
+              bairro = dV.bairro || '';
+              city = dV.localidade || '';
+              uf = dV.uf || '';
+              const partes = [street, bairro, city ? `${city}${uf ? ' - ' + uf : ''}` : ''].filter(Boolean);
               label = partes.length ? partes.join(', ') : label;
-              const cands = [
-                [dV.logradouro, dV.localidade, dV.uf].filter(Boolean).join(', ') + ', Brasil',
-                [dV.logradouro, dV.bairro, dV.localidade, dV.uf].filter(Boolean).join(', ') + ', Brasil',
-                [dV.localidade, dV.uf].filter(Boolean).join(' - ') + ', Brasil'
-              ];
-              for (const cand of cands) {
-                try {
-                  const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cand)}&limit=1`);
-                  if (rNom.ok) {
-                    const resNom = await rNom.json();
-                    if (resNom && resNom.length > 0) {
-                      lat = parseFloat(resNom[0].lat);
-                      lng = parseFloat(resNom[0].lon);
-                      break;
-                    }
-                  }
-                } catch (eN) {}
-              }
             }
           }
         } catch (errV) {}
+
+        if (!city) {
+          try {
+            const resB = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+            if (resB.ok) {
+              const dB = await resB.json();
+              street = dB.street || street;
+              bairro = dB.neighborhood || bairro;
+              city = dB.city || city;
+              uf = dB.state || uf;
+              const partes = [street, bairro, city ? `${city}${uf ? ' - ' + uf : ''}` : ''].filter(Boolean);
+              label = partes.length ? partes.join(', ') : label;
+            }
+          } catch (errB) {}
+        }
+
+        // Tenta geocodificar com prioridade para rua e bairro exatos
+        const cands = [];
+        if (street) {
+          if (bairro && city) cands.push([street, bairro, city, uf].filter(Boolean).join(', ') + ', Brasil');
+          if (city) cands.push([street, city, uf].filter(Boolean).join(', ') + ', Brasil');
+        }
+        if (bairro && city) cands.push([bairro, city, uf].filter(Boolean).join(', ') + ', Brasil');
+        if (city) cands.push([city, uf].filter(Boolean).join(' - ') + ', Brasil');
+
+        for (const cand of cands) {
+          try {
+            const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cand)}&limit=1`);
+            if (rNom.ok) {
+              const resNom = await rNom.json();
+              if (resNom && resNom.length > 0) {
+                lat = parseFloat(resNom[0].lat);
+                lng = parseFloat(resNom[0].lon);
+                break;
+              }
+            }
+          } catch (eN) {}
+        }
       }
     }
 

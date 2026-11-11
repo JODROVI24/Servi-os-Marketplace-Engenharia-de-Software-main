@@ -152,66 +152,66 @@ def consultar_cep(cep):
         return jsonify({'error': 'CEP inválido. Deve conter 8 dígitos numéricos.'}), 400
 
     data = None
-    lat = None
-    lng = None
+    backup_coords = None
 
-    # 1. Tenta BrasilAPI v2 (retorna coordenadas geográficas precisas para CEPs no Brasil)
+    # 1. Consulta dados cadastrais oficiais dos Correios via ViaCEP
     try:
-        r_brasil = requests.get(
-            f'https://brasilapi.com.br/api/cep/v2/{clean_cep}',
-            headers={'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'},
-            timeout=3.5
-        )
-        if r_brasil.status_code == 200:
-            b_json = r_brasil.json()
-            coords = b_json.get('location', {}).get('coordinates', {})
-            raw_lat = coords.get('latitude')
-            raw_lng = coords.get('longitude')
-            if raw_lat and raw_lng:
-                try:
-                    lat = float(raw_lat)
-                    lng = float(raw_lng)
-                except (ValueError, TypeError):
-                    lat, lng = None, None
-
-            data = {
-                'cep': b_json.get('cep') or clean_cep,
-                'logradouro': b_json.get('street') or '',
-                'bairro': b_json.get('neighborhood') or '',
-                'localidade': b_json.get('city') or '',
-                'uf': b_json.get('state') or '',
-                'ibge': str(b_json.get('ibge', {}).get('city', '') if isinstance(b_json.get('ibge'), dict) else (b_json.get('ibge') or ''))
-            }
+        resp = requests.get(f'https://viacep.com.br/ws/{clean_cep}/json/', timeout=4)
+        if resp.status_code == 200:
+            v_data = resp.json()
+            if not v_data.get('erro'):
+                data = v_data
     except Exception:
         pass
 
-    # 2. Se BrasilAPI falhar ou não trouxer localidade, consulta ViaCEP
+    # 2. Se ViaCEP falhar, recorre à BrasilAPI v2 para obter logradouro, bairro e localidade
     if not data or not data.get('localidade'):
         try:
-            resp = requests.get(f'https://viacep.com.br/ws/{clean_cep}/json/', timeout=4)
-            if resp.status_code == 200:
-                v_data = resp.json()
-                if not v_data.get('erro'):
-                    data = v_data
+            r_brasil = requests.get(
+                f'https://brasilapi.com.br/api/cep/v2/{clean_cep}',
+                headers={'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'},
+                timeout=3.5
+            )
+            if r_brasil.status_code == 200:
+                b_json = r_brasil.json()
+                coords = b_json.get('location', {}).get('coordinates', {})
+                if coords.get('latitude') and coords.get('longitude'):
+                    try:
+                        backup_coords = (float(coords['latitude']), float(coords['longitude']))
+                    except (ValueError, TypeError):
+                        pass
+
+                data = {
+                    'cep': b_json.get('cep') or clean_cep,
+                    'logradouro': b_json.get('street') or '',
+                    'bairro': b_json.get('neighborhood') or '',
+                    'localidade': b_json.get('city') or '',
+                    'uf': b_json.get('state') or '',
+                    'ibge': str(b_json.get('ibge', {}).get('city', '') if isinstance(b_json.get('ibge'), dict) else (b_json.get('ibge') or ''))
+                }
         except Exception:
             pass
 
     if not data or data.get('erro'):
         return jsonify({'error': 'CEP não encontrado na base oficial dos Correios.'}), 404
 
-    # 3. Se ainda sem coordenadas, geocodifica via estratégia multinível no Nominatim
-    if lat is None or lng is None:
-        street = data.get('logradouro') or ''
-        bairro = data.get('bairro') or ''
-        city = data.get('localidade') or ''
-        uf = data.get('uf') or ''
-        lat, lng = geocode_address(
-            address_str=f"{street}, {bairro}, {city} - {uf}".strip(', -'),
-            street=street,
-            neighborhood=bairro,
-            city=city,
-            state=uf
-        )
+    # 3. Geocodificação precisa a nível de rua/bairro via Nominatim multinível
+    street = data.get('logradouro') or ''
+    bairro = data.get('bairro') or ''
+    city = data.get('localidade') or ''
+    uf = data.get('uf') or ''
+
+    lat, lng = geocode_address(
+        address_str=f"{street}, {bairro}, {city} - {uf}".strip(', -'),
+        street=street,
+        neighborhood=bairro,
+        city=city,
+        state=uf
+    )
+
+    # 4. Caso a rua não esteja indexada no Nominatim, usa coordenadas de contingência da BrasilAPI se disponíveis
+    if (lat is None or lng is None) and backup_coords:
+        lat, lng = backup_coords
 
     data['lat'] = lat
     data['lng'] = lng
