@@ -184,9 +184,50 @@ def sitemap():
 
 @app.route('/<path:filename>')
 def serve_static(filename):
-    file_path = os.path.join(STATIC_DIR, filename)
+    # 1. Normalizar caminhos com prefixos de subpastas do repositório
+    clean_name = filename.strip('/')
+    prefixes = (
+        'Servi-os-Marketplace-Engenharia-de-Software-main/site_marketplace/index',
+        'Servi-os-Marketplace-Engenharia-de-Software-main/site_marketplace',
+        'Servi-os-Marketplace-Engenharia-de-Software-main',
+        'site_marketplace/index',
+        'site_marketplace',
+        'index'
+    )
+    for prefix in prefixes:
+        if clean_name == prefix:
+            clean_name = ''
+            break
+        if clean_name.startswith(prefix + '/'):
+            clean_name = clean_name[len(prefix) + 1:]
+            break
+
+    # 2. Se a rota for vazia ou 'index'/'home', servir index.html
+    if not clean_name or clean_name in ('index', 'home'):
+        return send_from_directory(STATIC_DIR, 'index.html')
+
+    # 3. Arquivo exato presente no diretório estático
+    file_path = os.path.join(STATIC_DIR, clean_name)
     if os.path.isfile(file_path):
-        return send_from_directory(STATIC_DIR, filename)
+        return send_from_directory(STATIC_DIR, clean_name)
+
+    # 4. Suporte a URLs amigáveis sem .html (ex: /pedido -> pedido.html, /login -> login.html)
+    if not os.path.splitext(clean_name)[1]:
+        html_candidate = file_path + '.html'
+        if os.path.isfile(html_candidate):
+            return send_from_directory(STATIC_DIR, clean_name + '.html')
+
+    # 5. Resiliência para assets estáticos requisitados em subpastas relativas
+    basename = os.path.basename(clean_name)
+    if basename in ('style.css', 'auth.js', 'script.js'):
+        return send_from_directory(STATIC_DIR, basename)
+    if clean_name.startswith('img/') or '/img/' in clean_name:
+        img_basename = os.path.basename(clean_name)
+        img_path = os.path.join(STATIC_DIR, 'img', img_basename)
+        if os.path.isfile(img_path):
+            return send_from_directory(os.path.join(STATIC_DIR, 'img'), img_basename)
+
+    # 6. Se nenhum arquivo ou rota correspondente for encontrada, servir 404.html com status 404
     if os.path.isfile(os.path.join(STATIC_DIR, '404.html')):
         return send_from_directory(STATIC_DIR, '404.html'), 404
     return send_from_directory(STATIC_DIR, 'index.html'), 404
@@ -195,6 +236,16 @@ def serve_static(filename):
 def handle_404(e):
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Endpoint da API não encontrado.'}), 404
+
+    # Entrega assets estáticos caso tenham sido chamados por caminhos relativos
+    basename = os.path.basename(request.path)
+    if basename in ('style.css', 'auth.js', 'script.js'):
+        return send_from_directory(STATIC_DIR, basename)
+    if '/img/' in request.path or request.path.endswith(('.webp', '.jpg', '.png', '.svg')):
+        img_path = os.path.join(STATIC_DIR, 'img', basename)
+        if os.path.isfile(img_path):
+            return send_from_directory(os.path.join(STATIC_DIR, 'img'), basename)
+
     if os.path.isfile(os.path.join(STATIC_DIR, '404.html')):
         return send_from_directory(STATIC_DIR, '404.html'), 404
     return send_from_directory(STATIC_DIR, 'index.html'), 404

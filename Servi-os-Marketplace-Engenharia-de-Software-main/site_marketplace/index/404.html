@@ -40,7 +40,30 @@
   </script>
 
   <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="style.css">
+
+  <style>
+    /* Estilos inline defensivos: garantem renderização elegante mesmo se style.css falhar */
+    .skip-link { position: absolute; top: -60px; left: 16px; background: #10243e; color: #ffc233; padding: 8px 16px; border-radius: 0 0 8px 8px; font-weight: 700; z-index: 9999; }
+    .skip-link:focus { top: 0; outline: none; }
+    header.site-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 5%; background: #ffffff; border-bottom: 1px solid #dce5ea; position: sticky; top: 0; z-index: 100; }
+    .logo { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: #10243e; font-weight: 800; font-size: 1.25rem; }
+    .logo-badge { width: 34px; height: 34px; border-radius: 10px; background: rgba(255, 194, 51, 0.25); display: flex; align-items: center; justify-content: center; }
+    .menu-principal { display: flex; align-items: center; gap: 18px; }
+    .menu-principal a { text-decoration: none; color: #10243e; font-weight: 600; font-size: 0.9rem; transition: color 0.15s ease; }
+    .menu-principal a:hover { color: #1f6f8b; }
+    .menu-hamburguer { display: none; }
+    .drawer-header { display: none; }
+    .drawer-backdrop { display: none; }
+    @media (max-width: 768px) {
+      .menu-hamburguer { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; background: none; border: 1px solid #dce5ea; border-radius: 10px; cursor: pointer; color: #10243e; }
+      .menu-principal { display: none; }
+      .menu-principal.aberto { display: flex; flex-direction: column; align-items: stretch; position: fixed; top: 0; right: 0; width: min(320px, 85vw); height: 100vh; background: #fff; z-index: 2000; padding: 20px; box-shadow: -4px 0 24px rgba(0,0,0,0.15); }
+      .drawer-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid #dce5ea; }
+      .drawer-fechar { background: none; border: none; font-size: 1.2rem; cursor: pointer; }
+    }
+  </style>
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
@@ -48,7 +71,7 @@
 
   <!-- Header Principal -->
   <header class="site-header">
-    <a href="index.html" class="logo">
+    <a href="/index.html" class="logo">
       <div class="logo-badge">
         <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
       </div>
@@ -64,20 +87,20 @@
 
     <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
       <div class="drawer-header">
-        <div class="drawer-brand">
+        <div class="drawer-brand" style="display: flex; align-items: center; gap: 8px;">
           <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
             <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
           </div>
-          <span>Perto<b>Já</b></span>
+          <span style="font-weight: 800; color: #10243e;">Perto<b>Já</b></span>
         </div>
         <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
-      <a href="index.html">Início</a>
-      <a href="pedido.html">Buscar Serviços</a>
-      <a href="como-funciona.html">Como Funciona</a>
-      <a href="sobre-nos.html">Sobre Nós</a>
+      <a href="/index.html">Início</a>
+      <a href="/pedido.html">Buscar Serviços</a>
+      <a href="/como-funciona.html">Como Funciona</a>
+      <a href="/sobre-nos.html">Sobre Nós</a>
     </nav>
   </header>
 
@@ -101,11 +124,11 @@
     </p>
 
     <div class="flex flex-wrap items-center justify-center gap-3">
-      <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
+      <a href="/pedido.html" class="btn text-perto-ink font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
         <span class="material-symbols-outlined text-base">near_me</span>
         Buscar Serviços no Mapa
       </a>
-      <a href="index.html" class="btn2 font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
+      <a href="/index.html" class="btn2 font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
         <span class="material-symbols-outlined text-base">home</span>
         Voltar para a Página Inicial
       </a>
@@ -116,10 +139,10 @@
   <footer>
     <div class="footer-conteudo">
       <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
+        <a href="/index.html">Início</a>
+        <a href="/pedido.html">Buscar Serviços</a>
+        <a href="/como-funciona.html">Como Funciona</a>
+        <a href="/sobre-nos.html">Sobre Nós</a>
       </div>
       <div class="footer-direitos">
         <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
@@ -127,7 +150,7 @@
     </div>
   </footer>
 
-  <script src="auth.js" defer></script>
+  <script src="/auth.js" defer></script>
 </body>
 
 </html>
