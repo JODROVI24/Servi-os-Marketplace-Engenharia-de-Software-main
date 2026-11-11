@@ -14,8 +14,9 @@ for d in candidate_dirs:
 if os.environ.get('VERCEL') == '1' or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ:
     os.environ['VERCEL'] = '1'
 
+# Importa via api/index.py para garantir que o middleware VercelPathNormalizerWSGI esteja sempre ativo
 try:
-    from app import app
+    from api.index import app
 except Exception:
     import importlib.util
     app_file = os.path.join(marketplace_dir, 'app.py')
