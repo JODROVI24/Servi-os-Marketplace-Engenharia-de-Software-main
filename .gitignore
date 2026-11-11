@@ -1,0 +1,57 @@
+# ==============================================================================
+# Segurança & Variáveis de Ambiente (NUNCA versionar segredos)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets.*
+credentials.*
+
+# ==============================================================================
+# Bancos de Dados Locais (Evita vazamento de cadastros/hashes locais)
+# ==============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ==============================================================================
+# Artefatos Internos de Agentes, Protótipos Temporários e Logs
+# ==============================================================================
+.agents/
+designs/
+docs/
+*.log
+npm-debug.log*
+
+# ==============================================================================
+# Python & Ambientes Virtuais
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==============================================================================
+# Vercel & IDEs / Sistema Operacional
+# ==============================================================================
+.vercel/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

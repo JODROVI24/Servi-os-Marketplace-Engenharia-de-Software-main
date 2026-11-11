@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sobre Nós | PertoJá – Serviços Locais Profissionais</title>
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal">
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html" class="ativo">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Hero Institucional -->
+  <section class="hero py-10 sm:py-14 text-center">
+    <div class="max-w-3xl mx-auto px-4">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
+        <span class="material-symbols-outlined text-sm">shield</span>
+        Missão, Governança & Segurança
+      </div>
+      <h1 class="text-white font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight mb-4">
+        Transformando a prestação de serviços locais no Brasil.
+      </h1>
+      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto">
+        Conectamos necessidades imediatas a soluções confiáveis, valorizando profissionais independentes e garantindo segurança total a clientes.
+      </p>
+    </div>
+  </section>
+
+  <!-- Conteúdo Principal (Contrato DOM: #aba-sobre) -->
+  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-10 flex-1">
+    
+    <div id="aba-sobre" class="conteudo-aba space-y-10" style="display: block;">
+      
+      <!-- Sobre a PertoJá e Missão -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+          <div>
+            <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Quem Somos</span>
+            <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight mb-4">A Revolução do Hiperlocal</h2>
+            <p class="text-sm text-perto-ink/80 font-body leading-relaxed mb-4">
+              A <strong>PertoJá</strong> nasceu da necessidade real de encontrar profissionais qualificados sem a angústia da espera e sem custos ocultos. Unimos o melhor da tecnologia de geolocalização à simplicidade que os consumidores merecem.
+            </p>
+            <p class="text-sm text-perto-ink/80 font-body leading-relaxed">
+              Diferente de classificados estáticos, nossa plataforma monitora o deslocamento, homologa os prestadores e retém os pagamentos via custódia inteligente (Escrow) até que o serviço seja concluído a contento.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5 text-center">
+              <span class="text-3xl font-black text-perto-sea block mb-1">100%</span>
+              <span class="text-xs font-bold text-perto-ink uppercase tracking-wider">Profissionais Verificados</span>
+            </div>
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5 text-center">
+              <span class="text-3xl font-black text-perto-sun block mb-1">&lt; 30 min</span>
+              <span class="text-xs font-bold text-perto-ink uppercase tracking-wider">Média de Deslocamento</span>
+            </div>
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5 text-center">
+              <span class="text-3xl font-black text-perto-ok block mb-1">R$ 0</span>
+              <span class="text-xs font-bold text-perto-ink uppercase tracking-wider">Risco Financeiro</span>
+            </div>
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5 text-center">
+              <span class="text-3xl font-black text-perto-ink block mb-1">7</span>
+              <span class="text-xs font-bold text-perto-ink uppercase tracking-wider">Categorias Homologadas</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pilares Institucionais -->
+      <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white border border-perto-road rounded-2xl p-6 shadow-sm">
+          <div class="w-12 h-12 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined text-2xl font-bold">radar</span>
+          </div>
+          <h3 class="font-black text-lg text-perto-ink mb-2">Compromisso Tecnológico</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            Utilizamos sistemas avançados de cálculo euclidiano e mapas em tempo real para otimizar as rotas, economizando combustível para o parceiro e tempo para o cliente.
+          </p>
+        </div>
+
+        <div class="bg-white border border-perto-road rounded-2xl p-6 shadow-sm">
+          <div class="w-12 h-12 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined text-2xl font-bold">handshake</span>
+          </div>
+          <h3 class="font-black text-lg text-perto-ink mb-2">Comércio Justo & Repasses</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            Nossos parceiros contam com autonomia total na definição de valores e isenção de mensalidade no início da operação, estimulando o empreendedorismo local sustentável.
+          </p>
+        </div>
+
+        <div class="bg-white border border-perto-road rounded-2xl p-6 shadow-sm">
+          <div class="w-12 h-12 rounded-xl bg-perto-sun/20 text-perto-ink flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined text-2xl font-bold">security</span>
+          </div>
+          <h3 class="font-black text-lg text-perto-ink mb-2">Proteção Integral</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            Todo chamado gerado pela plataforma é resguardado pela Garantia PertoJá. Qualquer divergência ou imprevisto conta com mediação ágil e ressarcimento simplificado.
+          </p>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script src="auth.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Como Funciona | PertoJá – Metodologia e Planos</title>
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal">
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html" class="ativo">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Hero Explicativo -->
+  <section class="hero py-10 sm:py-14 text-center">
+    <div class="max-w-3xl mx-auto px-4">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
+        <span class="material-symbols-outlined text-sm">hub</span>
+        Tecnologia Geoespacial & Transparência
+      </div>
+      <h1 class="text-white font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight mb-4">
+        Como a PertoJá conecta você à melhor solução local.
+      </h1>
+      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto">
+        Conheça as etapas do nosso modelo operacional, a segurança do pagamento Escrow e os planos sob medida para prestadores.
+      </p>
+    </div>
+  </section>
+
+  <!-- Conteúdo Principal (Contrato DOM: #aba-como) -->
+  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-12 flex-1">
+    
+    <div id="aba-como" class="conteudo-aba space-y-12" style="display: block;">
+      
+      <!-- Seção: Etapas do Fluxo do Cliente -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Passo a Passo</span>
+          <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">O Ciclo do Atendimento</h2>
+          <p class="text-sm text-perto-ink/70 mt-2 font-body">Do radar geográfico à conclusão do serviço em 4 etapas simplificadas.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <!-- Passo 1 -->
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+            <span class="w-8 h-8 rounded-full bg-perto-ink text-white font-black text-sm flex items-center justify-center mb-4">1</span>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-perto-sea text-xl">location_on</span>
+              <h3 class="font-bold text-base text-perto-ink m-0">Localização GPS</h3>
+            </div>
+            <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+              O sistema identifica suas coordenadas para calcular o raio exato de proximidade em tempo real.
+            </p>
+          </div>
+
+          <!-- Passo 2 -->
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+            <span class="w-8 h-8 rounded-full bg-perto-ink text-white font-black text-sm flex items-center justify-center mb-4">2</span>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-perto-sea text-xl">rule</span>
+              <h3 class="font-bold text-base text-perto-ink m-0">Score & Preço</h3>
+            </div>
+            <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+              Algoritmo avalia proximidade, nota média e disponibilidade para exibir os melhores profissionais.
+            </p>
+          </div>
+
+          <!-- Passo 3 -->
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+            <span class="w-8 h-8 rounded-full bg-perto-ink text-white font-black text-sm flex items-center justify-center mb-4">3</span>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-perto-sea text-xl">route</span>
+              <h3 class="font-bold text-base text-perto-ink m-0">Tracking ao Vivo</h3>
+            </div>
+            <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+              Acompanhe no mapa a rota do profissional até o seu endereço com telemetria GPS e etapas claras.
+            </p>
+          </div>
+
+          <!-- Passo 4 -->
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+            <span class="w-8 h-8 rounded-full bg-perto-ink text-white font-black text-sm flex items-center justify-center mb-4">4</span>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-perto-sea text-xl">security</span>
+              <h3 class="font-bold text-base text-perto-ink m-0">Garantia Escrow</h3>
+            </div>
+            <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+              Pagamento 100% seguro: os valores são repassados ao prestador somente após a finalização do atendimento.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção: Comparativo de Planos & Taxas para Parceiros (Stitch P3 Inspiration) -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-perto-sea/10 text-perto-sea text-xs font-extrabold uppercase tracking-wider mb-2">
+            <span class="material-symbols-outlined text-sm">payments</span>
+            Transparência Total de Repasses
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Planos para Prestadores de Serviços</h2>
+          <p class="text-sm text-perto-ink/70 mt-2 font-body">Cresça sem custo fixo inicial. Primeiro mês 100% gratuito e isenção de mensalidade para quem fatura até R$ 1.800/mês.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          
+          <!-- Plano Básico -->
+          <div class="bg-perto-bg border-2 border-perto-road rounded-2xl p-8 flex flex-col justify-between hover:border-perto-sea transition-all">
+            <div>
+              <div class="flex items-center justify-between mb-4">
+                <span class="text-xs font-bold text-perto-sea uppercase tracking-wider">Início sem Risco</span>
+                <span class="px-2.5 py-0.5 rounded-full bg-perto-road text-perto-ink text-xs font-bold">Atendimento Direto</span>
+              </div>
+              <h3 class="text-2xl font-black text-perto-ink mb-1">Plano Básico</h3>
+              <p class="text-xs text-perto-ink/70 font-body mb-6">Ideal para profissionais autônomos que desejam receber chamados na sua região.</p>
+
+              <div class="p-4 rounded-xl bg-white border border-perto-road mb-6">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-3xl font-black text-perto-ink">R$ 90,00</span>
+                  <span class="text-xs font-semibold text-perto-ink/60">/mês</span>
+                </div>
+                <div class="mt-2 text-xs font-bold text-perto-ok bg-perto-ok/10 px-2.5 py-1 rounded-md inline-flex items-center gap-1">
+                  <span class="material-symbols-outlined text-xs">check_circle</span>
+                  ISENÇÃO TOTAL para faturamento &lt; R$ 1.800/mês
+                </div>
+              </div>
+
+              <ul class="space-y-3 text-xs sm:text-sm text-perto-ink/80 font-body mb-8">
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Taxa de serviço concluído: 12%
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Presença no mapa geográfico PertoJá
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Painel de gestão de catálogo e preços
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Suporte padrão via chat
+                </li>
+              </ul>
+            </div>
+
+            <a href="cadastro.html" class="btn2 w-full text-center font-bold py-3 rounded-full text-xs text-decoration-none">
+              Aderir ao Plano Básico
+            </a>
+          </div>
+
+          <!-- Plano Pro -->
+          <div class="bg-white border-2 border-perto-sun rounded-2xl p-8 flex flex-col justify-between shadow-md relative">
+            <span class="absolute -top-3 right-8 bg-perto-sun text-perto-ink text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">
+              Mais Recomendado
+            </span>
+
+            <div>
+              <div class="flex items-center justify-between mb-4">
+                <span class="text-xs font-bold text-perto-sea uppercase tracking-wider">Alta Escala</span>
+                <span class="px-2.5 py-0.5 rounded-full bg-perto-sun/20 text-perto-ink text-xs font-bold">Destaque Radar</span>
+              </div>
+              <h3 class="text-2xl font-black text-perto-ink mb-1">Plano Pro</h3>
+              <p class="text-xs text-perto-ink/70 font-body mb-6">Para especialistas e empresas que buscam prioridade máxima de atendimento e taxas menores.</p>
+
+              <div class="p-4 rounded-xl bg-perto-bg border border-perto-road mb-6">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-3xl font-black text-perto-ink">R$ 180,00</span>
+                  <span class="text-xs font-semibold text-perto-ink/60">/mês</span>
+                </div>
+                <div class="mt-2 text-xs font-bold text-perto-sea bg-perto-sea/10 px-2.5 py-1 rounded-md inline-flex items-center gap-1">
+                  <span class="material-symbols-outlined text-xs">star</span>
+                  Taxa reduzida de apenas 8% por serviço
+                </div>
+              </div>
+
+              <ul class="space-y-3 text-xs sm:text-sm text-perto-ink/80 font-body mb-8">
+                <li class="flex items-center gap-2 font-bold text-perto-ink">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Taxa reduzida de 8% (ao invés de 12%)
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Prioridade no topo do ranking de busca
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Selo oficial de Prestador Verificado
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-perto-ok text-base">check</span>
+                  Suporte prioritário 24/7 via WhatsApp
+                </li>
+              </ul>
+            </div>
+
+            <a href="cadastro.html" class="btn w-full text-center text-perto-ink font-black py-3 rounded-full text-xs text-decoration-none shadow-sm hover:scale-[1.02] transition-transform">
+              Começar com Plano Pro
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script src="auth.js"></script>
+</body>
+
+</html>

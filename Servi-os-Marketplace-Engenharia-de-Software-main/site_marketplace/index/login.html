@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar | PertoJá – Marketplace de Serviços</title>
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal">
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Conteúdo Principal: Cartão de Autenticação Centralizado -->
+  <main class="w-full max-w-md mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
+    <div class="panel card-auth bg-white p-8 sm:p-10 rounded-2xl border border-perto-road shadow-lg">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mx-auto mb-3">
+          <span class="material-symbols-outlined text-2xl font-bold">lock</span>
+        </div>
+        <h1 class="text-2xl font-black text-perto-ink tracking-tight m-0">Acessar Plataforma</h1>
+        <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Entre com sua conta de cliente ou prestador de serviços.</p>
+      </div>
+
+      <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
+      <div id="mensagem-erro" class="alerta-erro" style="display: none;"></div>
+
+      <!-- Formulário de Login (Contrato DOM: #formLogin, #email, #senha) -->
+      <form id="formLogin" class="space-y-4">
+        <div class="campo-form">
+          <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">mail</span>
+            <input type="email" id="email" required placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">key</span>
+            <input type="password" id="senha" required placeholder="Digite sua senha" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-4 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+          <span class="material-symbols-outlined text-base">login</span>
+          Entrar na Conta
+        </button>
+      </form>
+
+      <!-- Chamada para Cadastro -->
+      <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/70 font-body">
+        <p>Ainda não possui uma conta? <a href="cadastro.html" class="text-perto-sea font-bold hover:underline">Cadastre-se gratuitamente</a></p>
+      </div>
+
+      <!-- Caixa de Credenciais Demo -->
+      <div class="mt-6 bg-perto-bg border border-perto-road rounded-xl p-3.5 text-xs font-body text-perto-ink/80">
+        <div class="flex items-center gap-1.5 font-bold text-perto-ink mb-1.5">
+          <span class="material-symbols-outlined text-sm text-perto-sea">lightbulb</span>
+          Credenciais de Demonstração (Senha: 123456):
+        </div>
+        <p class="mb-1">• Prestador: <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-perto-road text-perto-sea font-bold">carlos@pertoja.com</code></p>
+        <p>• Cliente: <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-perto-road text-perto-sea font-bold">cliente@pertoja.com</code></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script src="auth.js"></script>
+  <script>
+    document.getElementById('formLogin').onsubmit = async (e) => {
+      e.preventDefault();
+      const erroDiv = document.getElementById('mensagem-erro');
+      erroDiv.style.display = 'none';
+
+      const email = document.getElementById('email').value;
+      const senha = document.getElementById('senha').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, senha })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          erroDiv.textContent = data.error || 'Erro ao efetuar login.';
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        if (data.user.tipo === 'prestador') {
+          window.location.href = 'portal-prestador.html';
+        } else {
+          window.location.href = 'portal-cliente.html';
+        }
+      } catch (err) {
+        erroDiv.textContent = 'Não foi possível conectar ao servidor backend.';
+        erroDiv.style.display = 'block';
+      }
+    };
+  </script>
+</body>
+
+</html>

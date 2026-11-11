@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel do Prestador Pro | PertoJá</title>
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b> <span class="text-xs uppercase font-bold text-perto-sea tracking-wider ml-1">Pro</span></span>
+    </a>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal">
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="portal-prestador.html" class="ativo">Painel Prestador</a>
+      <a href="como-funciona.html">Como Funciona</a>
+    </nav>
+  </header>
+
+  <!-- Conteúdo Principal: Cockpit do Parceiro -->
+  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
+    
+    <!-- Cabeçalho do Prestador Pro (Contrato DOM: #prestadorNome, #prestadorEmail, #chkDisponivel, #txtDisponivel) -->
+    <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div class="flex items-start gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-perto-sea text-white flex items-center justify-center font-black text-2xl shrink-0 shadow-md">
+            <span class="material-symbols-outlined text-3xl text-perto-sun">engineering</span>
+          </div>
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-perto-ok/10 text-perto-ok text-xs font-extrabold uppercase tracking-wider mb-1">
+              <span class="material-symbols-outlined text-sm">verified</span>
+              Conta Profissional Homologada
+            </div>
+            <h1 id="prestadorNome" class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">
+              Carregando cockpit...
+            </h1>
+            <p id="prestadorEmail" class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body"></p>
+          </div>
+        </div>
+
+        <!-- Switch de Disponibilidade no Mapa -->
+        <div class="flex items-center gap-3 shrink-0 bg-perto-bg p-3 rounded-2xl border border-perto-road">
+          <label class="cursor-pointer flex items-center gap-3 select-none">
+            <input type="checkbox" id="chkDisponivel" onchange="alternarDisponibilidade()" class="w-5 h-5 rounded text-perto-ok focus:ring-perto-ok">
+            <span class="font-bold text-sm text-perto-ink" id="txtDisponivel">Disponível no Mapa</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #contPedidos) -->
+    <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
+      <div class="chips flex flex-wrap gap-2">
+        <button class="chip on flex items-center gap-2" id="tabBtnServicos" onclick="mudarAba('servicos')">
+          <span class="material-symbols-outlined text-base">storefront</span>
+          Meus Serviços & Preços
+        </button>
+        <button class="chip flex items-center gap-2" id="tabBtnPedidos" onclick="mudarAba('pedidos')">
+          <span class="material-symbols-outlined text-base">assignment</span>
+          Fila de Chamados (<span id="contPedidos" class="font-bold">0</span>)
+        </button>
+        <button class="chip flex items-center gap-2" id="tabBtnPerfil" onclick="mudarAba('perfil')">
+          <span class="material-symbols-outlined text-base">tune</span>
+          Dados de Perfil & GPS
+        </button>
+      </div>
+    </div>
+
+    <!-- ABA 1: MEUS SERVIÇOS E PREÇOS (Contrato DOM: #aba-servicos-painel, #listaServicos, abrirModalServico) -->
+    <div id="aba-servicos-painel">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-perto-road">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+              <span class="material-symbols-outlined text-perto-sea">inventory_2</span>
+              Catálogo de Serviços Ofertados
+            </h2>
+            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Cadastre novos serviços, altere valores em tempo real e controle a visibilidade do seu catálogo.</p>
+          </div>
+          <button class="btn font-bold px-5 py-2.5 rounded-full text-xs sm:text-sm inline-flex items-center gap-2 shrink-0 text-perto-ink shadow-sm" onclick="abrirModalServico()">
+            <span class="material-symbols-outlined text-base">add_circle</span>
+            Cadastrar Novo Serviço
+          </button>
+        </div>
+
+        <div id="listaServicos" class="grid-tabela-servicos">
+          <p class="text-sm text-perto-ink/70">Carregando serviços cadastrados...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 2: CHAMADOS RECEBIDOS (Contrato DOM: #aba-pedidos-painel, #listaPedidosRecebidos) -->
+    <div id="aba-pedidos-painel" style="display: none;">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
+        <div class="mb-6 pb-4 border-b border-perto-road">
+          <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea">pending_actions</span>
+            Fila de Atendimento & Chamados de Clientes
+          </h2>
+          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Gerencie o fluxo de atendimento em tempo real. Atualize as etapas para que o cliente acompanhe no mapa.</p>
+        </div>
+
+        <div id="listaPedidosRecebidos">
+          <p class="text-sm text-perto-ink/70">Carregando chamados...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 3: EDITAR PERFIL (Contrato DOM: #aba-perfil-painel, #formPerfilPrestador, #perfilNome, #perfilTelefone, #perfilBio, #perfilLat, #perfilLng, capturarLocalizacaoPrestador) -->
+    <div id="aba-perfil-painel" style="display: none;">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 max-w-2xl mx-auto">
+        <div class="mb-6 pb-4 border-b border-perto-road">
+          <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea">manage_accounts</span>
+            Dados Profissionais e Base de Atendimento
+          </h2>
+          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Mantenha seu raio geográfico e telefone atualizados para receber solicitações pertinentes.</p>
+        </div>
+
+        <form id="formPerfilPrestador" class="space-y-4">
+          <div class="campo-form">
+            <label for="perfilNome" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nome Profissional</label>
+            <input type="text" id="perfilNome" required class="input-form text-sm font-medium">
+          </div>
+
+          <div class="campo-form">
+            <label for="perfilTelefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp Comercial</label>
+            <input type="text" id="perfilTelefone" required class="input-form text-sm font-medium">
+          </div>
+
+          <div class="campo-form">
+            <label for="perfilBio" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Biografia e Diferenciais</label>
+            <textarea id="perfilBio" rows="4" class="input-form text-sm font-medium" placeholder="Descreva suas qualificações, histórico e tempo de atuação..."></textarea>
+          </div>
+
+          <!-- Endereço Real e Base de Atendimento (ViaCEP + Geocodificação) -->
+          <div class="pt-3 border-t border-perto-road space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold text-perto-sea uppercase tracking-wider flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-sm">location_on</span>
+                Endereço Real de Atendimento
+              </label>
+              <span id="prestadorCepStatus" class="text-[11px] font-semibold text-perto-sea"></span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="campo-form sm:col-span-1">
+                <label for="perfilCep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
+                <input type="text" id="perfilCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink" onblur="buscarCepPrestador(this.value)">
+              </div>
+              <div class="campo-form sm:col-span-2">
+                <label for="perfilEndereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Logradouro / Rua</label>
+                <input type="text" id="perfilEndereco" placeholder="Av. Paulista" class="input-form text-sm font-medium">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="campo-form">
+                <label for="perfilNumero" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Número</label>
+                <input type="text" id="perfilNumero" placeholder="1000" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="perfilBairro" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Bairro</label>
+                <input type="text" id="perfilBairro" placeholder="Bela Vista" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="perfilCidade" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Cidade</label>
+                <input type="text" id="perfilCidade" placeholder="São Paulo" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="perfilEstado" class="text-xs font-bold text-perto-ink uppercase tracking-wider">UF</label>
+                <input type="text" id="perfilEstado" maxlength="2" placeholder="SP" class="input-form text-sm font-medium uppercase">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="campo-form">
+                <label for="perfilLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude Calculada</label>
+                <input type="number" step="0.0001" id="perfilLat" class="input-form text-xs font-mono bg-perto-bg">
+              </div>
+              <div class="campo-form">
+                <label for="perfilLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude Calculada</label>
+                <input type="number" step="0.0001" id="perfilLng" class="input-form text-xs font-mono bg-perto-bg">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-2 mb-4">
+            <button type="button" class="btn2 flex-1 py-2.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5" onclick="capturarLocalizacaoPrestador()">
+              <span class="material-symbols-outlined text-sm">my_location</span>
+              Usar GPS Atual
+            </button>
+            <button type="button" class="btn2 flex-1 py-2.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5" onclick="geocodificarEnderecoPrestador()">
+              <span class="material-symbols-outlined text-sm">pin_drop</span>
+              Recalcular Coordenadas
+            </button>
+          </div>
+
+          <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+            <span class="material-symbols-outlined text-base">save</span>
+            Salvar Alterações de Perfil
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL DE CADASTRO / EDIÇÃO DE SERVIÇO E PREÇO (Contrato DOM: #modalServico, #formServicoModal, #modalTitulo, #modalServicoId, #servicoTitulo, #servicoCategoria, #servicoPreco, #servicoDescricao, #btnSalvarModal, fecharModalServico) -->
+  <div id="modalServico" class="modal-backdrop" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="modalTitulo" class="text-lg font-black text-perto-ink m-0">Cadastrar Serviço</h3>
+        <button type="button" class="text-perto-ink/40 hover:text-perto-ink text-xl" onclick="fecharModalServico()">✕</button>
+      </div>
+
+      <form id="formServicoModal" class="mt-4 space-y-4">
+        <input type="hidden" id="modalServicoId">
+
+        <div class="campo-form">
+          <label for="servicoTitulo" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Título do Serviço</label>
+          <input type="text" id="servicoTitulo" required placeholder="Ex: Manutenção de Quadro de Luz" class="input-form text-sm font-medium">
+        </div>
+
+        <div class="campo-form">
+          <label for="servicoCategoria" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Categoria</label>
+          <select id="servicoCategoria" required class="input-form text-sm font-medium">
+            <option value="Limpeza">Limpeza</option>
+            <option value="Elétrica">Elétrica</option>
+            <option value="Encanamento">Encanamento</option>
+            <option value="Pintura">Pintura</option>
+            <option value="Jardinagem">Jardinagem</option>
+            <option value="Tecnologia">Tecnologia</option>
+            <option value="Marcenaria">Marcenaria</option>
+          </select>
+        </div>
+
+        <div class="campo-form">
+          <label for="servicoPreco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Preço Cobrado (R$)</label>
+          <input type="number" id="servicoPreco" step="0.50" min="5" required placeholder="Ex: 180.00" class="input-form text-base font-black text-perto-sea">
+        </div>
+
+        <div class="campo-form">
+          <label for="servicoDescricao" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descrição Detalhada</label>
+          <textarea id="servicoDescricao" rows="3" class="input-form text-sm font-medium" placeholder="Explique o que está incluso no serviço, materiais e prazo médio..."></textarea>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn2 px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalServico()">Cancelar</button>
+          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink" id="btnSalvarModal">Salvar Serviço</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script src="auth.js"></script>
+  <script>
+    let dadosPrestador = null;
+    let listaMeusServicos = [];
+
+    function toast(t) {
+      const d = document.createElement('div');
+      d.className = 'toast';
+      d.textContent = t;
+      document.getElementById('toasts').appendChild(d);
+      setTimeout(() => d.remove(), 4000);
+    }
+
+    const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function mudarAba(aba) {
+      document.getElementById('aba-servicos-painel').style.display = aba === 'servicos' ? 'block' : 'none';
+      document.getElementById('aba-pedidos-painel').style.display = aba === 'pedidos' ? 'block' : 'none';
+      document.getElementById('aba-perfil-painel').style.display = aba === 'perfil' ? 'block' : 'none';
+
+      document.getElementById('tabBtnServicos').classList.toggle('on', aba === 'servicos');
+      document.getElementById('tabBtnPedidos').classList.toggle('on', aba === 'pedidos');
+      document.getElementById('tabBtnPerfil').classList.toggle('on', aba === 'perfil');
+    }
+
+    async function carregarPainel() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+
+        if (!data.authenticated || data.user.tipo !== 'prestador') {
+          window.location.href = 'login.html';
+          return;
+        }
+
+        dadosPrestador = data.user;
+        document.getElementById('prestadorNome').textContent = dadosPrestador.nome;
+        document.getElementById('prestadorEmail').textContent = `${dadosPrestador.email} · Avaliação Média: ★ ${dadosPrestador.avaliacao_media.toFixed(1)}`;
+        document.getElementById('chkDisponivel').checked = dadosPrestador.disponivel;
+        document.getElementById('txtDisponivel').textContent = dadosPrestador.disponivel ? 'Disponível no Mapa' : 'Indisponível (Pausado)';
+
+        // Preenche formulário de perfil com endereço real
+        document.getElementById('perfilNome').value = dadosPrestador.nome;
+        document.getElementById('perfilTelefone').value = dadosPrestador.telefone || '';
+        document.getElementById('perfilBio').value = dadosPrestador.bio || '';
+        document.getElementById('perfilCep').value = dadosPrestador.cep || '';
+        document.getElementById('perfilEndereco').value = dadosPrestador.endereco || '';
+        document.getElementById('perfilNumero').value = dadosPrestador.numero || '';
+        document.getElementById('perfilBairro').value = dadosPrestador.bairro || '';
+        document.getElementById('perfilCidade').value = dadosPrestador.cidade || 'São Paulo';
+        document.getElementById('perfilEstado').value = dadosPrestador.estado || 'SP';
+        document.getElementById('perfilLat').value = dadosPrestador.lat || -23.5653;
+        document.getElementById('perfilLng').value = dadosPrestador.lng || -46.6517;
+
+        await carregarServicos();
+        await carregarPedidos();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function alternarDisponibilidade() {
+      const disp = document.getElementById('chkDisponivel').checked;
+      try {
+        await fetch('/api/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: dadosPrestador.nome,
+            telefone: dadosPrestador.telefone,
+            bio: dadosPrestador.bio,
+            lat: dadosPrestador.lat,
+            lng: dadosPrestador.lng,
+            disponivel: disp
+          })
+        });
+        dadosPrestador.disponivel = disp;
+        document.getElementById('txtDisponivel').textContent = disp ? 'Disponível no Mapa' : 'Indisponível (Pausado)';
+        toast(disp ? 'Você está visível no mapa para novos chamados!' : 'Seu perfil foi colocado em pausa no mapa.');
+      } catch (e) {
+        toast('Erro ao alterar status.');
+      }
+    }
+
+    async function carregarServicos() {
+      const div = document.getElementById('listaServicos');
+      try {
+        const res = await fetch('/api/my-services');
+        listaMeusServicos = await res.json();
+
+        if (!listaMeusServicos.length) {
+          div.innerHTML = '<p class="text-sm text-perto-ink/70">Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!</p>';
+          return;
+        }
+
+        div.innerHTML = listaMeusServicos.map(s => {
+          const endSvc = s.endereco ? `${s.endereco}${s.numero ? ', ' + s.numero : ''} · ${s.bairro || ''} · ${s.cidade || 'SP'}` : (dadosPrestador && dadosPrestador.endereco ? `${dadosPrestador.endereco}, ${dadosPrestador.numero || ''} · ${dadosPrestador.cidade || 'SP'}` : 'São Paulo - SP');
+          return `
+          <div class="svc" style="border-left: 5px solid var(--sea);">
+            <div class="top">
+              <span>${s.titulo}</span>
+              <span class="price text-xl">${brl(s.preco)}</span>
+            </div>
+            <p style="font-size: 0.9rem; color: #4b6073; margin: 6px 0;">${s.descricao || 'Sem descrição informada.'}</p>
+            <p style="font-size: 0.8rem; color: var(--sea); font-weight: 600; margin: 4px 0;">📍 Endereço de Atendimento: ${endSvc}</p>
+            <div class="meta" style="margin-top: 8px;">
+              <span class="tag">${s.categoria}</span>
+              <span class="tag ${s.ativo ? '' : 'off'}">${s.ativo ? 'Ativo' : 'Pausado'}</span>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
+              <button class="btn" style="font-size: 0.85rem; padding: 6px 14px;" onclick="editarServico(${s.id})">✏️ Alterar Preço / Detalhes</button>
+              <button class="btn2" style="font-size: 0.85rem; padding: 6px 14px; background: #5a6b7c;" onclick="excluirServico(${s.id})">Excluir</button>
+            </div>
+          </div>
+        `;}).join('');
+      } catch (e) {
+        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar serviços.</p>';
+      }
+    }
+
+    function abrirModalServico(id = null) {
+      document.getElementById('formServicoModal').reset();
+      document.getElementById('modalServicoId').value = '';
+      document.getElementById('modalTitulo').textContent = 'Cadastrar Novo Serviço';
+      document.getElementById('modalServico').style.display = 'flex';
+
+      if (id) {
+        const serv = listaMeusServicos.find(s => s.id === id);
+        if (serv) {
+          document.getElementById('modalServicoId').value = serv.id;
+          document.getElementById('modalTitulo').textContent = 'Editar Serviço e Alterar Preço';
+          document.getElementById('servicoTitulo').value = serv.titulo;
+          document.getElementById('servicoCategoria').value = serv.categoria;
+          document.getElementById('servicoPreco').value = serv.preco;
+          document.getElementById('servicoDescricao').value = serv.descricao;
+        }
+      }
+    }
+
+    function fecharModalServico() {
+      document.getElementById('modalServico').style.display = 'none';
+    }
+
+    function editarServico(id) {
+      abrirModalServico(id);
+    }
+
+    async function excluirServico(id) {
+      if (!confirm('Deseja realmente remover este serviço do catálogo?')) return;
+      try {
+        const res = await fetch(`/api/services/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          toast('Serviço excluído com sucesso.');
+          await carregarServicos();
+        } else {
+          toast('Erro ao excluir serviço.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação.');
+      }
+    }
+
+    document.getElementById('formServicoModal').onsubmit = async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('modalServicoId').value;
+      const payload = {
+        titulo: document.getElementById('servicoTitulo').value,
+        categoria: document.getElementById('servicoCategoria').value,
+        preco: parseFloat(document.getElementById('servicoPreco').value),
+        descricao: document.getElementById('servicoDescricao').value,
+        cep: dadosPrestador.cep,
+        endereco: dadosPrestador.endereco,
+        numero: dadosPrestador.numero,
+        bairro: dadosPrestador.bairro,
+        cidade: dadosPrestador.cidade,
+        estado: dadosPrestador.estado,
+        lat: dadosPrestador.lat,
+        lng: dadosPrestador.lng
+      };
+
+      try {
+        let res;
+        if (id) {
+          res = await fetch(`/api/services/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          res = await fetch('/api/services', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        if (res.ok) {
+          toast(id ? 'Preço e serviço atualizados!' : 'Novo serviço cadastrado!');
+          fecharModalServico();
+          await carregarServicos();
+        } else {
+          const err = await res.json();
+          toast(err.error || 'Erro ao salvar serviço.');
+        }
+      } catch (e) {
+        toast('Erro ao conectar ao servidor.');
+      }
+    };
+
+    async function carregarPedidos() {
+      const div = document.getElementById('listaPedidosRecebidos');
+      try {
+        const res = await fetch('/api/orders');
+        const pedidos = await res.json();
+        document.getElementById('contPedidos').textContent = pedidos.length;
+
+        if (!pedidos.length) {
+          div.innerHTML = '<p class="text-sm text-perto-ink/70">Nenhum chamado de cliente recebido até o momento.</p>';
+          return;
+        }
+
+        div.innerHTML = pedidos.map(p => {
+          const enderecoCompleto = [p.endereco_cliente, p.numero_cliente, p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(', ');
+          return `
+          <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sun);">
+            <div class="top">
+              <span><b>${p.servico_titulo}</b> (${p.servico_categoria})</span>
+              <span class="price">${brl(p.preco_total)}</span>
+            </div>
+            <div class="meta" style="margin: 6px 0;">
+              <span>👤 Cliente: <b>${p.cliente_nome}</b></span>
+              <span>📞 Tel: ${p.cliente_telefone || 'Não informado'}</span>
+              <span>Status: <b class="tag">${p.status.toUpperCase()}</b></span>
+            </div>
+            ${enderecoCompleto ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Local do Atendimento: ${enderecoCompleto} ${p.cep_cliente ? `(CEP ${p.cep_cliente})` : ''}</div>` : ''}
+            ${p.observacoes ? `<p style="font-size:0.85rem; color:#444;">Obs: ${p.observacoes}</p>` : ''}
+            <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'confirmado')">Confirmar Atendimento</button>
+              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'em_transito')">A Caminho</button>
+              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'em_execucao')">Em Execução</button>
+              <button class="btn2" style="font-size: 0.8rem; padding: 6px 12px; background: var(--ok);" onclick="alterarStatusPedido(${p.order_id}, 'finalizado')">Finalizar Serviço</button>
+            </div>
+          </div>
+        `;}).join('');
+      } catch (e) {
+        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar chamados.</p>';
+      }
+    }
+
+    async function alterarStatusPedido(orderId, status) {
+      try {
+        const res = await fetch(`/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        if (res.ok) {
+          toast(`Status atualizado para: ${status}`);
+          await carregarPedidos();
+        } else {
+          toast('Erro ao atualizar chamado.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    }
+
+    async function buscarCepPrestador(cepVal) {
+      if (!cepVal) return;
+      const clean = cepVal.replace(/\D/g, '');
+      if (clean.length !== 8) return;
+      const statusEl = document.getElementById('prestadorCepStatus');
+      if (statusEl) statusEl.textContent = 'Buscando CEP...';
+      try {
+        const res = await fetch(`/api/cep/${clean}`);
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('perfilEndereco').value = d.logradouro || '';
+          document.getElementById('perfilBairro').value = d.bairro || '';
+          document.getElementById('perfilCidade').value = d.localidade || '';
+          document.getElementById('perfilEstado').value = d.uf || '';
+          if (d.lat && d.lng) {
+            document.getElementById('perfilLat').value = d.lat.toFixed(6);
+            document.getElementById('perfilLng').value = d.lng.toFixed(6);
+          }
+          if (statusEl) statusEl.textContent = '✓ Endereço preenchido!';
+          document.getElementById('perfilNumero').focus();
+        } else {
+          if (statusEl) statusEl.textContent = 'CEP não encontrado.';
+        }
+      } catch (e) {
+        if (statusEl) statusEl.textContent = 'Erro ao consultar CEP.';
+      }
+    }
+
+    async function geocodificarEnderecoPrestador() {
+      const end = document.getElementById('perfilEndereco').value;
+      const num = document.getElementById('perfilNumero').value;
+      const bairro = document.getElementById('perfilBairro').value;
+      const cid = document.getElementById('perfilCidade').value;
+      const uf = document.getElementById('perfilEstado').value;
+      const q = `${end} ${num}, ${bairro}, ${cid} - ${uf}, Brasil`;
+      toast('Recalculando coordenadas com base no endereço...');
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('perfilLat').value = d.lat.toFixed(6);
+          document.getElementById('perfilLng').value = d.lng.toFixed(6);
+          toast('Coordenadas geocodificadas com sucesso!');
+        }
+      } catch (e) {
+        toast('Não foi possível obter coordenadas.');
+      }
+    }
+
+    document.getElementById('formPerfilPrestador').onsubmit = async (e) => {
+      e.preventDefault();
+      const payload = {
+        nome: document.getElementById('perfilNome').value,
+        telefone: document.getElementById('perfilTelefone').value,
+        bio: document.getElementById('perfilBio').value,
+        cep: document.getElementById('perfilCep').value,
+        endereco: document.getElementById('perfilEndereco').value,
+        numero: document.getElementById('perfilNumero').value,
+        bairro: document.getElementById('perfilBairro').value,
+        cidade: document.getElementById('perfilCidade').value,
+        estado: document.getElementById('perfilEstado').value,
+        lat: parseFloat(document.getElementById('perfilLat').value),
+        lng: parseFloat(document.getElementById('perfilLng').value),
+        disponivel: dadosPrestador.disponivel
+      };
+
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          toast('Perfil e endereço atualizados com sucesso!');
+          Object.assign(dadosPrestador, payload);
+          document.getElementById('prestadorNome').textContent = payload.nome;
+          await carregarServicos();
+          atualizarNavegacao();
+        } else {
+          toast('Erro ao salvar dados de perfil.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação.');
+      }
+    };
+
+    function capturarLocalizacaoPrestador() {
+      if (!navigator.geolocation) {
+        toast('Geolocalização não suportada no seu navegador.');
+        return;
+      }
+      toast('Obtendo posição do GPS...');
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          document.getElementById('perfilLat').value = pos.coords.latitude.toFixed(6);
+          document.getElementById('perfilLng').value = pos.coords.longitude.toFixed(6);
+          toast('Coordenadas GPS obtidas com sucesso!');
+        },
+        err => {
+          toast('Não foi possível obter a posição GPS.');
+        }
+      );
+    }
+
+    document.addEventListener('DOMContentLoaded', carregarPainel);
+  </script>
+</body>
+
+</html>

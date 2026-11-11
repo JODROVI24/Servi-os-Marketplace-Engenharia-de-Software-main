@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PertoJá – Serviços Locais e Profissionais de Confiança</title>
+  
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Barra de busca rápida estilo iFood -->
+    <div class="hidden md:flex items-center flex-1 max-w-md mx-6">
+      <div class="relative w-full">
+        <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-sea text-lg pointer-events-none">search</span>
+        <input type="text" onclick="location.href='pedido.html'" placeholder="Buscar diarista, eletricista, encanador..." class="w-full pl-10 pr-4 py-2 bg-perto-bg border border-perto-road rounded-full text-xs font-medium text-perto-ink placeholder:text-perto-ink/50 focus:outline-none focus:border-perto-sea cursor-pointer transition-all">
+      </div>
+    </div>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal">
+      <a href="index.html" class="ativo">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Hero Section iFood-Style com Paleta PertoJá -->
+  <section class="hero">
+    <div class="max-w-[1280px] mx-auto flex flex-col lg:flex-row items-center justify-between gap-8">
+      <div class="max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
+          <span class="material-symbols-outlined text-sm">verified</span>
+          Marketplace de Serviços Locais
+        </div>
+        <h1 class="text-white font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight mb-4">
+          Profissionais qualificados a poucos minutos de você.
+        </h1>
+        <p class="text-white/80 text-base sm:text-lg max-w-xl mb-8 font-body">
+          Encontre eletricistas, encanadores, pintores, diaristas e especialistas locais com geolocalização precisa e acompanhamento em tempo real.
+        </p>
+        
+        <div class="flex flex-wrap items-center gap-3">
+          <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
+            <span class="material-symbols-outlined text-base">near_me</span>
+            Explorar Serviços no Mapa
+          </a>
+          <a href="cadastro.html" class="btn2 font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
+            <span class="material-symbols-outlined text-base">handshake</span>
+            Quero Oferecer Meus Serviços
+          </a>
+        </div>
+      </div>
+
+      <!-- Card Flutuante de Estatísticas Locais -->
+      <div class="w-full lg:w-80 bg-perto-card/10 backdrop-blur-md border border-white/15 rounded-2xl p-6 text-white shadow-xl shrink-0">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-xl bg-perto-sun/20 flex items-center justify-center text-perto-sun">
+            <span class="material-symbols-outlined text-2xl">speed</span>
+          </div>
+          <div>
+            <div class="text-xs text-white/70 uppercase font-bold tracking-wider">Atendimento Rápido</div>
+            <div class="text-xl font-black text-perto-sun">15 a 35 min</div>
+          </div>
+        </div>
+        <div class="space-y-3 pt-3 border-t border-white/10 text-xs font-medium text-white/90">
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-perto-ok"></span> Profissionais Ativos:</span>
+            <span class="font-bold text-white">9 categorias</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-perto-sun"></span> Pagamento Seguro:</span>
+            <span class="font-bold text-perto-sun">Escrow PertoJá</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-white"></span> Taxa de Deslocamento:</span>
+            <span class="font-bold text-perto-ok">Visita Transparente</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Conteúdo Principal -->
+  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-10 flex-1">
+    
+    <!-- Seção de Destaques da Semana (Contrato DOM: #destaques-home) -->
+    <section class="panel">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <div class="inline-flex items-center gap-1.5 text-xs font-extrabold text-perto-sea uppercase tracking-wider mb-1">
+            <span class="material-symbols-outlined text-sm">stars</span>
+            Excelência Comprovada
+          </div>
+          <h2 class="text-2xl font-black text-perto-ink tracking-tight m-0">Profissionais em Destaque</h2>
+          <p class="text-sm text-perto-ink/70 mt-1">Os prestadores mais bem avaliados por clientes da região nesta semana.</p>
+        </div>
+        <a href="pedido.html" class="text-xs font-bold text-perto-sea hover:underline inline-flex items-center gap-1">
+          Ver todos os prestadores
+          <span class="material-symbols-outlined text-sm">arrow_forward</span>
+        </a>
+      </div>
+
+      <div id="destaques-home" class="grid-home">
+        <!-- Preenchido dinamicamente por script.js: renderDestaques() -->
+      </div>
+    </section>
+
+    <!-- Catálogo de Categorias Oficiais (Contrato DOM: .card-home.clicavel, irParaCategoria) -->
+    <section class="panel">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <div class="inline-flex items-center gap-1.5 text-xs font-extrabold text-perto-sea uppercase tracking-wider mb-1">
+            <span class="material-symbols-outlined text-sm">category</span>
+            Catálogo Completo
+          </div>
+          <h2 class="text-2xl font-black text-perto-ink tracking-tight m-0">Categorias de Serviços</h2>
+          <p class="text-sm text-perto-ink/70 mt-1">Selecione uma especialidade para encontrar profissionais disponíveis no raio do seu endereço.</p>
+        </div>
+      </div>
+
+      <div class="grid-home">
+        <!-- Categoria 1: Limpeza -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Limpeza')">
+          <div class="relative overflow-hidden">
+            <img src="img/limpeza.jpg" alt="Limpeza Profissional" class="img-servico">
+            <span class="absolute top-3 left-3 bg-perto-sun text-perto-ink text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+              Mais Solicitado
+            </span>
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Limpeza</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 80</span>
+            </div>
+            <p>Diaristas e profissionais experientes para higienização residencial, comercial e pós-obra.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 2: Elétrica -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Elétrica')">
+          <div class="relative overflow-hidden">
+            <img src="img/eletrica.jpg" alt="Serviços Elétricos" class="img-servico">
+            <span class="absolute top-3 left-3 bg-perto-sea text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+              Emergência 24h
+            </span>
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Elétrica</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 90</span>
+            </div>
+            <p>Instalações, chuveiros, fiação, reparo em quadros de distribuição e segurança elétrica.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 3: Encanamento -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Encanamento')">
+          <div class="relative overflow-hidden">
+            <img src="img/encanamento.jpg" alt="Serviços de Encanamento" class="img-servico">
+            <span class="absolute top-3 left-3 bg-perto-ok text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+              Caça-Vazamentos
+            </span>
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Encanamento</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 240</span>
+            </div>
+            <p>Reparo de tubulações, desentupimentos, válvulas e soluções hidráulicas imediatas.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 4: Pintura -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Pintura')">
+          <div class="relative overflow-hidden">
+            <img src="img/pintura.jpg" alt="Serviços de Pintura" class="img-servico">
+            <span class="absolute top-3 left-3 bg-perto-ink text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+              Alto Padrão
+            </span>
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Pintura</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 380</span>
+            </div>
+            <p>Pintura residencial e comercial, restauração de paredes, fachadas e texturas modernas.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 5: Jardinagem -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Jardinagem')">
+          <div class="relative overflow-hidden">
+            <img src="img/jardinagem.jpg" alt="Serviços de Jardinagem" class="img-servico">
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Jardinagem</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 450</span>
+            </div>
+            <p>Poda de árvores, corte de grama, adubação e manutenção de paisagismo com precisão.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 6: Tecnologia -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Tecnologia')">
+          <div class="relative overflow-hidden">
+            <img src="img/tecnologia.jpg" alt="Suporte Tecnológico" class="img-servico">
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Tecnologia</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 110</span>
+            </div>
+            <p>Suporte de informática, configuração de redes Wi-Fi, impressoras e computadores.</p>
+          </div>
+        </div>
+
+        <!-- Categoria 7: Marcenaria -->
+        <div class="card-home clicavel group" onclick="irParaCategoria('Marcenaria')">
+          <div class="relative overflow-hidden">
+            <img src="img/marcenaria.jpg" alt="Serviços de Marcenaria" class="img-servico">
+            <span class="absolute top-3 left-3 bg-perto-sun text-perto-ink text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+              Sob Medida
+            </span>
+          </div>
+          <div class="card-texto">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="group-hover:text-perto-sea transition-colors">Marcenaria</h3>
+              <span class="text-xs font-bold text-perto-sea">A partir de R$ 260</span>
+            </div>
+            <p>Montagem e desmontagem de móveis, ajustes de portas, reparos e peças sob encomenda.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Banner P1: Seja um Parceiro PertoJá Pro -->
+    <section class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-perto-ink via-[#173859] to-perto-sea p-8 sm:p-12 text-white shadow-lg">
+      <div class="max-w-2xl relative z-10">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wide mb-3">
+          <span class="material-symbols-outlined text-sm">handshake</span>
+          PertoJá para Profissionais
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-black text-white leading-tight mb-3">
+          Você é autônomo ou tem uma empresa de serviços?
+        </h2>
+        <p class="text-white/80 text-sm sm:text-base font-body mb-6">
+          Cadastre seu catálogo, defina seus próprios preços e receba chamados de clientes prontos para fechar contrato perto da sua localização.
+        </p>
+        <div class="flex flex-wrap items-center gap-4">
+          <a href="cadastro.html" class="btn text-perto-ink font-bold px-6 py-3 rounded-full text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all text-decoration-none">
+            Cadastrar como Prestador
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+          </a>
+          <a href="como-funciona.html" class="text-white font-bold text-sm hover:underline inline-flex items-center gap-1">
+            Conhecer planos e repasses
+            <span class="material-symbols-outlined text-sm">info</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Ícone decorativo de fundo -->
+      <div class="absolute -right-8 -bottom-10 opacity-15 pointer-events-none">
+        <span class="material-symbols-outlined text-[200px] text-perto-sun">engineering</span>
+      </div>
+    </section>
+
+    <!-- Pilares de Confiança e Segurança -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-perto-card border border-perto-road rounded-2xl p-6 shadow-sm flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-2xl font-bold">verified_user</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-base text-perto-ink mb-1">Profissionais Verificados</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            Identidade e histórico conferidos para sua tranquilidade e segurança dentro da sua residência.
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-perto-card border border-perto-road rounded-2xl p-6 shadow-sm flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-2xl font-bold">lock</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-base text-perto-ink mb-1">Garantia Escrow PertoJá</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            O valor fica protegido e só é liberado para o prestador após a confirmação do serviço concluído.
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-perto-card border border-perto-road rounded-2xl p-6 shadow-sm flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl bg-perto-sun/20 text-perto-ink flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-2xl font-bold">radar</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-base text-perto-ink mb-1">Rastreamento em Tempo Real</h3>
+          <p class="text-xs text-perto-ink/70 font-body leading-relaxed">
+            Acompanhe o deslocamento do profissional no mapa geográfico com estimativa de chegada precisa.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-perto-sea flex items-center justify-center text-perto-sun font-bold">
+          <span class="material-symbols-outlined text-lg">bolt</span>
+        </div>
+        <span class="text-xl font-black text-perto-ink">Perto<b>Já</b></span>
+      </div>
+      
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+        <a href="login.html">Área do Usuário</a>
+      </div>
+
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script src="auth.js"></script>
+  <script src="script.js"></script>
+</body>
+
+</html>
