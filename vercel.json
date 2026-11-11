@@ -3,17 +3,13 @@
   "cleanUrls": true,
   "functions": {
     "api/index.py": {
-      "includeFiles": "Servi-os-Marketplace-Engenharia-de-Software-main/**"
+      "includeFiles": "**"
     }
   },
   "rewrites": [
     {
-      "source": "/api",
-      "destination": "/api/index.py?__path="
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api/index.py?__path=$1"
+      "destination": "/api"
     }
   ]
 }
