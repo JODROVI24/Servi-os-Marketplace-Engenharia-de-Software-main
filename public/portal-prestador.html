@@ -9,6 +9,9 @@
   <link rel="canonical" href="https://pertoja.com.br/portal-prestador.html">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#10243e">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/img/icone-192.png">
+
 
   <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -724,7 +727,11 @@
       );
     }
 
-    document.addEventListener('DOMContentLoaded', carregarPainel);
+    document.addEventListener('DOMContentLoaded', () => {
+      carregarPainel();
+      // Polling em segundo plano para novos chamados a cada 20 segundos
+      setInterval(carregarPedidos, 20000);
+    });
   </script>
 </body>
 

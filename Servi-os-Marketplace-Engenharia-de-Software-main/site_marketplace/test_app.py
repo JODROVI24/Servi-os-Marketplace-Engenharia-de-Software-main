@@ -491,5 +491,75 @@ class TestMarketplaceFull(unittest.TestCase):
         data_pay = json.loads(res_pay_owner.data)
         self.assertEqual(data_pay['status'], 'finalizado')
 
+    def test_13_healthcheck_endpoint(self):
+        res = self.client.get('/api/health')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data.get('status'), 'healthy')
+        self.assertEqual(data.get('database'), 'connected')
+        self.assertIn('timestamp', data)
+        self.assertIn('version', data)
+
+    def test_14_geocode_cache_hit_and_store(self):
+        from database import save_cached_geocode, get_cached_geocode
+        from app import geocode_address
+
+        query = "Avenida Paulista 1578, Bela Vista, São Paulo - SP"
+        lat_mock, lng_mock = -23.5614, -46.6559
+
+        # Salva em cache
+        save_cached_geocode(query, lat_mock, lng_mock, origem='unit-test')
+        cached = get_cached_geocode(query)
+        self.assertIsNotNone(cached)
+        self.assertAlmostEqual(cached[0], lat_mock, places=4)
+        self.assertAlmostEqual(cached[1], lng_mock, places=4)
+
+        # geocode_address deve resolver a partir do cache sem requisição externa
+        resolved_lat, resolved_lng = geocode_address(query)
+        self.assertAlmostEqual(resolved_lat, lat_mock, places=4)
+        self.assertAlmostEqual(resolved_lng, lng_mock, places=4)
+
+    def test_15_rate_limiter_logic(self):
+        from app import rate_limiter
+        rate_limiter.reset()
+
+        # Testa o limitador por janela deslizante
+        key = "test_user_ip"
+        limit = 3
+        window = 10
+
+        self.assertTrue(rate_limiter.is_allowed(key, limit, window))
+        self.assertTrue(rate_limiter.is_allowed(key, limit, window))
+        self.assertTrue(rate_limiter.is_allowed(key, limit, window))
+        # Quarta requisição deve ser bloqueada
+        self.assertFalse(rate_limiter.is_allowed(key, limit, window))
+
+        # Testa comportamento de endpoint com rate limit ativo (desabilitando TESTING temporariamente)
+        try:
+            app.config['TESTING'] = False
+            rate_limiter.reset()
+            # 5 tentativas permitidas por minuto no login
+            for _ in range(5):
+                self.client.post('/api/auth/login', json={'email': 'inexistente@pertoja.com', 'senha': 'errada'})
+            
+            # 6ª tentativa deve retornar HTTP 429 Too Many Requests
+            res_blocked = self.client.post('/api/auth/login', json={'email': 'inexistente@pertoja.com', 'senha': 'errada'})
+            self.assertEqual(res_blocked.status_code, 429)
+            data_blocked = json.loads(res_blocked.data)
+            self.assertIn('error', data_blocked)
+            self.assertIn('retry_after_seconds', data_blocked)
+        finally:
+            app.config['TESTING'] = True
+            rate_limiter.reset()
+
+    def test_16_pwa_manifest_and_icons(self):
+        res = self.client.get('/manifest.json')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertIn('name', data)
+        self.assertIn('short_name', data)
+        self.assertIn('icons', data)
+        self.assertGreaterEqual(len(data['icons']), 2)
+
 if __name__ == '__main__':
     unittest.main()

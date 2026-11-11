@@ -122,6 +122,10 @@ function inicializarDrawerNavegacao() {
     if (scrollYAntesDeAbrir > 0) {
       window.scrollTo(0, scrollYAntesDeAbrir);
     }
+    setTimeout(() => {
+      if (window.map && typeof window.map.invalidateSize === 'function') window.map.invalidateSize();
+      if (window.mapInstance && typeof window.mapInstance.invalidateSize === 'function') window.mapInstance.invalidateSize();
+    }, 250);
   }
 
   if (btnHamburguer) {

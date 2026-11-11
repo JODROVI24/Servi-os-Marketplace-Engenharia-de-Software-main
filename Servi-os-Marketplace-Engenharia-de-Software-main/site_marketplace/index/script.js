@@ -741,15 +741,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     tileLayerEsri.addTo(mapInstance);
     layerMarkers = L.layerGroup().addTo(mapInstance);
+    window.mapInstance = mapInstance;
+    window.map = mapInstance;
 
-    // Ajusta o mapa de forma fluida ao redimensionar a tela
-    window.addEventListener('resize', () => {
+    // Ajusta o mapa de forma fluida ao redimensionar a tela ou alternar elementos de layout
+    const resizeMap = () => {
       if (mapInstance) mapInstance.invalidateSize();
-    });
+    };
+    window.addEventListener('resize', resizeMap);
     window.addEventListener('orientationchange', () => {
-      setTimeout(() => {
-        if (mapInstance) mapInstance.invalidateSize();
-      }, 250);
+      setTimeout(resizeMap, 250);
     });
   }
 

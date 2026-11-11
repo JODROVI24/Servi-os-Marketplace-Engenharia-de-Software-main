@@ -5,9 +5,12 @@ import hashlib
 import sqlite3
 import requests
 import gzip
+import time
+from collections import defaultdict
+from functools import wraps
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
-from database import get_db_connection, init_db
+from database import get_db_connection, init_db, get_cached_geocode, save_cached_geocode
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
@@ -91,6 +94,46 @@ def add_performance_and_security_headers(response):
 # Garantir inicialização do banco de dados na inicialização
 init_db()
 
+# ================= Rate Limiter em Memória (Janela Deslizante) =================
+
+class InMemoryRateLimiter:
+    """Limitador de requisições por janela deslizante em memória (Thread-safe e serverless-friendly)."""
+    def __init__(self):
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, key, limit, window_seconds):
+        now = time.time()
+        cutoff = now - window_seconds
+        # Remove timestamps expirados da janela deslizante
+        self.requests[key] = [t for t in self.requests[key] if t > cutoff]
+        if len(self.requests[key]) >= limit:
+            return False
+        self.requests[key].append(now)
+        return True
+
+    def reset(self):
+        self.requests.clear()
+
+rate_limiter = InMemoryRateLimiter()
+
+def rate_limit(limit, window_seconds=60):
+    """Decorator de rate limit por IP para proteção contra brute-force e abusos de API."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if app.config.get('TESTING'):
+                return f(*args, **kwargs)
+            client_ip = request.headers.get('x-forwarded-for', request.remote_addr or '127.0.0.1').split(',')[0].strip()
+            key = f"{request.endpoint or f.__name__}:{client_ip}"
+            if not rate_limiter.is_allowed(key, limit, window_seconds):
+                return jsonify({
+                    'error': 'Muitas requisições. Por favor, aguarde alguns instantes antes de tentar novamente.',
+                    'retry_after_seconds': window_seconds
+                }), 429
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 def get_current_user():
     user_id = session.get('user_id')
     if not user_id:
@@ -123,16 +166,23 @@ def calcular_distancia(lat1, lng1, lat2, lng2):
     except (ValueError, TypeError):
         return 0.0
 
-# Helper para geocodificação de endereços no OpenStreetMap Nominatim com resolução multinível
+# Helper para geocodificação de endereços no OpenStreetMap Nominatim com resolução multinível e cache local
 def geocode_address(address_str, street=None, neighborhood=None, city=None, state=None, fallback=None):
     """
-    Geocodifica endereço no OpenStreetMap Nominatim com tentativas progressivas:
+    Geocodifica endereço no OpenStreetMap Nominatim com tentativas progressivas e cache SQLite:
+    0. Cache local (tabela geocode_cache) para resolução imediata
     1. Endereço completo (com logradouro, bairro, cidade, estado)
     2. Logradouro + Cidade + Estado (sem bairro, eliminando a principal causa de falhas no OSM Brasil)
     3. Bairro + Cidade + Estado
     4. Cidade + Estado (garante ao menos a centralização na cidade correta)
     5. fallback explicitamente fornecido (None por padrão)
     """
+    cache_query = address_str.strip() if address_str and address_str.strip() else f"{street or ''}, {neighborhood or ''}, {city or ''} - {state or ''}".strip(' ,-')
+    if cache_query:
+        cached = get_cached_geocode(cache_query)
+        if cached:
+            return cached
+
     candidates = []
 
     # Monta candidatos por componentes estruturados se fornecidos
@@ -171,7 +221,13 @@ def geocode_address(address_str, street=None, neighborhood=None, city=None, stat
             if r.status_code == 200:
                 res = r.json()
                 if res and len(res) > 0:
-                    return float(res[0]['lat']), float(res[0]['lon'])
+                    lat_found = float(res[0]['lat'])
+                    lng_found = float(res[0]['lon'])
+                    if cache_query:
+                        save_cached_geocode(cache_query, lat_found, lng_found, origem='nominatim')
+                    if cand != cache_query:
+                        save_cached_geocode(cand, lat_found, lng_found, origem='nominatim')
+                    return lat_found, lng_found
         except Exception:
             continue
 
@@ -274,9 +330,31 @@ def handle_500(e):
         return send_from_directory(STATIC_DIR, '404.html'), 500
     return jsonify({'error': 'Erro interno do servidor.'}), 500
 
+# ================= Health Check & Monitoramento =================
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    status = {
+        'status': 'healthy',
+        'timestamp': time.time(),
+        'database': 'connected',
+        'version': '2.0.0',
+        'environment': 'vercel' if os.environ.get('VERCEL') == '1' else 'standalone'
+    }
+    try:
+        conn = get_db_connection()
+        conn.execute('SELECT 1').fetchone()
+        conn.close()
+    except Exception as err:
+        status['status'] = 'degraded'
+        status['database'] = f'error: {str(err)}'
+        return jsonify(status), 503
+    return jsonify(status), 200
+
 # ================= Rotas de Endereço e Geocodificação =================
 
 @app.route('/api/cep/<cep>', methods=['GET'])
+@rate_limit(60, 60)
 def consultar_cep(cep):
     clean_cep = re.sub(r'\D', '', cep)
     if len(clean_cep) != 8:
@@ -349,6 +427,7 @@ def consultar_cep(cep):
     return jsonify(data)
 
 @app.route('/api/geocode', methods=['GET'])
+@rate_limit(30, 60)
 def geocode_endpoint():
     query = request.args.get('address') or request.args.get('q') or ''
     if not query.strip():
@@ -361,6 +440,7 @@ def geocode_endpoint():
 # ================= Rotas de Autenticação =================
 
 @app.route('/api/auth/register', methods=['POST'])
+@rate_limit(5, 60)
 def register():
     data = request.get_json() or {}
     nome = str(data.get('nome') or '').strip()
@@ -470,6 +550,7 @@ def register():
         conn.close()
 
 @app.route('/api/auth/login', methods=['POST'])
+@rate_limit(5, 60)
 def login():
     data = request.get_json() or {}
     email = data.get('email', '').strip().lower()

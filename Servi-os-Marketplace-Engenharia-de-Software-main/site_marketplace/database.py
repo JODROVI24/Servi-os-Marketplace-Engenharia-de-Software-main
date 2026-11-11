@@ -121,6 +121,25 @@ def init_db():
             FOREIGN KEY(cliente_id) REFERENCES users(id),
             FOREIGN KEY(prestador_id) REFERENCES users(id)
         );
+
+        CREATE TABLE IF NOT EXISTS geocode_cache (
+            query TEXT PRIMARY KEY,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            origem TEXT DEFAULT 'nominatim',
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Índices estratégicos para performance de busca e integridade
+        CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
+        CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
+        CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
+        CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
+        CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
+        CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
+        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
     ''')
     conn.commit()
 
@@ -252,6 +271,37 @@ def sincronizar_todos_prestadores(conn):
                 WHERE prestador_id = ?
             ''', (s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng, p_id))
     conn.commit()
+
+def get_cached_geocode(query):
+    """Recupera coordenadas em cache para uma consulta de endereço."""
+    if not query or not query.strip():
+        return None
+    normalized = query.strip().lower()
+    try:
+        conn = get_db_connection()
+        row = conn.execute('SELECT lat, lng FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
+        conn.close()
+        if row:
+            return float(row['lat']), float(row['lng'])
+    except Exception:
+        pass
+    return None
+
+def save_cached_geocode(query, lat, lng, origem='nominatim'):
+    """Salva coordenadas em cache para consultas futuras."""
+    if not query or lat is None or lng is None:
+        return
+    normalized = query.strip().lower()
+    try:
+        conn = get_db_connection()
+        conn.execute('''
+            INSERT OR REPLACE INTO geocode_cache (query, lat, lng, origem, criado_em)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (normalized, float(lat), float(lng), origem))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     init_db()
