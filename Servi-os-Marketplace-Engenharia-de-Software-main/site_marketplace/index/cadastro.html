@@ -4,9 +4,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cadastre-se | PertoJá – Marketplace de Serviços</title>
+  <title>Cadastre-se | PertoJá – Marketplace de Serviços Locais</title>
+  <meta name="description" content="Cadastre-se no PertoJá como cliente para contratar com segurança ou como prestador para receber chamados na sua região em São Paulo e Guarulhos.">
+  <link rel="canonical" href="https://pertoja.com.br/cadastro.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/cadastro.html">
+  <meta property="og:title" content="Cadastre-se | PertoJá – Marketplace de Serviços">
+  <meta property="og:description" content="Cadastre-se como cliente ou profissional e conecte-se aos melhores serviços locais.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cadastre-se | PertoJá">
+  <meta name="twitter:description" content="Crie sua conta no PertoJá e conecte-se aos serviços locais.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +61,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -79,22 +100,22 @@
     </nav>
   </header>
 
-  <!-- Conteúdo Principal: Stepper Onboarding Card Centralizado -->
-  <main class="w-full max-w-xl mx-auto px-4 py-10 flex-1 flex flex-col justify-center">
+  <!-- Conteúdo Principal Acessível: Stepper Onboarding Card Centralizado -->
+  <main id="main-content" class="w-full max-w-xl mx-auto px-4 py-10 flex-1 flex flex-col justify-center">
     <div class="panel card-auth bg-white p-8 sm:p-10 rounded-2xl border border-perto-road shadow-lg">
       
       <!-- Topo com Indicador de Onboarding Multi-etapas -->
       <div class="text-center mb-6">
         <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-perto-sea/10 text-perto-sea text-xs font-extrabold uppercase tracking-wider mb-2">
-          <span class="material-symbols-outlined text-sm">person_add</span>
+          <span class="material-symbols-outlined text-sm" aria-hidden="true">person_add</span>
           Cadastro Unificado
         </div>
         <h1 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Criar Nova Conta</h1>
-        <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Junte-se à maior rede de profissionais e clientes locais da sua região.</p>
+        <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Junte-se à maior rede de profissionais e clientes locais da sua região.</p>
       </div>
 
       <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
-      <div id="mensagem-erro" class="alerta-erro" style="display: none;"></div>
+      <div id="mensagem-erro" role="alert" class="alerta-erro" style="display: none;"></div>
 
       <!-- Formulário de Cadastro (Contrato DOM: #formCadastro) -->
       <form id="formCadastro" class="space-y-4">
@@ -380,6 +401,8 @@
       }
     };
   </script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
 </body>
 
 </html>

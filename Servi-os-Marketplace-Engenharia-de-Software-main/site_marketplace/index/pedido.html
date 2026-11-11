@@ -4,13 +4,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Buscar Serviços | PertoJá – Geolocalização e Monitoramento</title>
+  <title>Buscar Serviços no Mapa | PertoJá – Geolocalização e Monitoramento</title>
+  <meta name="description" content="Localize profissionais qualificados no mapa geográfico por CEP ou geolocalização e acompanhe o atendimento em tempo real com o PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/pedido.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Leaflet CSS & JS -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/pedido.html">
+  <meta property="og:title" content="Buscar Serviços no Mapa | PertoJá – Geolocalização e Monitoramento">
+  <meta property="og:description" content="Localize profissionais qualificados no mapa geográfico por CEP ou geolocalização e acompanhe o atendimento em tempo real com o PertoJá.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Buscar Serviços no Mapa | PertoJá">
+  <meta name="twitter:description" content="Encontre eletricistas, encanadores e diaristas próximos com mapa ao vivo.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Schema.org JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Buscar Serviços no Mapa | PertoJá",
+    "description": "Localização de profissionais de serviços locais em tempo real.",
+    "url": "https://pertoja.com.br/pedido.html"
+  }
+  </script>
+
+  <!-- Leaflet CSS & JS com defer -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -46,6 +76,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -109,14 +141,14 @@
     </div>
   </section>
 
-  <!-- Main Content Grid -->
-  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 flex-1">
+  <!-- Main Content Grid Acessível -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 flex-1">
     
     <!-- Barra de Localização e Busca do Cliente (CEP / Endereço Real) -->
     <div class="panel p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white rounded-2xl border border-perto-road shadow-sm">
       <div class="flex items-center gap-3 flex-1">
         <div class="w-9 h-9 rounded-xl bg-perto-sea/10 flex items-center justify-center text-perto-sea shrink-0">
-          <span class="material-symbols-outlined text-lg">near_me</span>
+          <span class="material-symbols-outlined text-lg" aria-hidden="true">near_me</span>
         </div>
         <div class="flex-1">
           <label for="inputBuscaEndereco" class="text-[11px] font-extrabold text-perto-ink uppercase tracking-wider block">
@@ -128,7 +160,7 @@
               Buscar no Mapa
             </button>
           </div>
-          <div id="statusBuscaEndereco" class="text-xs text-perto-sea font-semibold mt-1.5 hidden items-center gap-1.5 bg-perto-sea/5 px-2.5 py-1 rounded-lg border border-perto-sea/20"></div>
+          <div id="statusBuscaEndereco" role="status" aria-live="polite" class="text-xs text-perto-sea font-semibold mt-1.5 hidden items-center gap-1.5 bg-perto-sea/5 px-2.5 py-1 rounded-lg border border-perto-sea/20"></div>
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0 border-t md:border-t-0 md:border-l border-perto-road pt-2 md:pt-0 md:pl-3">
@@ -279,9 +311,9 @@
     </div>
   </footer>
 
-  <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
-  <script src="script.js"></script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
+  <script src="script.js" defer></script>
 </body>
 
 </html>

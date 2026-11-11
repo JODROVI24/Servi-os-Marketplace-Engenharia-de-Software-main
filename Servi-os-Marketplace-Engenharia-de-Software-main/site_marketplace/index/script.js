@@ -85,8 +85,33 @@ function toast(t) {
   setTimeout(() => d.remove(), 4500);
 }
 
+// Sanitização para proteção contra injeções de script (XSS)
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderSkeletonList() {
+  const listEl = $('#list');
+  if (!listEl) return;
+  listEl.innerHTML = [1, 2, 3].map(() => `
+    <div class="svc skeleton-card" style="padding: 16px; border-radius: 12px; margin-bottom: 12px;">
+      <div class="skeleton" style="height: 20px; width: 60%; margin-bottom: 8px;"></div>
+      <div class="skeleton" style="height: 14px; width: 85%; margin-bottom: 8px;"></div>
+      <div class="skeleton" style="height: 14px; width: 40%; margin-bottom: 12px;"></div>
+      <div class="skeleton" style="height: 36px; width: 100%; border-radius: 9999px;"></div>
+    </div>
+  `).join('');
+}
+
 // Carregar prestadores da API se disponível
 async function carregarPrestadoresAPI() {
+  renderSkeletonList();
   try {
     const res = await fetch(`/api/services?cat=${encodeURIComponent(cat)}&radius=${radius}&lat=${centerLat}&lng=${centerLng}`);
     if (res.ok) {
@@ -133,11 +158,11 @@ function renderList() {
   if ($('#count')) $('#count').textContent = '(' + v.length + ')';
   listEl.innerHTML = v.length ? v.map(p => `
    <div class="svc ${order && order.best.id === p.id ? 'best' : ''}">
-     <div class="top"><span>${p.s}</span><span class="price">${brl(p.p)}</span></div>
+     <div class="top"><span>${escapeHtml(p.s)}</span><span class="price">${brl(p.p)}</span></div>
      <div style="font-size: 0.8rem; color: var(--sea); font-weight: 600; margin: 3px 0; display: flex; align-items: center; gap: 4px;">
-       <span>📍</span> <span>${p.endereco || 'São Paulo - SP'}</span>
+       <span>📍</span> <span>${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
      </div>
-     <div class="meta"><span>👤 ${p.n}</span><span>Avaliação: ★ ${p.r.toFixed(1)}</span><span>${dist(p).toFixed(1)} km</span>
+     <div class="meta"><span>👤 ${escapeHtml(p.n)}</span><span>Avaliação: ★ ${p.r.toFixed(1)}</span><span>${dist(p).toFixed(1)} km</span>
        <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span></div>
      <div style="margin-top: 10px;"><button class="btn btn-requisitar" data-req="${p.id}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button></div>
     </div>`).join('') : `
@@ -340,7 +365,7 @@ async function buscarPorEnderecoCliente() {
       const statusBox = document.getElementById('statusBuscaEndereco');
       if (statusBox) {
         statusBox.style.display = 'flex';
-        statusBox.innerHTML = `<span class="material-symbols-outlined text-sm text-perto-ok">check_circle</span> <span>Endereço localizado: <b>${label}</b></span>`;
+        statusBox.innerHTML = `<span class="material-symbols-outlined text-sm text-perto-ok">check_circle</span> <span>Endereço localizado: <b>${escapeHtml(label)}</b></span>`;
       }
 
       toast(`Localização definida: ${label}`);
@@ -497,8 +522,8 @@ function renderDestaques() {
     <div class="card-home" style="cursor: default; animation-delay: ${index * 0.1}s;">
       <div class="card-texto" style="text-align: center;">
         <div style="font-size: 0.85rem; font-weight: 800; color: var(--sun); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px;">★ Destaque da Semana</div>
-        <h3 style="color: var(--ink); margin-bottom: 4px;">${p.n}</h3>
-        <p style="color: var(--sea); font-weight: bold; margin-bottom: 8px;">${p.c} · ${p.s}</p>
+        <h3 style="color: var(--ink); margin-bottom: 4px;">${escapeHtml(p.n)}</h3>
+        <p style="color: var(--sea); font-weight: bold; margin-bottom: 8px;">${escapeHtml(p.c)} · ${escapeHtml(p.s)}</p>
         <p style="font-size: 0.9rem; color: #4b6073;">Avaliação Média: <b style="color: var(--ink);">★ ${p.r.toFixed(1)}</b> / 5.0</p>
         <p style="font-size: 1.1rem; color: var(--sea); font-weight: bold; margin-top: 8px;">${brl(p.p)}</p>
       </div>

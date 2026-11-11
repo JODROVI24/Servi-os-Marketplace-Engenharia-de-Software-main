@@ -385,5 +385,39 @@ class TestMarketplaceFull(unittest.TestCase):
         ids_ativos = [s['id'] for s in json.loads(res_list.data)]
         self.assertNotIn(temp_svc_id, ids_ativos)
 
+    def test_11_performance_security_and_seo_routes(self):
+        # 1. SEO: robots.txt
+        res_robots = self.client.get('/robots.txt')
+        self.assertEqual(res_robots.status_code, 200)
+        self.assertIn('User-agent: *', res_robots.data.decode('utf-8'))
+        self.assertIn('sitemap.xml', res_robots.data.decode('utf-8'))
+
+        # 2. SEO: sitemap.xml
+        res_sitemap = self.client.get('/sitemap.xml')
+        self.assertEqual(res_sitemap.status_code, 200)
+        sitemap_str = res_sitemap.data.decode('utf-8')
+        self.assertIn('<urlset', sitemap_str)
+        self.assertIn('pedido.html', sitemap_str)
+
+        # 3. Resiliência: Custom 404 Error Handler
+        res_404 = self.client.get('/pagina-inexistente-123456.html')
+        self.assertEqual(res_404.status_code, 404)
+        self.assertIn('404', res_404.data.decode('utf-8'))
+        self.assertIn('PertoJá', res_404.data.decode('utf-8'))
+
+        # 4. Segurança de Frontend: Cabeçalhos HTTP OWASP
+        res_home = self.client.get('/')
+        self.assertEqual(res_home.headers.get('X-Content-Type-Options'), 'nosniff')
+        self.assertEqual(res_home.headers.get('X-Frame-Options'), 'SAMEORIGIN')
+        self.assertIn('strict-origin', res_home.headers.get('Referrer-Policy', ''))
+
+        # 5. Performance / Caching headers
+        res_api = self.client.get('/api/services')
+        self.assertIn('no-store', res_api.headers.get('Cache-Control', ''))
+
+        res_static = self.client.get('/style.css')
+        self.assertIn('public', res_static.headers.get('Cache-Control', ''))
+        self.assertIn('max-age', res_static.headers.get('Cache-Control', ''))
+
 if __name__ == '__main__':
     unittest.main()

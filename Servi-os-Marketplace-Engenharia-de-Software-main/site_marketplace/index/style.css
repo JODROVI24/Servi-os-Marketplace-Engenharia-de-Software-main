@@ -11,8 +11,7 @@
    Sem qualquer tonalidade avermelhada. Apenas a paleta oficial PertoJa.
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+/* Fontes Google e Material Symbols carregadas via <link> com preconnect e display=swap no HTML para evitar bloqueio de renderização */
 
 :root {
     --ink: #10243e;
@@ -56,7 +55,68 @@ body {
     line-height: 1;
 }
 
-/* Header & Navigation */
+/* Link de Acessibilidade para Pular para o Conteúdo Principal (WCAG 2.1 AA) */
+.skip-link {
+    position: absolute;
+    top: -60px;
+    left: 16px;
+    background: var(--ink);
+    color: var(--sun);
+    padding: 10px 18px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    border-radius: 0 0 10px 10px;
+    z-index: 9999;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(16, 36, 62, 0.4);
+    transition: top 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.skip-link:focus-visible {
+    top: 0;
+    outline: 3px solid var(--sun);
+    outline-offset: 2px;
+}
+
+/* Skeleton Screens para Resiliência e Percepção de Performance */
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.skeleton {
+    background: linear-gradient(90deg, #e7edf0 25%, #f4f8fa 50%, #e7edf0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
+    border-radius: 8px;
+}
+
+.skeleton-card {
+    background: var(--card);
+    border: 1px solid var(--road);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 2px 6px rgba(16, 36, 62, 0.04);
+}
+
+.skeleton-line {
+    height: 14px;
+    border-radius: 4px;
+}
+
+.skeleton-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+}
+
 header.site-header {
     background: var(--card);
     color: var(--ink);
@@ -864,6 +924,8 @@ tr.win td {
 .img-servico {
     width: 100%;
     height: 160px;
+    aspect-ratio: 16 / 10;
+    display: block;
     object-fit: cover;
     transition: transform 0.4s ease;
 }

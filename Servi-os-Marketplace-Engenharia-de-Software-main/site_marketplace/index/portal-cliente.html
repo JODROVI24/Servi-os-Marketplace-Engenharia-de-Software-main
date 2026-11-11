@@ -4,9 +4,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Portal do Cliente | PertoJá</title>
+  <title>Meu Portal do Cliente | PertoJá</title>
+  <meta name="description" content="Painel de controle do cliente: acompanhe seus chamados em tempo real, pedidos solicitados e gerencie seus dados cadastrais no PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/portal-cliente.html">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +46,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -79,8 +85,8 @@
     </nav>
   </header>
 
-  <!-- Conteúdo Principal: Dashboard do Consumidor -->
-  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
+  <!-- Conteúdo Principal Acessível: Dashboard do Consumidor -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
     
     <!-- Boas-vindas ao Cliente (Contrato DOM: #clienteNome, #clienteEmail) -->
     <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm">
@@ -261,8 +267,8 @@
     </div>
   </footer>
 
-  <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
   <script>
     let dadosCliente = null;
 

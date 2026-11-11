@@ -4,9 +4,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Como Funciona | PertoJá – Metodologia e Planos</title>
+  <title>Como Funciona | PertoJá – Metodologia e Planos para Prestadores</title>
+  <meta name="description" content="Entenda como funciona o PertoJá: encontre especialistas por proximidade geográfica, contrate com pagamento seguro Escrow e veja nossos planos para prestadores.">
+  <link rel="canonical" href="https://pertoja.com.br/como-funciona.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/como-funciona.html">
+  <meta property="og:title" content="Como Funciona | PertoJá – Metodologia e Planos">
+  <meta property="og:description" content="Conectando clientes a prestadores locais com segurança Escrow, geolocalização precisa e transparência.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Como Funciona o PertoJá">
+  <meta name="twitter:description" content="Entenda como funciona a plataforma de contratação de serviços locais PertoJá.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Schema.org HowTo JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Como contratar um serviço local pelo PertoJá",
+    "description": "Passo a passo para solicitar profissionais verificados próximos a você em São Paulo e Guarulhos.",
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Buscar especialidade",
+        "text": "Informe seu CEP ou use seu GPS para visualizar profissionais a poucos minutos de distância."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Solicitar e acompanhar",
+        "text": "Selecione o serviço com preço transparente e acompanhe o deslocamento ao vivo no mapa."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Pagamento protegido Escrow",
+        "text": "O valor fica retido com segurança e só é repassado ao prestador após a confirmação do serviço concluído."
+      }
+    ]
+  }
+  </script>
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +88,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -95,8 +143,8 @@
     </div>
   </section>
 
-  <!-- Conteúdo Principal (Contrato DOM: #aba-como) -->
-  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-12 flex-1">
+  <!-- Conteúdo Principal Acessível (Contrato DOM: #aba-como) -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-12 flex-1">
     
     <div id="aba-como" class="conteudo-aba space-y-12" style="display: block;">
       
@@ -293,8 +341,8 @@
     </div>
   </footer>
 
-  <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
 </body>
 
 </html>

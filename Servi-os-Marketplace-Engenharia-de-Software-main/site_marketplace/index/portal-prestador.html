@@ -4,9 +4,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Painel do Prestador Pro | PertoJá</title>
+  <title>Cockpit do Prestador Pro | PertoJá</title>
+  <meta name="description" content="Painel de controle do prestador profissional: gerencie seus serviços, receba chamados de clientes locais e acompanhe pedidos no PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/portal-prestador.html">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +46,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -79,8 +85,8 @@
     </nav>
   </header>
 
-  <!-- Conteúdo Principal: Cockpit do Parceiro -->
-  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
+  <!-- Conteúdo Principal Acessível: Cockpit do Parceiro -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
     
     <!-- Cabeçalho do Prestador Pro (Contrato DOM: #prestadorNome, #prestadorEmail, #chkDisponivel, #txtDisponivel) -->
     <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm">
@@ -113,16 +119,16 @@
 
     <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #contPedidos) -->
     <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
-      <div class="chips flex flex-wrap gap-2">
-        <button class="chip on flex items-center gap-2" id="tabBtnServicos" onclick="mudarAba('servicos')">
+      <div class="chips flex flex-wrap gap-2" role="tablist" aria-label="Navegação do Painel do Prestador">
+        <button class="chip on flex items-center gap-2" id="tabBtnServicos" role="tab" aria-selected="true" aria-controls="aba-servicos-painel" onclick="mudarAba('servicos')">
           <span class="material-symbols-outlined text-base">storefront</span>
           Meus Serviços & Preços
         </button>
-        <button class="chip flex items-center gap-2" id="tabBtnPedidos" onclick="mudarAba('pedidos')">
+        <button class="chip flex items-center gap-2" id="tabBtnPedidos" role="tab" aria-selected="false" aria-controls="aba-pedidos-painel" onclick="mudarAba('pedidos')">
           <span class="material-symbols-outlined text-base">assignment</span>
           Fila de Chamados (<span id="contPedidos" class="font-bold">0</span>)
         </button>
-        <button class="chip flex items-center gap-2" id="tabBtnPerfil" onclick="mudarAba('perfil')">
+        <button class="chip flex items-center gap-2" id="tabBtnPerfil" role="tab" aria-selected="false" aria-controls="aba-perfil-painel" onclick="mudarAba('perfil')">
           <span class="material-symbols-outlined text-base">tune</span>
           Dados de Perfil & GPS
         </button>
@@ -130,7 +136,7 @@
     </div>
 
     <!-- ABA 1: MEUS SERVIÇOS E PREÇOS (Contrato DOM: #aba-servicos-painel, #listaServicos, abrirModalServico) -->
-    <div id="aba-servicos-painel">
+    <div id="aba-servicos-painel" role="tabpanel" aria-labelledby="tabBtnServicos">
       <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-perto-road">
           <div>
@@ -153,7 +159,7 @@
     </div>
 
     <!-- ABA 2: CHAMADOS RECEBIDOS (Contrato DOM: #aba-pedidos-painel, #listaPedidosRecebidos) -->
-    <div id="aba-pedidos-painel" style="display: none;">
+    <div id="aba-pedidos-painel" role="tabpanel" aria-labelledby="tabBtnPedidos" style="display: none;">
       <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
         <div class="mb-6 pb-4 border-b border-perto-road">
           <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
@@ -170,7 +176,7 @@
     </div>
 
     <!-- ABA 3: EDITAR PERFIL (Contrato DOM: #aba-perfil-painel, #formPerfilPrestador, #perfilNome, #perfilTelefone, #perfilBio, #perfilLat, #perfilLng, capturarLocalizacaoPrestador) -->
-    <div id="aba-perfil-painel" style="display: none;">
+    <div id="aba-perfil-painel" role="tabpanel" aria-labelledby="tabBtnPerfil" style="display: none;">
       <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 max-w-2xl mx-auto">
         <div class="mb-6 pb-4 border-b border-perto-road">
           <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
@@ -334,7 +340,7 @@
   </footer>
 
   <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
+  <script src="auth.js" defer></script>
   <script>
     let dadosPrestador = null;
     let listaMeusServicos = [];
@@ -354,9 +360,17 @@
       document.getElementById('aba-pedidos-painel').style.display = aba === 'pedidos' ? 'block' : 'none';
       document.getElementById('aba-perfil-painel').style.display = aba === 'perfil' ? 'block' : 'none';
 
-      document.getElementById('tabBtnServicos').classList.toggle('on', aba === 'servicos');
-      document.getElementById('tabBtnPedidos').classList.toggle('on', aba === 'pedidos');
-      document.getElementById('tabBtnPerfil').classList.toggle('on', aba === 'perfil');
+      const btnServicos = document.getElementById('tabBtnServicos');
+      const btnPedidos = document.getElementById('tabBtnPedidos');
+      const btnPerfil = document.getElementById('tabBtnPerfil');
+
+      btnServicos.classList.toggle('on', aba === 'servicos');
+      btnPedidos.classList.toggle('on', aba === 'pedidos');
+      btnPerfil.classList.toggle('on', aba === 'perfil');
+
+      btnServicos.setAttribute('aria-selected', (aba === 'servicos').toString());
+      btnPedidos.setAttribute('aria-selected', (aba === 'pedidos').toString());
+      btnPerfil.setAttribute('aria-selected', (aba === 'perfil').toString());
     }
 
     async function carregarPainel() {

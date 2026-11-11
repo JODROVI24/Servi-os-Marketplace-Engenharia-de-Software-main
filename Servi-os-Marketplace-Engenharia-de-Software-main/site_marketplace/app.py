@@ -4,6 +4,7 @@ import math
 import hashlib
 import sqlite3
 import requests
+import gzip
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_db_connection, init_db
@@ -39,6 +40,42 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=(os.environ.get('VERCEL') == '1')
 )
+
+# ================= Otimização de Performance, Caching e Segurança =================
+
+@app.after_request
+def add_performance_and_security_headers(response):
+    # Cabeçalhos de Segurança HTTP (OWASP / WCAG)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(self)'
+    
+    # Políticas de Cache HTTP (Core Web Vitals)
+    path = request.path
+    if any(path.endswith(ext) for ext in ('.css', '.js', '.webp', '.jpg', '.png', '.svg', '.ico', '.woff2', '.woff')):
+        response.headers['Cache-Control'] = 'public, max-age=604800, stale-while-revalidate=86400'
+    elif path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    else:
+        response.headers['Cache-Control'] = 'public, max-age=3600, must-revalidate'
+
+    # Compressão Gzip automática se suportada pelo cliente
+    accept_encoding = request.headers.get('Accept-Encoding', '')
+    if ('gzip' in accept_encoding and 
+        response.status_code < 300 and 
+        not response.headers.get('Content-Encoding') and 
+        response.mimetype in ('text/html', 'text/css', 'text/javascript', 'application/javascript', 'application/json', 'image/svg+xml')):
+        
+        response_data = response.get_data()
+        if len(response_data) > 500:
+            compressed_data = gzip.compress(response_data, compresslevel=6)
+            response.set_data(compressed_data)
+            response.headers['Content-Encoding'] = 'gzip'
+            response.headers['Content-Length'] = len(compressed_data)
+            response.headers['Vary'] = 'Accept-Encoding'
+
+    return response
 
 # Garantir inicialização do banco de dados na inicialização
 init_db()
@@ -137,11 +174,38 @@ def geocode_address(address_str, street=None, neighborhood=None, city=None, stat
 def home():
     return send_from_directory(STATIC_DIR, 'index.html')
 
+@app.route('/robots.txt')
+def robots():
+    return send_from_directory(STATIC_DIR, 'robots.txt', mimetype='text/plain')
+
+@app.route('/sitemap.xml')
+def sitemap():
+    return send_from_directory(STATIC_DIR, 'sitemap.xml', mimetype='application/xml')
+
 @app.route('/<path:filename>')
 def serve_static(filename):
-    if os.path.exists(os.path.join(STATIC_DIR, filename)):
+    file_path = os.path.join(STATIC_DIR, filename)
+    if os.path.isfile(file_path):
         return send_from_directory(STATIC_DIR, filename)
-    return send_from_directory(STATIC_DIR, 'index.html')
+    if os.path.isfile(os.path.join(STATIC_DIR, '404.html')):
+        return send_from_directory(STATIC_DIR, '404.html'), 404
+    return send_from_directory(STATIC_DIR, 'index.html'), 404
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Endpoint da API não encontrado.'}), 404
+    if os.path.isfile(os.path.join(STATIC_DIR, '404.html')):
+        return send_from_directory(STATIC_DIR, '404.html'), 404
+    return send_from_directory(STATIC_DIR, 'index.html'), 404
+
+@app.errorhandler(500)
+def handle_500(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Erro interno do servidor.'}), 500
+    if os.path.isfile(os.path.join(STATIC_DIR, '404.html')):
+        return send_from_directory(STATIC_DIR, '404.html'), 500
+    return jsonify({'error': 'Erro interno do servidor.'}), 500
 
 # ================= Rotas de Endereço e Geocodificação =================
 

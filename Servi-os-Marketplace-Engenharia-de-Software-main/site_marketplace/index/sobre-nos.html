@@ -4,9 +4,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sobre Nós | PertoJá – Serviços Locais Profissionais</title>
+  <title>Sobre Nós | PertoJá – Plataforma de Serviços Locais de Confiança</title>
+  <meta name="description" content="Conheça a história, missão e valores da PertoJá, plataforma hiperlocal que conecta você a prestadores qualificados em São Paulo e Guarulhos com segurança Escrow.">
+  <link rel="canonical" href="https://pertoja.com.br/sobre-nos.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/sobre-nos.html">
+  <meta property="og:title" content="Sobre Nós | PertoJá – Serviços Locais de Confiança">
+  <meta property="og:description" content="Conheça a história, missão e valores da PertoJá, plataforma hiperlocal em São Paulo e Guarulhos.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sobre Nós | PertoJá">
+  <meta name="twitter:description" content="Transformando a prestação de serviços locais no Brasil com geolocalização e transparência.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Schema.org AboutPage JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "name": "Sobre Nós | PertoJá",
+    "description": "História, missão e compromisso da plataforma PertoJá com serviços hiperlocais no Brasil.",
+    "url": "https://pertoja.com.br/sobre-nos.html"
+  }
+  </script>
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +72,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -95,8 +127,8 @@
     </div>
   </section>
 
-  <!-- Conteúdo Principal (Contrato DOM: #aba-sobre) -->
-  <main class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-10 flex-1">
+  <!-- Conteúdo Principal Acessível (Contrato DOM: #aba-sobre) -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-10 flex-1">
     
     <div id="aba-sobre" class="conteudo-aba space-y-10" style="display: block;">
       
@@ -190,8 +222,8 @@
     </div>
   </footer>
 
-  <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
 </body>
 
 </html>

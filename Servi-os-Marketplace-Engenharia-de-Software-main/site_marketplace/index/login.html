@@ -4,9 +4,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Entrar | PertoJá – Marketplace de Serviços</title>
+  <title>Entrar na Plataforma | PertoJá – Marketplace de Serviços</title>
+  <meta name="description" content="Acesse sua conta de cliente ou prestador no PertoJá e gerencie seus chamados, propostas e histórico de serviços locais.">
+  <link rel="canonical" href="https://pertoja.com.br/login.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
 
-  <!-- Google Fonts & Material Symbols -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/login.html">
+  <meta property="og:title" content="Entrar na Plataforma | PertoJá">
+  <meta property="og:description" content="Acesse sua conta e gerencie seus chamados e serviços no PertoJá.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Entrar na Plataforma | PertoJá">
+  <meta name="twitter:description" content="Acesse sua conta e gerencie seus serviços no PertoJá.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -42,6 +61,8 @@
 </head>
 
 <body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
   <!-- Header Principal com Contrato DOM .menu-principal -->
   <header class="site-header">
     <a href="index.html" class="logo">
@@ -79,40 +100,40 @@
     </nav>
   </header>
 
-  <!-- Conteúdo Principal: Cartão de Autenticação Centralizado -->
-  <main class="w-full max-w-md mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
+  <!-- Conteúdo Principal Acessível: Cartão de Autenticação Centralizado -->
+  <main id="main-content" class="w-full max-w-md mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
     <div class="panel card-auth bg-white p-8 sm:p-10 rounded-2xl border border-perto-road shadow-lg">
       <div class="text-center mb-6">
         <div class="w-12 h-12 rounded-2xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mx-auto mb-3">
-          <span class="material-symbols-outlined text-2xl font-bold">lock</span>
+          <span class="material-symbols-outlined text-2xl font-bold" aria-hidden="true">lock</span>
         </div>
         <h1 class="text-2xl font-black text-perto-ink tracking-tight m-0">Acessar Plataforma</h1>
-        <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Entre com sua conta de cliente ou prestador de serviços.</p>
+        <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Entre com sua conta de cliente ou prestador de serviços.</p>
       </div>
 
       <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
-      <div id="mensagem-erro" class="alerta-erro" style="display: none;"></div>
+      <div id="mensagem-erro" role="alert" class="alerta-erro" style="display: none;"></div>
 
       <!-- Formulário de Login (Contrato DOM: #formLogin, #email, #senha) -->
       <form id="formLogin" class="space-y-4">
         <div class="campo-form">
           <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
           <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">mail</span>
-            <input type="email" id="email" required placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none" aria-hidden="true">mail</span>
+            <input type="email" id="email" required autocomplete="email" placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
           </div>
         </div>
 
         <div class="campo-form">
           <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
           <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">key</span>
-            <input type="password" id="senha" required placeholder="Digite sua senha" class="input-form pl-11 text-sm font-medium">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none" aria-hidden="true">key</span>
+            <input type="password" id="senha" required autocomplete="current-password" placeholder="Digite sua senha" class="input-form pl-11 text-sm font-medium">
           </div>
         </div>
 
         <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-4 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
-          <span class="material-symbols-outlined text-base">login</span>
+          <span class="material-symbols-outlined text-base" aria-hidden="true">login</span>
           Entrar na Conta
         </button>
       </form>
@@ -152,8 +173,8 @@
     </div>
   </footer>
 
-  <!-- Scripts do PertoJá -->
-  <script src="auth.js"></script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
   <script>
     document.getElementById('formLogin').onsubmit = async (e) => {
       e.preventDefault();
