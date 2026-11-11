@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buscar Serviços no Mapa | PertoJá – Geolocalização e Monitoramento</title>
+  <meta name="description" content="Localize profissionais qualificados no mapa geográfico por CEP ou geolocalização e acompanhe o atendimento em tempo real com o PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/pedido.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/pedido.html">
+  <meta property="og:title" content="Buscar Serviços no Mapa | PertoJá – Geolocalização e Monitoramento">
+  <meta property="og:description" content="Localize profissionais qualificados no mapa geográfico por CEP ou geolocalização e acompanhe o atendimento em tempo real com o PertoJá.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Buscar Serviços no Mapa | PertoJá">
+  <meta name="twitter:description" content="Encontre eletricistas, encanadores e diaristas próximos com mapa ao vivo.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Schema.org JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Buscar Serviços no Mapa | PertoJá",
+    "description": "Localização de profissionais de serviços locais em tempo real.",
+    "url": "https://pertoja.com.br/pedido.html"
+  }
+  </script>
+
+  <!-- Leaflet CSS & JS com defer -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html" class="ativo">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Top Hero Bar com Botão GPS -->
+  <section class="hero py-6 sm:py-8">
+    <div class="max-w-[1280px] mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <div class="inline-flex items-center gap-1.5 text-xs font-extrabold text-perto-sun uppercase tracking-wider mb-2">
+          <span class="material-symbols-outlined text-sm">explore</span>
+          Radar de Profissionais em Tempo Real
+        </div>
+        <h1 class="text-white font-extrabold text-2xl sm:text-3xl tracking-tight leading-tight m-0">
+          Encontre e acompanhe o seu serviço.
+        </h1>
+        <p class="text-white/80 text-xs sm:text-sm max-w-xl mt-1 mb-0 font-body">
+          Visualize os profissionais mais próximos no mapa geográfico e acompanhe o deslocamento ao vivo.
+        </p>
+      </div>
+
+      <div class="flex flex-col sm:items-end gap-2 shrink-0">
+        <button id="btnLoc" class="btn btn-gps-trigger text-perto-ink font-bold px-5 py-2.5 rounded-full text-xs sm:text-sm inline-flex items-center gap-2 shadow-sm hover:scale-105 transition-all">
+          <span class="material-symbols-outlined text-base">my_location</span>
+          Utilizar minha localização GPS
+        </button>
+        <span id="locInfo" class="text-xs text-[#cfe0ea] font-medium">Modo com coordenadas padrão ativado.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Grid Acessível -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 flex-1">
+    
+    <!-- Barra de Localização e Busca do Cliente (CEP / Endereço Real) -->
+    <div class="panel p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white rounded-2xl border border-perto-road shadow-sm">
+      <div class="flex items-center gap-3 flex-1">
+        <div class="w-9 h-9 rounded-xl bg-perto-sea/10 flex items-center justify-center text-perto-sea shrink-0">
+          <span class="material-symbols-outlined text-lg" aria-hidden="true">near_me</span>
+        </div>
+        <div class="flex-1">
+          <label for="inputBuscaEndereco" class="text-[11px] font-extrabold text-perto-ink uppercase tracking-wider block">
+            Sua Localização de Busca (CEP ou Bairro/Cidade):
+          </label>
+          <div class="flex gap-2 mt-1">
+            <input type="text" id="inputBuscaEndereco" placeholder="Digite seu CEP (ex: 01310-100) ou Bairro, Cidade..." class="input-form text-xs sm:text-sm py-2" onkeydown="if(event.key==='Enter') buscarPorEnderecoCliente()">
+            <button class="btn text-xs font-bold px-4 py-2 rounded-xl whitespace-nowrap text-perto-ink" onclick="buscarPorEnderecoCliente()">
+              Buscar no Mapa
+            </button>
+          </div>
+          <div id="statusBuscaEndereco" role="status" aria-live="polite" class="text-xs text-perto-sea font-semibold mt-1.5 hidden items-center gap-1.5 bg-perto-sea/5 px-2.5 py-1 rounded-lg border border-perto-sea/20"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0 border-t md:border-t-0 md:border-l border-perto-road pt-2 md:pt-0 md:pl-3">
+        <button id="btnGpsBusca" class="btn2 btn-gps-trigger text-xs font-bold px-4 py-2.5 rounded-xl inline-flex items-center gap-1.5 shadow-sm">
+          <span class="material-symbols-outlined text-sm">my_location</span>
+          Usar GPS Atual
+        </button>
+      </div>
+    </div>
+
+    <!-- Filtros por Categoria e Raio (Contrato DOM: #chips, #raio, #raioV) -->
+    <div class="panel filters p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="flex items-center gap-3 flex-wrap flex-1">
+        <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider shrink-0 flex items-center gap-1">
+          <span class="material-symbols-outlined text-base text-perto-sea">tune</span> Especialidade:
+        </span>
+        <div class="chips" id="chips" role="group" aria-label="Categorias">
+          <!-- Injetado dinamicamente por script.js: renderChips() -->
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 shrink-0 bg-perto-bg px-4 py-2 rounded-xl border border-perto-road">
+        <label for="raio" class="text-xs font-bold text-perto-ink shrink-0 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm text-perto-sea">radar</span>
+          Raio de busca:
+        </label>
+        <input type="range" id="raio" min="1" max="15" value="8" class="cursor-pointer w-28 sm:w-36">
+        <span id="raioV" class="text-xs font-extrabold text-perto-sea min-w-[45px] text-right">8 km</span>
+      </div>
+    </div>
+
+    <!-- Grid com Lista de Prestadores e Mapa Leaflet -->
+    <div class="grid">
+      <!-- Coluna da Esquerda: Lista e Painel de Monitoramento -->
+      <div class="flex flex-col gap-4">
+        <!-- Lista de Prestadores Disponíveis (Contrato DOM: #painel-lista, #count, #list) -->
+        <div id="painel-lista" class="panel">
+          <div class="flex items-center justify-between mb-4 pb-2 border-b border-perto-road">
+            <h2 class="text-lg font-bold text-perto-ink m-0 flex items-center gap-2">
+              <span class="material-symbols-outlined text-perto-sea text-xl">group</span>
+              Profissionais Disponíveis
+              <span id="count" class="text-sm font-bold text-perto-sea bg-perto-sea/10 px-2 py-0.5 rounded-full"></span>
+            </h2>
+            <span class="text-xs text-perto-ink/50">Ordenados por proximidade</span>
+          </div>
+
+          <div class="list" id="list">
+            <!-- Injetado dinamicamente por script.js: renderList() -->
+          </div>
+        </div>
+
+        <!-- Painel de Rastreamento ao Vivo (Contrato DOM: #pedidoBox, #steps, #info, #rank, #bat, #gps, #pay, #novo) -->
+        <div id="pedidoBox" class="panel border-2 border-perto-sun shadow-md" hidden>
+          <div class="flex items-center justify-between pb-3 border-b border-perto-road mb-3">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-full bg-perto-sun flex items-center justify-center text-perto-ink font-bold animate-pulse">
+                <span class="material-symbols-outlined text-base">delivery_dining</span>
+              </div>
+              <h2 class="text-lg font-black text-perto-ink m-0">Monitoramento em Tempo Real</h2>
+            </div>
+            <span class="tag">Chamado Ativo</span>
+          </div>
+
+          <!-- Etapas do Pedido -->
+          <div class="steps" id="steps">
+            <!-- Injetado dinamicamente por script.js: renderSteps() -->
+          </div>
+
+          <!-- Caixa de Informações Dinâmicas -->
+          <div id="info" class="p-3.5 my-3 bg-perto-bg border border-perto-road rounded-xl text-sm font-medium text-perto-ink leading-relaxed">
+            <!-- Injetado dinamicamente por script.js: info() -->
+          </div>
+
+          <!-- Tabela de Avaliação e Ranking dos Candidatos Próximos -->
+          <div class="overflow-x-auto my-3">
+            <table id="rank">
+              <!-- Injetado dinamicamente por script.js: request() -->
+            </table>
+          </div>
+
+          <!-- Barra de Controles e Telemetria -->
+          <div class="row pt-3 border-t border-perto-road flex flex-wrap items-center justify-between gap-3">
+            <label class="flex items-center gap-2 text-xs font-semibold text-perto-ink cursor-pointer">
+              <input type="checkbox" id="bat" class="rounded text-perto-sea focus:ring-perto-sea">
+              Modo de economia de bateria
+            </label>
+
+            <span class="meta text-xs">
+              Telemetria GPS: <b id="gps" class="text-perto-sea font-bold">0</b> pacotes
+            </span>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button class="btn2 font-bold px-4 py-2 rounded-full text-xs" id="pay" hidden>
+                💳 Processar Pagamento
+              </button>
+              <button class="btn font-bold px-4 py-2 rounded-full text-xs text-perto-ink" id="novo" hidden>
+                🔄 Solicitar Novo Serviço
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coluna da Direita: Mapeamento Leaflet -->
+      <div class="panel flex flex-col">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+          <h2 class="text-lg font-bold text-perto-ink m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea text-xl">map</span>
+            Mapeamento Geográfico
+          </h2>
+          <span class="text-xs font-bold text-perto-ok flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-perto-ok animate-ping"></span>
+            Ao Vivo
+          </span>
+        </div>
+
+        <div id="map" role="img" aria-label="Mapa com prestadores próximos" class="flex-1 min-h-[420px] rounded-xl overflow-hidden">
+          <!-- Instância Leaflet montada por script.js -->
+        </div>
+
+        <p class="legend mt-3 text-xs text-perto-ink/70 bg-perto-bg p-2 rounded-lg border border-perto-road">
+          <span class="font-bold text-perto-ink">Legenda:</span>
+          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-perto-sea"></span> Sua Posição</span> ·
+          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-perto-ok"></span> Disponível</span> ·
+          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span> Indisponível</span> ·
+          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-perto-sun"></span> Em Atendimento</span>
+        </p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
+  <script src="script.js" defer></script>
+</body>
+
+</html>

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meu Portal do Cliente | PertoJá</title>
+  <meta name="description" content="Painel de controle do cliente: acompanhe seus chamados em tempo real, pedidos solicitados e gerencie seus dados cadastrais no PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/portal-cliente.html">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#10243e">
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="portal-cliente.html" class="ativo">Meu Portal</a>
+      <a href="como-funciona.html">Como Funciona</a>
+    </nav>
+  </header>
+
+  <!-- Conteúdo Principal Acessível: Dashboard do Consumidor -->
+  <main id="main-content" class="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6 flex-1">
+    
+    <!-- Boas-vindas ao Cliente (Contrato DOM: #clienteNome, #clienteEmail) -->
+    <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div class="flex items-start gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-perto-sea/10 text-perto-sea flex items-center justify-center font-black text-2xl shrink-0">
+            <span class="material-symbols-outlined text-3xl">account_circle</span>
+          </div>
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-perto-sea/10 text-perto-sea text-xs font-extrabold uppercase tracking-wider mb-1">
+              <span class="material-symbols-outlined text-sm">verified_user</span>
+              Painel do Consumidor
+            </div>
+            <h1 id="clienteNome" class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">
+              Carregando portal...
+            </h1>
+            <p id="clienteEmail" class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body"></p>
+          </div>
+        </div>
+
+        <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-3 rounded-full text-xs sm:text-sm inline-flex items-center gap-2 shrink-0 shadow-sm hover:scale-105 transition-all text-decoration-none">
+          <span class="material-symbols-outlined text-base">near_me</span>
+          Contratar Novo Serviço
+        </a>
+      </div>
+    </div>
+
+    <!-- Navegação por Abas (Contrato DOM: #tabBtnPedidos, #tabBtnPerfil, #contPedidos) -->
+    <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
+      <div class="chips flex flex-wrap gap-2">
+        <button class="chip on flex items-center gap-2" id="tabBtnPedidos" onclick="mudarAba('pedidos')">
+          <span class="material-symbols-outlined text-base">receipt_long</span>
+          Meus Chamados & Pedidos (<span id="contPedidos" class="font-bold">0</span>)
+        </button>
+        <button class="chip flex items-center gap-2" id="tabBtnPerfil" onclick="mudarAba('perfil')">
+          <span class="material-symbols-outlined text-base">badge</span>
+          Dados Cadastrais & Endereço
+        </button>
+      </div>
+    </div>
+
+    <!-- ABA 1: MEUS PEDIDOS (Contrato DOM: #aba-pedidos-cliente, #listaPedidosCliente) -->
+    <div id="aba-pedidos-cliente">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
+        <div class="mb-6 pb-4 border-b border-perto-road">
+          <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea">history</span>
+            Histórico de Serviços Solicitados
+          </h2>
+          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Veja o andamento de suas ordens de serviço e detalhes dos profissionais contratados.</p>
+        </div>
+
+        <div id="listaPedidosCliente">
+          <p class="text-sm text-perto-ink/70">Carregando histórico...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 2: DADOS CADASTRAIS (Contrato DOM: #aba-perfil-cliente, #formPerfilCliente, #clienteFormNome, #clienteFormTelefone, #clienteFormBio) -->
+    <div id="aba-perfil-cliente" style="display: none;">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 max-w-xl mx-auto">
+        <div class="mb-6 pb-4 border-b border-perto-road">
+          <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea">person</span>
+            Atualizar Dados Cadastrais
+          </h2>
+          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Mantenha suas informações de contato e endereço atualizadas para facilitar a chegada dos prestadores.</p>
+        </div>
+
+        <form id="formPerfilCliente" class="space-y-4">
+          <div class="campo-form">
+            <label for="clienteFormNome" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nome Completo</label>
+            <input type="text" id="clienteFormNome" required class="input-form text-sm font-medium">
+          </div>
+
+          <div class="campo-form">
+            <label for="clienteFormTelefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp</label>
+            <input type="text" id="clienteFormTelefone" required class="input-form text-sm font-medium">
+          </div>
+
+          <!-- Endereço Residencial do Cliente (ViaCEP + Geocodificação) -->
+          <div class="pt-3 border-t border-perto-road space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold text-perto-sea uppercase tracking-wider flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-sm">home_pin</span>
+                Endereço de Atendimento / Residência
+              </label>
+              <span id="clienteCepStatus" class="text-[11px] font-semibold text-perto-sea"></span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="campo-form sm:col-span-1">
+                <label for="clienteFormCep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
+                <input type="text" id="clienteFormCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink" onblur="buscarCepCliente(this.value)">
+              </div>
+              <div class="campo-form sm:col-span-2">
+                <label for="clienteFormEndereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Logradouro / Rua</label>
+                <input type="text" id="clienteFormEndereco" placeholder="Av. Paulista" class="input-form text-sm font-medium">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="campo-form">
+                <label for="clienteFormNumero" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Número</label>
+                <input type="text" id="clienteFormNumero" placeholder="1000" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="clienteFormComplemento" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Complemento</label>
+                <input type="text" id="clienteFormComplemento" placeholder="Apto 42" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="clienteFormBairro" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Bairro</label>
+                <input type="text" id="clienteFormBairro" placeholder="Bela Vista" class="input-form text-sm font-medium">
+              </div>
+              <div class="campo-form">
+                <label for="clienteFormCidade" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Cidade</label>
+                <input type="text" id="clienteFormCidade" placeholder="São Paulo" class="input-form text-sm font-medium">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="campo-form sm:col-span-1">
+                <label for="clienteFormEstado" class="text-xs font-bold text-perto-ink uppercase tracking-wider">UF</label>
+                <input type="text" id="clienteFormEstado" maxlength="2" placeholder="SP" class="input-form text-sm font-medium uppercase">
+              </div>
+              <div class="campo-form sm:col-span-1">
+                <label for="clienteFormLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude</label>
+                <input type="number" step="0.0001" id="clienteFormLat" class="input-form text-xs font-mono bg-perto-bg">
+              </div>
+              <div class="campo-form sm:col-span-1">
+                <label for="clienteFormLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude</label>
+                <input type="number" step="0.0001" id="clienteFormLng" class="input-form text-xs font-mono bg-perto-bg">
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <button type="button" class="btn2 flex-1 py-2 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5" onclick="capturarLocalizacaoCliente()">
+                <span class="material-symbols-outlined text-sm">my_location</span>
+                Usar GPS Atual
+              </button>
+              <button type="button" class="btn2 flex-1 py-2 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5" onclick="geocodificarEnderecoCliente()">
+                <span class="material-symbols-outlined text-sm">pin_drop</span>
+                Calcular Coordenadas
+              </button>
+            </div>
+          </div>
+
+          <div class="campo-form">
+            <label for="clienteFormBio" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Observações de Acesso / Ponto de Referência</label>
+            <textarea id="clienteFormBio" rows="2" class="input-form text-sm font-medium" placeholder="Ex: Casa com portão branco, interfone 2..."></textarea>
+          </div>
+
+          <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-4 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+            <span class="material-symbols-outlined text-base">save</span>
+            Salvar Alterações
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
+  <script>
+    let dadosCliente = null;
+
+    function toast(t) {
+      const d = document.createElement('div');
+      d.className = 'toast';
+      d.textContent = t;
+      document.getElementById('toasts').appendChild(d);
+      setTimeout(() => d.remove(), 4000);
+    }
+
+    const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function mudarAba(aba) {
+      document.getElementById('aba-pedidos-cliente').style.display = aba === 'pedidos' ? 'block' : 'none';
+      document.getElementById('aba-perfil-cliente').style.display = aba === 'perfil' ? 'block' : 'none';
+
+      document.getElementById('tabBtnPedidos').classList.toggle('on', aba === 'pedidos');
+      document.getElementById('tabBtnPerfil').classList.toggle('on', aba === 'perfil');
+    }
+
+    async function carregarPortalCliente() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+
+        if (!data.authenticated || data.user.tipo !== 'cliente') {
+          window.location.href = 'login.html';
+          return;
+        }
+
+        dadosCliente = data.user;
+        document.getElementById('clienteNome').textContent = `Olá, ${dadosCliente.nome}!`;
+        document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · Tel: ${dadosCliente.telefone || 'Não informado'}`;
+
+        document.getElementById('clienteFormNome').value = dadosCliente.nome;
+        document.getElementById('clienteFormTelefone').value = dadosCliente.telefone || '';
+        document.getElementById('clienteFormBio').value = dadosCliente.bio || '';
+        document.getElementById('clienteFormCep').value = dadosCliente.cep || '';
+        document.getElementById('clienteFormEndereco').value = dadosCliente.endereco || '';
+        document.getElementById('clienteFormNumero').value = dadosCliente.numero || '';
+        document.getElementById('clienteFormComplemento').value = dadosCliente.complemento || '';
+        document.getElementById('clienteFormBairro').value = dadosCliente.bairro || '';
+        document.getElementById('clienteFormCidade').value = dadosCliente.cidade || '';
+        document.getElementById('clienteFormEstado').value = dadosCliente.estado || '';
+        if (dadosCliente.lat && dadosCliente.lng) {
+          document.getElementById('clienteFormLat').value = dadosCliente.lat.toFixed(6);
+          document.getElementById('clienteFormLng').value = dadosCliente.lng.toFixed(6);
+        }
+
+        await carregarHistoricoPedidos();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function buscarCepCliente(cepVal) {
+      if (!cepVal) return;
+      const clean = cepVal.replace(/\D/g, '');
+      if (clean.length !== 8) return;
+      const statusEl = document.getElementById('clienteCepStatus');
+      if (statusEl) statusEl.textContent = 'Buscando CEP...';
+      try {
+        const res = await fetch(`/api/cep/${clean}`);
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('clienteFormEndereco').value = d.logradouro || '';
+          document.getElementById('clienteFormBairro').value = d.bairro || '';
+          document.getElementById('clienteFormCidade').value = d.localidade || '';
+          document.getElementById('clienteFormEstado').value = d.uf || '';
+          if (d.lat && d.lng) {
+            document.getElementById('clienteFormLat').value = d.lat.toFixed(6);
+            document.getElementById('clienteFormLng').value = d.lng.toFixed(6);
+          }
+          if (statusEl) statusEl.textContent = '✓ Endereço preenchido!';
+          document.getElementById('clienteFormNumero').focus();
+        } else {
+          if (statusEl) statusEl.textContent = 'CEP não encontrado.';
+        }
+      } catch (e) {
+        if (statusEl) statusEl.textContent = 'Erro ao consultar CEP.';
+      }
+    }
+
+    function capturarLocalizacaoCliente() {
+      if (!navigator.geolocation) {
+        toast('Geolocalização não suportada neste navegador.');
+        return;
+      }
+      toast('Obtendo coordenadas do dispositivo...');
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          document.getElementById('clienteFormLat').value = pos.coords.latitude.toFixed(6);
+          document.getElementById('clienteFormLng').value = pos.coords.longitude.toFixed(6);
+          toast('Coordenadas GPS obtidas com sucesso!');
+        },
+        err => {
+          toast('Não foi possível obter a localização.');
+        }
+      );
+    }
+
+    async function geocodificarEnderecoCliente() {
+      const end = document.getElementById('clienteFormEndereco').value;
+      const num = document.getElementById('clienteFormNumero').value;
+      const bairro = document.getElementById('clienteFormBairro').value;
+      const cid = document.getElementById('clienteFormCidade').value;
+      const uf = document.getElementById('clienteFormEstado').value;
+      const q = `${end} ${num}, ${bairro}, ${cid} - ${uf}, Brasil`;
+      toast('Calculando coordenadas pelo endereço...');
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('clienteFormLat').value = d.lat.toFixed(6);
+          document.getElementById('clienteFormLng').value = d.lng.toFixed(6);
+          toast('Coordenadas calculadas!');
+        }
+      } catch (e) {
+        toast('Erro ao buscar coordenadas.');
+      }
+    }
+
+    async function carregarHistoricoPedidos() {
+      const div = document.getElementById('listaPedidosCliente');
+      try {
+        const res = await fetch('/api/orders');
+        const pedidos = await res.json();
+        document.getElementById('contPedidos').textContent = pedidos.length;
+
+        if (!pedidos.length) {
+          div.innerHTML = `
+            <div class="text-center py-10 px-4">
+              <div class="w-12 h-12 rounded-full bg-perto-bg flex items-center justify-center mx-auto mb-3 text-perto-sea">
+                <span class="material-symbols-outlined text-2xl">receipt_long</span>
+              </div>
+              <p class="text-sm text-perto-ink/70 mb-4 font-body">Você ainda não solicitou nenhum serviço na plataforma.</p>
+              <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-2.5 rounded-full text-xs inline-flex items-center gap-2 text-decoration-none">
+                <span class="material-symbols-outlined text-sm">search</span>
+                Explorar Prestadores Locais
+              </a>
+            </div>
+          `;
+          return;
+        }
+
+        div.innerHTML = pedidos.map(p => {
+          let badgeClass = '';
+          if (p.status === 'finalizado') badgeClass = 'tag';
+          else if (p.status === 'cancelado') badgeClass = 'tag off';
+          else badgeClass = 'tag';
+
+          return `
+            <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
+              <div class="top">
+                <span><b>${p.servico_titulo}</b> (${p.servico_categoria})</span>
+                <span class="price">${brl(p.preco_total)}</span>
+              </div>
+              <div class="meta" style="margin: 6px 0;">
+                <span>🛠️ Profissional: <b>${p.prestador_nome}</b></span>
+                <span>📞 Tel: ${p.prestador_telefone || 'Não informado'}</span>
+                <span>Status: <b class="${badgeClass}">${p.status.toUpperCase()}</b></span>
+              </div>
+              ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${[p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', ')}</div>` : ''}
+              ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${p.observacoes}</p>` : ''}
+              <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                <a href="pedido.html" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                  <span class="material-symbols-outlined" style="font-size: 1rem;">map</span>
+                  Ver no Mapa em Tempo Real
+                </a>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar histórico de pedidos.</p>';
+      }
+    }
+
+    document.getElementById('formPerfilCliente').onsubmit = async (e) => {
+      e.preventDefault();
+      const latVal = parseFloat(document.getElementById('clienteFormLat').value);
+      const lngVal = parseFloat(document.getElementById('clienteFormLng').value);
+
+      const payload = {
+        nome: document.getElementById('clienteFormNome').value,
+        telefone: document.getElementById('clienteFormTelefone').value,
+        bio: document.getElementById('clienteFormBio').value,
+        cep: document.getElementById('clienteFormCep').value,
+        endereco: document.getElementById('clienteFormEndereco').value,
+        numero: document.getElementById('clienteFormNumero').value,
+        complemento: document.getElementById('clienteFormComplemento').value,
+        bairro: document.getElementById('clienteFormBairro').value,
+        cidade: document.getElementById('clienteFormCidade').value,
+        estado: document.getElementById('clienteFormEstado').value,
+        lat: isNaN(latVal) ? dadosCliente.lat : latVal,
+        lng: isNaN(lngVal) ? dadosCliente.lng : lngVal
+      };
+
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          toast('Dados cadastrais atualizados com sucesso!');
+          Object.assign(dadosCliente, payload);
+          document.getElementById('clienteNome').textContent = `Olá, ${payload.nome}!`;
+          document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · Tel: ${dadosCliente.telefone || 'Não informado'}`;
+          atualizarNavegacao();
+        } else {
+          toast('Erro ao atualizar dados.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação.');
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', carregarPortalCliente);
+  </script>
+</body>
+
+</html>

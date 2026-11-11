@@ -1,0 +1,18 @@
+# Robots.txt para PertoJá Marketplace
+User-agent: *
+Allow: /
+Allow: /index.html
+Allow: /pedido.html
+Allow: /como-funciona.html
+Allow: /sobre-nos.html
+Allow: /login.html
+Allow: /cadastro.html
+
+# Proteger áreas autenticadas e rotas privadas de indexação
+Disallow: /portal-*
+Disallow: /api/my-services
+Disallow: /api/orders
+Disallow: /api/profile
+
+# Sitemap canônico
+Sitemap: https://pertoja.com.br/sitemap.xml

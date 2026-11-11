@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar na Plataforma | PertoJá – Marketplace de Serviços</title>
+  <meta name="description" content="Acesse sua conta de cliente ou prestador no PertoJá e gerencie seus chamados, propostas e histórico de serviços locais.">
+  <link rel="canonical" href="https://pertoja.com.br/login.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/login.html">
+  <meta property="og:title" content="Entrar na Plataforma | PertoJá">
+  <meta property="og:description" content="Acesse sua conta e gerencie seus chamados e serviços no PertoJá.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Entrar na Plataforma | PertoJá">
+  <meta name="twitter:description" content="Acesse sua conta e gerencie seus serviços no PertoJá.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Conteúdo Principal Acessível: Cartão de Autenticação Centralizado -->
+  <main id="main-content" class="w-full max-w-md mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
+    <div class="panel card-auth bg-white p-8 sm:p-10 rounded-2xl border border-perto-road shadow-lg">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mx-auto mb-3">
+          <span class="material-symbols-outlined text-2xl font-bold" aria-hidden="true">lock</span>
+        </div>
+        <h1 class="text-2xl font-black text-perto-ink tracking-tight m-0">Acessar Plataforma</h1>
+        <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Entre com sua conta de cliente ou prestador de serviços.</p>
+      </div>
+
+      <!-- Alerta Informativo de Autenticação Necessária para Pedido -->
+      <div id="alerta-redirect" class="p-3.5 mb-5 bg-perto-sea/10 border border-perto-sea/30 rounded-xl text-xs sm:text-sm font-semibold text-perto-ink flex items-center gap-2.5" style="display: none;">
+        <span class="material-symbols-outlined text-perto-sea text-xl shrink-0" aria-hidden="true">lock</span>
+        <span id="texto-alerta-redirect">Faça login para concluir a solicitação do seu pedido. Seus itens e localização estão salvos!</span>
+      </div>
+
+      <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
+      <div id="mensagem-erro" role="alert" class="alerta-erro" style="display: none;"></div>
+
+      <!-- Formulário de Login (Contrato DOM: #formLogin, #email, #senha) -->
+      <form id="formLogin" class="space-y-4">
+        <div class="campo-form">
+          <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none" aria-hidden="true">mail</span>
+            <input type="email" id="email" required autocomplete="email" placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none" aria-hidden="true">key</span>
+            <input type="password" id="senha" required autocomplete="current-password" placeholder="Digite sua senha" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-4 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+          <span class="material-symbols-outlined text-base" aria-hidden="true">login</span>
+          Entrar na Conta
+        </button>
+      </form>
+
+      <!-- Chamada para Cadastro -->
+      <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/70 font-body">
+        <p>Ainda não possui uma conta? <a href="cadastro.html" id="linkParaCadastro" class="text-perto-sea font-bold hover:underline">Cadastre-se gratuitamente</a></p>
+      </div>
+
+      <!-- Caixa de Credenciais Demo -->
+      <div class="mt-6 bg-perto-bg border border-perto-road rounded-xl p-3.5 text-xs font-body text-perto-ink/80">
+        <div class="flex items-center gap-1.5 font-bold text-perto-ink mb-1.5">
+          <span class="material-symbols-outlined text-sm text-perto-sea">lightbulb</span>
+          Credenciais de Demonstração (Senha: 123456):
+        </div>
+        <p class="mb-1">• Prestador: <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-perto-road text-perto-sea font-bold">carlos@pertoja.com</code></p>
+        <p>• Cliente: <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-perto-road text-perto-sea font-bold">cliente@pertoja.com</code></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectParam = urlParams.get('redirect');
+    const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
+
+    if (redirectParam || hasPendingOrder) {
+      const alerta = document.getElementById('alerta-redirect');
+      if (alerta) alerta.style.display = 'flex';
+
+      const linkCadastro = document.getElementById('linkParaCadastro');
+      if (linkCadastro) {
+        const dest = redirectParam || 'pedido.html';
+        linkCadastro.href = `cadastro.html?redirect=${encodeURIComponent(dest)}${hasPendingOrder ? '&pending_order=true' : ''}`;
+      }
+    }
+
+    document.getElementById('formLogin').onsubmit = async (e) => {
+      e.preventDefault();
+      const erroDiv = document.getElementById('mensagem-erro');
+      erroDiv.style.display = 'none';
+
+      const email = document.getElementById('email').value;
+      const senha = document.getElementById('senha').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, senha })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          erroDiv.textContent = data.error || 'Erro ao efetuar login.';
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        if (data.user.tipo === 'prestador') {
+          window.location.href = 'portal-prestador.html';
+        } else {
+          // Validação defensiva contra open-redirect
+          if (redirectParam && !redirectParam.startsWith('//') && !redirectParam.includes('://')) {
+            window.location.href = redirectParam;
+          } else if (hasPendingOrder) {
+            window.location.href = 'pedido.html?restore_order=true';
+          } else {
+            window.location.href = 'portal-cliente.html';
+          }
+        }
+      } catch (err) {
+        erroDiv.textContent = 'Não foi possível conectar ao servidor backend.';
+        erroDiv.style.display = 'block';
+      }
+    };
+  </script>
+</body>
+
+</html>

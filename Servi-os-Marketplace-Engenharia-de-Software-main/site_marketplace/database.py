@@ -2,13 +2,33 @@ import sqlite3
 import os
 from werkzeug.security import generate_password_hash
 
-# Suporte ao ambiente Vercel (onde apenas /tmp é gravável) ou ambiente local/testes
-if os.environ.get('VERCEL') == '1':
-    DB_PATH = '/tmp/marketplace.db'
-elif 'MARKETPLACE_DB' in os.environ:
-    DB_PATH = os.environ['MARKETPLACE_DB']
-else:
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'marketplace.db')
+def _resolve_db_path():
+    if 'MARKETPLACE_DB' in os.environ:
+        return os.environ['MARKETPLACE_DB']
+
+    # Se Vercel ou qualquer ambiente serverless estiver ativo
+    is_serverless = (
+        os.environ.get('VERCEL') == '1'
+        or os.environ.get('VERCEL') == 'true'
+        or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
+        or 'VERCEL_REGION' in os.environ
+        or 'NOW_REGION' in os.environ
+    )
+    if is_serverless:
+        return '/tmp/marketplace.db'
+
+    # Testa se o diretório local é gravável; se não for, usa /tmp
+    local_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        test_file = os.path.join(local_dir, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('1')
+        os.remove(test_file)
+        return os.path.join(local_dir, 'marketplace.db')
+    except (OSError, IOError, PermissionError):
+        return '/tmp/marketplace.db'
+
+DB_PATH = _resolve_db_path()
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)

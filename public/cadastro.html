@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cadastre-se | PertoJá – Marketplace de Serviços Locais</title>
+  <meta name="description" content="Cadastre-se no PertoJá como cliente para contratar com segurança ou como prestador para receber chamados na sua região em São Paulo e Guarulhos.">
+  <link rel="canonical" href="https://pertoja.com.br/cadastro.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/cadastro.html">
+  <meta property="og:title" content="Cadastre-se | PertoJá – Marketplace de Serviços">
+  <meta property="og:description" content="Cadastre-se como cliente ou profissional e conecte-se aos melhores serviços locais.">
+  <meta property="og:image" content="https://pertoja.com.br/img/limpeza.jpg">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cadastre-se | PertoJá">
+  <meta name="twitter:description" content="Crie sua conta no PertoJá e conecte-se aos serviços locais.">
+  <meta name="twitter:image" content="https://pertoja.com.br/img/limpeza.jpg">
+
+  <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <!-- Link A11y Pular para o Conteúdo Principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <!-- Botão Hambúrguer Mobile -->
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <!-- Backdrop escurecido do menu drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <!-- Navegação consumida pelo auth.js -->
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Conteúdo Principal Acessível: Stepper Onboarding Card Centralizado -->
+  <main id="main-content" class="w-full max-w-xl mx-auto px-4 py-10 flex-1 flex flex-col justify-center">
+    <div class="panel card-auth bg-white p-8 sm:p-10 rounded-2xl border border-perto-road shadow-lg">
+      
+      <!-- Topo com Indicador de Onboarding Multi-etapas -->
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-perto-sea/10 text-perto-sea text-xs font-extrabold uppercase tracking-wider mb-2">
+          <span class="material-symbols-outlined text-sm" aria-hidden="true">person_add</span>
+          Cadastro Unificado
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Criar Nova Conta</h1>
+        <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Junte-se à maior rede de profissionais e clientes locais da sua região.</p>
+      </div>
+
+      <!-- Alerta Informativo de Autenticação Necessária para Pedido -->
+      <div id="alerta-redirect" class="p-3.5 mb-5 bg-perto-sea/10 border border-perto-sea/30 rounded-xl text-xs sm:text-sm font-semibold text-perto-ink flex items-center gap-2.5" style="display: none;">
+        <span class="material-symbols-outlined text-perto-sea text-xl shrink-0" aria-hidden="true">how_to_reg</span>
+        <span id="texto-alerta-redirect">Cadastre-se para concluir a contratação do serviço. Seus itens e localização estão salvos!</span>
+      </div>
+
+      <!-- Alerta de Erro (Contrato DOM: #mensagem-erro) -->
+      <div id="mensagem-erro" role="alert" class="alerta-erro" style="display: none;"></div>
+
+      <!-- Formulário de Cadastro (Contrato DOM: #formCadastro) -->
+      <form id="formCadastro" class="space-y-4">
+        
+        <!-- Seletor de Tipo de Conta (Contrato DOM: input[name="tipo"], #lblCliente, #lblPrestador, alternarTipo) -->
+        <div class="campo-form mb-4">
+          <label class="text-xs font-bold text-perto-ink uppercase tracking-wider mb-2">Como você deseja utilizar a plataforma?</label>
+          <div class="tipo-conta-selector grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="radio-card ativo flex items-start gap-3 p-3.5 border-2 border-perto-sea bg-[#eef6f9] rounded-xl cursor-pointer transition-all" id="lblCliente">
+              <input type="radio" name="tipo" value="cliente" checked onchange="alternarTipo('cliente')" class="mt-1 text-perto-sea focus:ring-perto-sea">
+              <div>
+                <b class="text-sm text-perto-ink block">Sou Cliente</b>
+                <small class="text-xs text-perto-ink/70 font-body">Quero encontrar e contratar profissionais.</small>
+              </div>
+            </label>
+
+            <label class="radio-card flex items-start gap-3 p-3.5 border-2 border-perto-road bg-white rounded-xl cursor-pointer transition-all" id="lblPrestador">
+              <input type="radio" name="tipo" value="prestador" onchange="alternarTipo('prestador')" class="mt-1 text-perto-sea focus:ring-perto-sea">
+              <div>
+                <b class="text-sm text-perto-ink block">Sou Prestador Pro</b>
+                <small class="text-xs text-perto-ink/70 font-body">Quero oferecer meus serviços e definir preços.</small>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Campos Universais (Contrato DOM: #nome, #email, #telefone, #senha) -->
+        <div class="campo-form">
+          <label for="nome" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nome Completo</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">badge</span>
+            <input type="text" id="nome" required placeholder="Ex: João da Silva" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">mail</span>
+            <input type="email" id="email" required placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="telefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">phone</span>
+            <input type="text" id="telefone" required placeholder="(11) 98765-4321" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">key</span>
+            <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres" class="input-form pl-11 text-sm font-medium">
+          </div>
+        </div>
+
+        <!-- Seção de Endereço Real no Brasil (ViaCEP + Geocodificação) -->
+        <div class="pt-4 border-t border-perto-road space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5 text-xs font-extrabold text-perto-sea uppercase tracking-wider">
+              <span class="material-symbols-outlined text-sm">location_on</span>
+              Endereço Real de Atendimento / Residência
+            </div>
+            <span id="cepStatus" class="text-[11px] font-semibold text-perto-sea"></span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="campo-form sm:col-span-1">
+              <label for="cep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
+              <input type="text" id="cep" maxlength="9" placeholder="Ex: 01310-100" class="input-form text-sm font-medium font-bold text-perto-ink" onblur="buscarCEP(this.value)">
+            </div>
+            <div class="campo-form sm:col-span-2">
+              <label for="endereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Logradouro / Rua</label>
+              <input type="text" id="endereco" placeholder="Ex: Av. Paulista" class="input-form text-sm font-medium">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="campo-form">
+              <label for="numero" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Número</label>
+              <input type="text" id="numero" placeholder="1000" class="input-form text-sm font-medium">
+            </div>
+            <div class="campo-form">
+              <label for="bairro" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Bairro</label>
+              <input type="text" id="bairro" placeholder="Bela Vista" class="input-form text-sm font-medium">
+            </div>
+            <div class="campo-form">
+              <label for="cidade" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Cidade</label>
+              <input type="text" id="cidade" placeholder="São Paulo" class="input-form text-sm font-medium">
+            </div>
+            <div class="campo-form">
+              <label for="estado" class="text-xs font-bold text-perto-ink uppercase tracking-wider">UF</label>
+              <input type="text" id="estado" maxlength="2" placeholder="SP" class="input-form text-sm font-medium uppercase">
+            </div>
+          </div>
+          <input type="hidden" id="lat">
+          <input type="hidden" id="lng">
+        </div>
+
+        <!-- Campos Adicionais Exclusivos do Prestador (Contrato DOM: #campos-prestador, #categoria, #preco_inicial, #bio) -->
+        <div id="campos-prestador" style="display: none;" class="pt-4 mt-4 border-t border-dashed border-perto-road space-y-4">
+          <div class="flex items-center gap-2 mb-2 text-xs font-extrabold text-perto-sea uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">business_center</span>
+            Informações do Anúncio Inicial
+          </div>
+
+          <div class="campo-form">
+            <label for="categoria" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Categoria de Especialidade</label>
+            <select id="categoria" class="input-form text-sm font-medium">
+              <option value="Limpeza">Limpeza Residencial e Comercial</option>
+              <option value="Elétrica">Instalações e Reparos Elétricos</option>
+              <option value="Encanamento">Encanamento e Desentupimento</option>
+              <option value="Pintura">Pintura e Acabamento</option>
+              <option value="Jardinagem">Jardinagem e Paisagismo</option>
+              <option value="Tecnologia">Suporte de TI e Informática</option>
+              <option value="Marcenaria">Marcenaria e Montagem de Móveis</option>
+            </select>
+          </div>
+
+          <div class="campo-form">
+            <label for="preco_inicial" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Preço Inicial Estimado (R$)</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/40 text-lg pointer-events-none">payments</span>
+              <input type="number" id="preco_inicial" min="10" step="5" placeholder="Ex: 150.00" class="input-form pl-11 text-sm font-medium font-bold text-perto-sea">
+            </div>
+          </div>
+
+          <div class="campo-form">
+            <label for="bio" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Apresentação Profissional / Biografia</label>
+            <textarea id="bio" rows="3" placeholder="Fale sobre suas qualificações, anos de experiência e diferenciais..." class="input-form text-sm font-medium"></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-6 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+          <span class="material-symbols-outlined text-base">check_circle</span>
+          Concluir Cadastro
+        </button>
+      </form>
+
+      <!-- Chamada para Login -->
+      <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/70 font-body">
+        <p>Já possui cadastro no PertoJá? <a href="login.html" id="linkParaLogin" class="text-perto-sea font-bold hover:underline">Faça login aqui</a></p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Container de Toasts para feedback visual -->
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-navegacao">
+        <a href="index.html">Início</a>
+        <a href="pedido.html">Buscar Serviços</a>
+        <a href="como-funciona.html">Como Funciona</a>
+        <a href="sobre-nos.html">Sobre Nós</a>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts do PertoJá -->
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectParam = urlParams.get('redirect');
+    const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
+
+    if (redirectParam || hasPendingOrder) {
+      const alerta = document.getElementById('alerta-redirect');
+      if (alerta) alerta.style.display = 'flex';
+
+      const linkLogin = document.getElementById('linkParaLogin');
+      if (linkLogin) {
+        const dest = redirectParam || 'pedido.html';
+        linkLogin.href = `login.html?redirect=${encodeURIComponent(dest)}${hasPendingOrder ? '&pending_order=true' : ''}`;
+      }
+    }
+
+    function alternarTipo(tipo) {
+      const camposPrestador = document.getElementById('campos-prestador');
+      const lblCliente = document.getElementById('lblCliente');
+      const lblPrestador = document.getElementById('lblPrestador');
+
+      if (tipo === 'prestador') {
+        camposPrestador.style.display = 'block';
+        lblPrestador.classList.add('ativo');
+        lblPrestador.style.borderColor = 'var(--sea)';
+        lblPrestador.style.background = '#eef6f9';
+        lblCliente.classList.remove('ativo');
+        lblCliente.style.borderColor = 'var(--road)';
+        lblCliente.style.background = '#ffffff';
+      } else {
+        camposPrestador.style.display = 'none';
+        lblCliente.classList.add('ativo');
+        lblCliente.style.borderColor = 'var(--sea)';
+        lblCliente.style.background = '#eef6f9';
+        lblPrestador.classList.remove('ativo');
+        lblPrestador.style.borderColor = 'var(--road)';
+        lblPrestador.style.background = '#ffffff';
+      }
+    }
+
+    async function buscarCEP(cepVal) {
+      if (!cepVal) return;
+      const cepClean = cepVal.replace(/\D/g, '');
+      if (cepClean.length !== 8) return;
+
+      const statusEl = document.getElementById('cepStatus');
+      if (statusEl) statusEl.textContent = 'Buscando CEP...';
+
+      try {
+        const res = await fetch(`/api/cep/${cepClean}`);
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('endereco').value = d.logradouro || '';
+          document.getElementById('bairro').value = d.bairro || '';
+          document.getElementById('cidade').value = d.localidade || '';
+          document.getElementById('estado').value = d.uf || '';
+          if (d.lat && d.lng) {
+            document.getElementById('lat').value = d.lat;
+            document.getElementById('lng').value = d.lng;
+          }
+          if (statusEl) statusEl.textContent = '✓ Endereço preenchido!';
+          document.getElementById('numero').focus();
+        } else {
+          if (statusEl) statusEl.textContent = 'CEP não encontrado.';
+        }
+      } catch (err) {
+        if (statusEl) statusEl.textContent = 'Falha ao buscar CEP.';
+      }
+    }
+
+    document.getElementById('formCadastro').onsubmit = async (e) => {
+      e.preventDefault();
+      const erroDiv = document.getElementById('mensagem-erro');
+      erroDiv.style.display = 'none';
+
+      const tipo = document.querySelector('input[name="tipo"]:checked').value;
+      const payload = {
+        nome: document.getElementById('nome').value,
+        email: document.getElementById('email').value,
+        telefone: document.getElementById('telefone').value,
+        senha: document.getElementById('senha').value,
+        tipo: tipo,
+        cep: document.getElementById('cep').value,
+        endereco: document.getElementById('endereco').value,
+        numero: document.getElementById('numero').value,
+        bairro: document.getElementById('bairro').value,
+        cidade: document.getElementById('cidade').value,
+        estado: document.getElementById('estado').value,
+        lat: document.getElementById('lat').value ? parseFloat(document.getElementById('lat').value) : null,
+        lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null
+      };
+
+      if (!payload.senha || payload.senha.length < 6) {
+        erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
+        erroDiv.style.display = 'block';
+        return;
+      }
+
+      if (tipo === 'prestador') {
+        payload.categoria = document.getElementById('categoria').value;
+        const precoVal = parseFloat(document.getElementById('preco_inicial').value);
+        payload.preco_inicial = (!isNaN(precoVal) && precoVal > 0) ? precoVal : 100.0;
+        payload.bio = document.getElementById('bio').value;
+      }
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          erroDiv.textContent = data.error || 'Erro ao realizar cadastro.';
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        if (tipo === 'prestador') {
+          window.location.href = 'portal-prestador.html';
+        } else {
+          // Validação defensiva contra open-redirect
+          if (redirectParam && !redirectParam.startsWith('//') && !redirectParam.includes('://')) {
+            window.location.href = redirectParam;
+          } else if (hasPendingOrder) {
+            window.location.href = 'pedido.html?restore_order=true';
+          } else {
+            window.location.href = 'portal-cliente.html';
+          }
+        }
+      } catch (err) {
+        erroDiv.textContent = 'Erro ao conectar ao servidor.';
+        erroDiv.style.display = 'block';
+      }
+    };
+  </script>
+  <!-- Scripts do PertoJá com execução diferida -->
+  <script src="auth.js" defer></script>
+</body>
+
+</html>

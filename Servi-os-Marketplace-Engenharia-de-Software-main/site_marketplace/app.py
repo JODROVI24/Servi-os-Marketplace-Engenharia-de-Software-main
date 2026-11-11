@@ -11,7 +11,18 @@ from database import get_db_connection, init_db
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+
+# Prioridade para o diretório de arquivos estáticos (public no root ou index local)
+candidate_static_dirs = [
+    os.path.join(ROOT_DIR, 'public'),
+    os.path.join(BASE_DIR, 'index'),
+    os.path.join(ROOT_DIR, 'site_marketplace', 'index')
+]
 STATIC_DIR = os.path.join(BASE_DIR, 'index')
+for candidate in candidate_static_dirs:
+    if os.path.isdir(candidate):
+        STATIC_DIR = candidate
+        break
 
 
 def _load_dotenv():
@@ -192,7 +203,8 @@ def serve_static(filename):
         'Servi-os-Marketplace-Engenharia-de-Software-main',
         'site_marketplace/index',
         'site_marketplace',
-        'index'
+        'index',
+        'public'
     )
     for prefix in prefixes:
         if clean_name == prefix:
@@ -201,6 +213,10 @@ def serve_static(filename):
         if clean_name.startswith(prefix + '/'):
             clean_name = clean_name[len(prefix) + 1:]
             break
+
+    # Se por engano uma rota /api/... cair em serve_static, retorna JSON 404
+    if clean_name == 'api' or clean_name.startswith('api/'):
+        return jsonify({'error': 'Endpoint da API não encontrado.'}), 404
 
     # 2. Se a rota for vazia ou 'index'/'home', servir index.html
     if not clean_name or clean_name in ('index', 'home'):
