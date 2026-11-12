@@ -259,17 +259,15 @@ def sincronizar_todos_prestadores(conn):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ''', (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng))
         else:
+            # Preserva edições feitas pelo prestador (localização, preço, etc.).
+            # Apenas garante que exista ao menos um serviço para o prestador de exemplo.
             p_id = row['id']
-            cursor.execute('''
-                UPDATE users
-                SET nome = ?, telefone = ?, bio = ?, cep = ?, endereco = ?, numero = ?, bairro = ?, cidade = ?, estado = ?, lat = ?, lng = ?, avaliacao_media = ?, disponivel = ?
-                WHERE id = ?
-            ''', (nome, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp, p_id))
-            cursor.execute('''
-                UPDATE services
-                SET titulo = ?, descricao = ?, categoria = ?, preco = ?, cep = ?, endereco = ?, numero = ?, bairro = ?, cidade = ?, estado = ?, lat = ?, lng = ?
-                WHERE prestador_id = ?
-            ''', (s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng, p_id))
+            has_service = cursor.execute("SELECT 1 FROM services WHERE prestador_id = ? LIMIT 1", (p_id,)).fetchone()
+            if not has_service:
+                cursor.execute('''
+                    INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, lat, lng, ativo)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ''', (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng))
 
         # Pre-seed de cache de geocodificação para resiliência contra rate-limit do Nominatim
         cache_keys = [
