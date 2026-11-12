@@ -204,14 +204,26 @@ def geocode_address(address_str, street=None, neighborhood=None, city=None, stat
         raw = address_str.strip()
         if raw not in candidates:
             candidates.insert(0, raw)
+        # Versão sem número de imóvel (ex: "Rua do Araújo 123, ..." -> "Rua do Araújo, ...")
+        raw_no_num = re.sub(r'\s+\d+\b', '', raw)
+        if raw_no_num != raw and raw_no_num not in candidates:
+            candidates.append(raw_no_num)
         parts = [p.strip() for p in re.split(r'[,–-]', raw) if p.strip()]
         if len(parts) >= 3:
-            simplified = f"{parts[0]}, {parts[-1]}, Brasil"
+            street_clean = re.sub(r'\s+\d+\b', '', parts[0]).strip()
+            simplified = f"{street_clean}, {parts[-1]}, Brasil"
             if simplified not in candidates:
                 candidates.append(simplified)
             city_only = f"{parts[-1]}, Brasil"
             if city_only not in candidates:
                 candidates.append(city_only)
+
+    # Verifica se algum candidato estruturado já existe no cache local
+    for cand in candidates:
+        if cand:
+            cached_cand = get_cached_geocode(cand)
+            if cached_cand:
+                return cached_cand
 
     headers = {'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'}
     for cand in candidates:
@@ -432,9 +444,19 @@ def consultar_cep(cep):
 @rate_limit(30, 60)
 def geocode_endpoint():
     query = request.args.get('address') or request.args.get('q') or ''
-    if not query.strip():
+    street = (request.args.get('street') or '').strip() or None
+    neighborhood = (request.args.get('neighborhood') or '').strip() or None
+    city = (request.args.get('city') or '').strip() or None
+    state = (request.args.get('state') or '').strip() or None
+    if not query.strip() and not any([street, neighborhood, city, state]):
         return jsonify({'error': 'Parâmetro de endereço obrigatório.'}), 400
-    lat, lng = geocode_address(query.strip())
+    lat, lng = geocode_address(
+        query.strip(),
+        street=street,
+        neighborhood=neighborhood,
+        city=city,
+        state=state
+    )
     if lat is None or lng is None:
         return jsonify({'error': 'Endereço não localizado no mapa.', 'lat': None, 'lng': None}), 404
     return jsonify({'lat': lat, 'lng': lng, 'query': query.strip()})

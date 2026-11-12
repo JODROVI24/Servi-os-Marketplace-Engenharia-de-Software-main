@@ -270,6 +270,35 @@ def sincronizar_todos_prestadores(conn):
                 SET titulo = ?, descricao = ?, categoria = ?, preco = ?, cep = ?, endereco = ?, numero = ?, bairro = ?, cidade = ?, estado = ?, lat = ?, lng = ?
                 WHERE prestador_id = ?
             ''', (s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng, p_id))
+
+        # Pre-seed de cache de geocodificação para resiliência contra rate-limit do Nominatim
+        cache_keys = [
+            f"{end}, {bairro}, {cid} - {uf}".lower(),
+            f"{end}, {bairro}, {cid} - {uf}, brasil".lower(),
+            f"{end}, {cid} - {uf}, brasil".lower(),
+            f"{end} {num}, {bairro}, {cid} - {uf}, brasil".lower(),
+            f"{end} {num} {cid}".lower(),
+            f"{bairro}, {cid} - {uf}, brasil".lower(),
+        ]
+        for ck in cache_keys:
+            cursor.execute('''
+                INSERT OR IGNORE INTO geocode_cache (query, lat, lng, origem)
+                VALUES (?, ?, ?, 'seed')
+            ''', (ck, lat, lng))
+
+    # Entradas adicionais sem acento usadas em buscas rápidas
+    extra_cache = [
+        ('avenida paulista 1000 sao paulo', -23.5653, -46.6517),
+        ('rua doutor olavo egidio, santana, sao paulo - sp', -23.5029, -46.6258),
+        ('rua dr. olavo egídio, santana, são paulo - sp', -23.5029, -46.6258),
+        ('rua doutor olavo egídio, santana, são paulo - sp', -23.5029, -46.6258),
+    ]
+    for q_str, c_lat, c_lng in extra_cache:
+        cursor.execute('''
+            INSERT OR IGNORE INTO geocode_cache (query, lat, lng, origem)
+            VALUES (?, ?, ?, 'seed')
+        ''', (q_str, c_lat, c_lng))
+
     conn.commit()
 
 def get_cached_geocode(query):
