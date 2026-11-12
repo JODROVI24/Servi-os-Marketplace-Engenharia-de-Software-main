@@ -189,6 +189,10 @@ def init_db():
         ))
         conn.commit()
 
+    # Remove cache legado (podia associar endereço completo ao centro da cidade/bairro)
+    cursor.execute("DELETE FROM geocode_cache WHERE origem = 'nominatim'")
+    conn.commit()
+
     sincronizar_todos_prestadores(conn)
     conn.close()
 
@@ -276,7 +280,6 @@ def sincronizar_todos_prestadores(conn):
             f"{end}, {cid} - {uf}, brasil".lower(),
             f"{end} {num}, {bairro}, {cid} - {uf}, brasil".lower(),
             f"{end} {num} {cid}".lower(),
-            f"{bairro}, {cid} - {uf}, brasil".lower(),
         ]
         for ck in cache_keys:
             cursor.execute('''

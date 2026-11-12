@@ -169,15 +169,12 @@ def calcular_distancia(lat1, lng1, lat2, lng2):
         return 0.0
 
 # Helper para geocodificação de endereços no OpenStreetMap Nominatim com resolução multinível e cache local
-def geocode_address(address_str, street=None, neighborhood=None, city=None, state=None, fallback=None):
+def geocode_address(address_str, street=None, neighborhood=None, city=None, state=None, fallback=None, precise_only=False):
     """
-    Geocodifica endereço no OpenStreetMap Nominatim com tentativas progressivas e cache SQLite:
-    0. Cache local (tabela geocode_cache) para resolução imediata
-    1. Endereço completo (com logradouro, bairro, cidade, estado)
-    2. Logradouro + Cidade + Estado (sem bairro, eliminando a principal causa de falhas no OSM Brasil)
-    3. Bairro + Cidade + Estado
-    4. Cidade + Estado (garante ao menos a centralização na cidade correta)
-    5. fallback explicitamente fornecido (None por padrão)
+    Geocodifica endereço no OpenStreetMap Nominatim com tentativas progressivas e cache SQLite.
+    Candidatos PRECISOS (nível de rua) são tentados primeiro; candidatos APROXIMADOS
+    (bairro/cidade) só são usados se precise_only=False e nunca são gravados no cache
+    do endereço completo (evita fixar o ponto no centro da cidade).
     """
     cache_query = address_str.strip() if address_str and address_str.strip() else f"{street or ''}, {neighborhood or ''}, {city or ''} - {state or ''}".strip(' ,-')
     if cache_query:
@@ -185,50 +182,50 @@ def geocode_address(address_str, street=None, neighborhood=None, city=None, stat
         if cached:
             return cached
 
-    candidates = []
+    candidates = []  # lista de (texto, preciso)
 
-    # Monta candidatos por componentes estruturados se fornecidos
-    if street and city:
-        if neighborhood:
-            candidates.append(f"{street}, {neighborhood}, {city} - {state or ''}, Brasil".strip(' ,-'))
-        candidates.append(f"{street}, {city} - {state or ''}, Brasil".strip(' ,-'))
-    if neighborhood and city:
-        candidates.append(f"{neighborhood}, {city} - {state or ''}, Brasil".strip(' ,-'))
-    if city:
-        candidates.append(f"{city} - {state or ''}, Brasil".strip(' ,-'))
-    if state and not city:
-        candidates.append(f"{state}, Brasil".strip(' ,-'))
+    def add(text, precise):
+        text = (text or '').strip(' ,-')
+        if text and all(text != c[0] for c in candidates):
+            candidates.append((text, precise))
 
-    # Se uma string de busca livre foi passada
     if address_str and address_str.strip():
         raw = address_str.strip()
-        if raw not in candidates:
-            candidates.insert(0, raw)
-        # Versão sem número de imóvel (ex: "Rua do Araújo 123, ..." -> "Rua do Araújo, ...")
+        add(raw, True)
         raw_no_num = re.sub(r'\s+\d+\b', '', raw)
-        if raw_no_num != raw and raw_no_num not in candidates:
-            candidates.append(raw_no_num)
-        parts = [p.strip() for p in re.split(r'[,–-]', raw) if p.strip()]
+        if raw_no_num != raw:
+            add(raw_no_num, True)
+
+    if street and city:
+        if neighborhood:
+            add(f"{street}, {neighborhood}, {city} - {state or ''}, Brasil", True)
+        add(f"{street}, {city} - {state or ''}, Brasil", True)
+
+    if address_str and address_str.strip():
+        parts = [p.strip() for p in re.split(r'[,–-]', address_str.strip()) if p.strip()]
         if len(parts) >= 3:
             street_clean = re.sub(r'\s+\d+\b', '', parts[0]).strip()
-            simplified = f"{street_clean}, {parts[-1]}, Brasil"
-            if simplified not in candidates:
-                candidates.append(simplified)
-            city_only = f"{parts[-1]}, Brasil"
-            if city_only not in candidates:
-                candidates.append(city_only)
+            add(f"{street_clean}, {parts[-1]}, Brasil", True)
 
-    # Verifica se algum candidato estruturado já existe no cache local
-    for cand in candidates:
-        if cand:
-            cached_cand = get_cached_geocode(cand)
-            if cached_cand:
-                return cached_cand
+    # Aproximados
+    if neighborhood and city:
+        add(f"{neighborhood}, {city} - {state or ''}, Brasil", False)
+    if city:
+        add(f"{city} - {state or ''}, Brasil", False)
+    if state and not city:
+        add(f"{state}, Brasil", False)
+    if address_str and address_str.strip():
+        parts = [p.strip() for p in re.split(r'[,–-]', address_str.strip()) if p.strip()]
+        if len(parts) >= 3:
+            add(f"{parts[-1]}, Brasil", False)
 
     headers = {'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'}
-    for cand in candidates:
-        if not cand:
+    for cand, precise in candidates:
+        if precise_only and not precise:
             continue
+        cached_cand = get_cached_geocode(cand)
+        if cached_cand:
+            return cached_cand
         try:
             url = f'https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(cand)}&limit=1'
             r = requests.get(url, headers=headers, timeout=3.0)
@@ -237,10 +234,9 @@ def geocode_address(address_str, street=None, neighborhood=None, city=None, stat
                 if res and len(res) > 0:
                     lat_found = float(res[0]['lat'])
                     lng_found = float(res[0]['lon'])
-                    if cache_query:
-                        save_cached_geocode(cache_query, lat_found, lng_found, origem='nominatim')
-                    if cand != cache_query:
-                        save_cached_geocode(cand, lat_found, lng_found, origem='nominatim')
+                    save_cached_geocode(cand, lat_found, lng_found, origem='nominatim-v2')
+                    if precise and cache_query and cand != cache_query:
+                        save_cached_geocode(cache_query, lat_found, lng_found, origem='nominatim-v2')
                     return lat_found, lng_found
         except Exception:
             continue
@@ -424,17 +420,40 @@ def consultar_cep(cep):
     city = data.get('localidade') or ''
     uf = data.get('uf') or ''
 
-    lat, lng = geocode_address(
-        address_str=f"{street}, {bairro}, {city} - {uf}".strip(', -'),
-        street=street,
-        neighborhood=bairro,
-        city=city,
-        state=uf
-    )
+    address_full = f"{street}, {bairro}, {city} - {uf}".strip(', -')
 
-    # 4. Caso a rua não esteja indexada no Nominatim, usa coordenadas de contingência da BrasilAPI se disponíveis
+    # 3a. Precisão de rua via Nominatim (somente candidatos com logradouro)
+    lat, lng = (None, None)
+    if street:
+        lat, lng = geocode_address(
+            address_str=address_full, street=street, neighborhood=bairro,
+            city=city, state=uf, precise_only=True
+        )
+
+    # 3b. Coordenadas por CEP da BrasilAPI (mais precisas que o centro do bairro/cidade)
+    if (lat is None or lng is None) and not backup_coords:
+        try:
+            r_b = requests.get(
+                f'https://brasilapi.com.br/api/cep/v2/{clean_cep}',
+                headers={'User-Agent': 'PertoJaMarketplace/2.0 (suporte@pertoja.com.br)'},
+                timeout=3.0
+            )
+            if r_b.status_code == 200:
+                c = r_b.json().get('location', {}).get('coordinates', {})
+                if c.get('latitude') and c.get('longitude'):
+                    backup_coords = (float(c['latitude']), float(c['longitude']))
+        except Exception:
+            pass
     if (lat is None or lng is None) and backup_coords:
         lat, lng = backup_coords
+
+    # 3c. Último recurso: aproximação por bairro/cidade (sinalizada como aproximada)
+    if lat is None or lng is None:
+        lat, lng = geocode_address(
+            address_str=address_full, street=street, neighborhood=bairro,
+            city=city, state=uf
+        )
+        data['aproximado'] = lat is not None
 
     data['lat'] = lat
     data['lng'] = lng
