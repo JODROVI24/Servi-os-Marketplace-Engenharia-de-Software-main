@@ -248,11 +248,11 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div class="campo-form">
                 <label for="perfilLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude Calculada</label>
-                <input type="number" step="0.0001" id="perfilLat" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="perfilLat" class="input-form text-xs font-mono bg-perto-bg">
               </div>
               <div class="campo-form">
                 <label for="perfilLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude Calculada</label>
-                <input type="number" step="0.0001" id="perfilLng" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="perfilLng" class="input-form text-xs font-mono bg-perto-bg">
               </div>
             </div>
           </div>
@@ -652,6 +652,7 @@
     }
 
     async function geocodificarEnderecoPrestador() {
+      const cep = (document.getElementById('perfilCep').value || '').replace(/\D/g, '');
       const end = document.getElementById('perfilEndereco').value;
       const num = document.getElementById('perfilNumero').value;
       const bairro = document.getElementById('perfilBairro').value;
@@ -660,13 +661,36 @@
       const q = `${end} ${num}, ${bairro}, ${cid} - ${uf}, Brasil`;
       toast('Recalculando coordenadas com base no endereço...');
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const params = new URLSearchParams({
+          q,
+          street: end,
+          neighborhood: bairro,
+          city: cid,
+          state: uf
+        });
+        const res = await fetch(`/api/geocode?${params.toString()}`);
         if (res.ok) {
           const d = await res.json();
-          document.getElementById('perfilLat').value = d.lat.toFixed(6);
-          document.getElementById('perfilLng').value = d.lng.toFixed(6);
-          toast('Coordenadas geocodificadas com sucesso!');
+          if (d.lat != null && d.lng != null) {
+            document.getElementById('perfilLat').value = Number(d.lat).toFixed(6);
+            document.getElementById('perfilLng').value = Number(d.lng).toFixed(6);
+            toast('Coordenadas geocodificadas com sucesso!');
+            return;
+          }
         }
+        if (cep.length === 8) {
+          const cepRes = await fetch(`/api/cep/${cep}`);
+          if (cepRes.ok) {
+            const cd = await cepRes.json();
+            if (cd.lat != null && cd.lng != null) {
+              document.getElementById('perfilLat').value = Number(cd.lat).toFixed(6);
+              document.getElementById('perfilLng').value = Number(cd.lng).toFixed(6);
+              toast('Coordenadas atualizadas pelo CEP!');
+              return;
+            }
+          }
+        }
+        toast('Endereço não localizado com precisão; mantendo coordenadas atuais.');
       } catch (e) {
         toast('Não foi possível obter coordenadas.');
       }
@@ -674,6 +698,8 @@
 
     document.getElementById('formPerfilPrestador').onsubmit = async (e) => {
       e.preventDefault();
+      const latVal = parseFloat(document.getElementById('perfilLat').value);
+      const lngVal = parseFloat(document.getElementById('perfilLng').value);
       const payload = {
         nome: document.getElementById('perfilNome').value,
         telefone: document.getElementById('perfilTelefone').value,
@@ -684,8 +710,8 @@
         bairro: document.getElementById('perfilBairro').value,
         cidade: document.getElementById('perfilCidade').value,
         estado: document.getElementById('perfilEstado').value,
-        lat: parseFloat(document.getElementById('perfilLat').value),
-        lng: parseFloat(document.getElementById('perfilLng').value),
+        lat: isNaN(latVal) ? dadosPrestador.lat : latVal,
+        lng: isNaN(lngVal) ? dadosPrestador.lng : lngVal,
         disponivel: dadosPrestador.disponivel
       };
 

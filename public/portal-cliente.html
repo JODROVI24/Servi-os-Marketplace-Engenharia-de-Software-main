@@ -217,11 +217,11 @@
               </div>
               <div class="campo-form sm:col-span-1">
                 <label for="clienteFormLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude</label>
-                <input type="number" step="0.0001" id="clienteFormLat" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="clienteFormLat" class="input-form text-xs font-mono bg-perto-bg">
               </div>
               <div class="campo-form sm:col-span-1">
                 <label for="clienteFormLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude</label>
-                <input type="number" step="0.0001" id="clienteFormLng" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="clienteFormLng" class="input-form text-xs font-mono bg-perto-bg">
               </div>
             </div>
 
@@ -375,6 +375,7 @@
     }
 
     async function geocodificarEnderecoCliente() {
+      const cep = (document.getElementById('clienteFormCep').value || '').replace(/\D/g, '');
       const end = document.getElementById('clienteFormEndereco').value;
       const num = document.getElementById('clienteFormNumero').value;
       const bairro = document.getElementById('clienteFormBairro').value;
@@ -383,13 +384,36 @@
       const q = `${end} ${num}, ${bairro}, ${cid} - ${uf}, Brasil`;
       toast('Calculando coordenadas pelo endereço...');
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const params = new URLSearchParams({
+          q,
+          street: end,
+          neighborhood: bairro,
+          city: cid,
+          state: uf
+        });
+        const res = await fetch(`/api/geocode?${params.toString()}`);
         if (res.ok) {
           const d = await res.json();
-          document.getElementById('clienteFormLat').value = d.lat.toFixed(6);
-          document.getElementById('clienteFormLng').value = d.lng.toFixed(6);
-          toast('Coordenadas calculadas!');
+          if (d.lat != null && d.lng != null) {
+            document.getElementById('clienteFormLat').value = Number(d.lat).toFixed(6);
+            document.getElementById('clienteFormLng').value = Number(d.lng).toFixed(6);
+            toast('Coordenadas calculadas!');
+            return;
+          }
         }
+        if (cep.length === 8) {
+          const cepRes = await fetch(`/api/cep/${cep}`);
+          if (cepRes.ok) {
+            const cd = await cepRes.json();
+            if (cd.lat != null && cd.lng != null) {
+              document.getElementById('clienteFormLat').value = Number(cd.lat).toFixed(6);
+              document.getElementById('clienteFormLng').value = Number(cd.lng).toFixed(6);
+              toast('Coordenadas atualizadas pelo CEP!');
+              return;
+            }
+          }
+        }
+        toast('Endereço não localizado com precisão; mantendo coordenadas atuais.');
       } catch (e) {
         toast('Erro ao buscar coordenadas.');
       }
