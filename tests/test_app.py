@@ -796,5 +796,281 @@ class TestMarketplaceFull(unittest.TestCase):
         with patch.dict(os.environ, {'AWS_LAMBDA_FUNCTION_NAME': 'fn'}, clear=True):
             self.assertEqual(database._resolve_db_path(), '/tmp/marketplace.db')
 
+    def test_28_register_plano_and_auth_payloads(self):
+        # Cadastro com plano 'pro'
+        res_pro = self.client.post('/api/auth/register', json={
+            'nome': 'Prestador Pro Teste',
+            'email': 'pro_teste@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'plano': 'pro',
+            'categoria': 'Limpeza',
+            'preco_inicial': 150.0
+        })
+        self.assertEqual(res_pro.status_code, 201)
+        data_pro = json.loads(res_pro.data)
+        self.assertEqual(data_pro['user']['plano'], 'pro')
+
+        # /api/auth/me e /api/profile devem incluir plano
+        res_me = self.client.get('/api/auth/me')
+        self.assertEqual(res_me.status_code, 200)
+        self.assertEqual(json.loads(res_me.data)['user']['plano'], 'pro')
+
+        res_prof = self.client.get('/api/profile')
+        self.assertEqual(res_prof.status_code, 200)
+        self.assertEqual(json.loads(res_prof.data)['plano'], 'pro')
+
+        # Cadastro com plano inválido faz fallback para 'basico'
+        res_inv = self.client.post('/api/auth/register', json={
+            'nome': 'Cliente Basico Teste',
+            'email': 'basico_teste@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'cliente',
+            'plano': 'enterprise_xyz'
+        })
+        self.assertEqual(res_inv.status_code, 201)
+        self.assertEqual(json.loads(res_inv.data)['user']['plano'], 'basico')
+
+        # Login retorna plano
+        res_login = self.client.post('/api/auth/login', json={
+            'email': 'pro_teste@pertoja.com',
+            'senha': 'password123'
+        })
+        self.assertEqual(res_login.status_code, 200)
+        self.assertEqual(json.loads(res_login.data)['user']['plano'], 'pro')
+
+    def test_29_services_only_available_and_super_profissional(self):
+        import database
+        # Cria um prestador indisponível para validar filtro only_available=1
+        self.client.post('/api/auth/register', json={
+            'nome': 'Prestador Indisponivel',
+            'email': 'indisp@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Elétrica',
+            'preco_inicial': 120.0,
+            'lat': -23.5653,
+            'lng': -46.6517
+        })
+        self.client.put('/api/profile', json={'disponivel': False})
+
+        res_all = self.client.get('/api/services?radius=0')
+        self.assertEqual(res_all.status_code, 200)
+        all_svcs = json.loads(res_all.data)
+        self.assertTrue(any(s['prestador']['nome'] == 'Prestador Indisponivel' for s in all_svcs))
+
+        res_avail = self.client.get('/api/services?radius=0&only_available=1')
+        self.assertEqual(res_avail.status_code, 200)
+        avail_svcs = json.loads(res_avail.data)
+        self.assertFalse(any(s['prestador']['nome'] == 'Prestador Indisponivel' for s in avail_svcs))
+        self.assertTrue(all(s['prestador']['disponivel'] for s in avail_svcs))
+
+        # Verifica campos plano e super_profissional
+        super_svcs = [s for s in avail_svcs if s['prestador']['avaliacao'] >= 4.8 and s['prestador']['total_avaliacoes'] >= 5]
+        self.assertGreater(len(super_svcs), 0)
+        for s in super_svcs:
+            self.assertTrue(s['prestador']['super_profissional'])
+            self.assertIn(s['prestador']['plano'], ('basico', 'pro'))
+
+    def test_30_order_benchmark_fields_escrow_cancel_and_review(self):
+        # 1. Registra um prestador novo para testar recálculo limpo de média
+        res_p = self.client.post('/api/auth/register', json={
+            'nome': 'Prestador Avaliacao',
+            'email': 'prest_aval@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Limpeza',
+            'preco_inicial': 100.0
+        })
+        self.assertEqual(res_p.status_code, 201)
+        svcs = json.loads(self.client.get('/api/my-services').data)
+        servico_id = svcs[0]['id']
+
+        # 2. Login como cliente padrão
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+
+        # 3. Cria pedido com complemento, modalidade, agendado_para e metodo_pagamento
+        res_order = self.client.post('/api/orders', json={
+            'servico_id': servico_id,
+            'observacoes': 'Trazer escada',
+            'complemento': 'Apto 82 Bloco B',
+            'modalidade': 'agendado',
+            'agendado_para': '2026-12-01T14:00',
+            'metodo_pagamento': 'pix'
+        })
+        self.assertEqual(res_order.status_code, 201)
+        order_data = json.loads(res_order.data)
+        order_id = order_data['order_id']
+        self.assertEqual(order_data['modalidade'], 'agendado')
+        self.assertEqual(order_data['metodo_pagamento'], 'pix')
+        self.assertEqual(len(order_data['codigo_confirmacao']), 4)
+        self.assertTrue(order_data['codigo_confirmacao'].isdigit())
+
+        # 4. Pagamento com escrow_hold=True mantém status 'solicitado' e marca pago=1
+        res_escrow = self.client.post(f'/api/orders/{order_id}/pay', json={
+            'escrow_hold': True,
+            'metodo_pagamento': 'cartao'
+        })
+        self.assertEqual(res_escrow.status_code, 200)
+        escrow_data = json.loads(res_escrow.data)
+        self.assertEqual(escrow_data['status'], 'solicitado')
+        self.assertTrue(escrow_data['pago'])
+        self.assertEqual(escrow_data['metodo_pagamento'], 'cartao')
+
+        # 5. Tentativa de avaliar pedido não finalizado retorna 400
+        res_rev_early = self.client.post(f'/api/orders/{order_id}/review', json={'nota': 5, 'comentario': 'Bom'})
+        self.assertEqual(res_rev_early.status_code, 400)
+
+        # 6. Pagamento padrão finaliza o pedido
+        res_pay = self.client.post(f'/api/orders/{order_id}/pay', json={})
+        self.assertEqual(res_pay.status_code, 200)
+        self.assertEqual(json.loads(res_pay.data)['status'], 'finalizado')
+
+        # 7. Avaliação válida retorna 201 e atualiza média e total
+        res_rev = self.client.post(f'/api/orders/{order_id}/review', json={
+            'nota': 4.5,
+            'comentario': 'Excelente serviço!'
+        })
+        self.assertEqual(res_rev.status_code, 201)
+        rev_data = json.loads(res_rev.data)
+        self.assertEqual(rev_data['avaliacao_media'], 4.5)
+        self.assertEqual(rev_data['total_avaliacoes'], 1)
+
+        # 8. Avaliação duplicada retorna 409
+        res_rev_dup = self.client.post(f'/api/orders/{order_id}/review', json={'nota': 5})
+        self.assertEqual(res_rev_dup.status_code, 409)
+
+        # 9. GET /api/orders reflete os novos campos e ja_avaliado=True
+        orders_list = json.loads(self.client.get('/api/orders').data)
+        target = next(o for o in orders_list if o['order_id'] == order_id)
+        self.assertEqual(target['complemento_cliente'], 'Apto 82 Bloco B')
+        self.assertEqual(target['modalidade'], 'agendado')
+        self.assertEqual(target['agendado_para'], '2026-12-01T14:00')
+        self.assertEqual(target['codigo_confirmacao'], order_data['codigo_confirmacao'])
+        self.assertEqual(target['pago'], 1)
+        self.assertTrue(target['ja_avaliado'])
+
+        # 10. Cria segundo pedido e cancela com motivo
+        res_order2 = self.client.post('/api/orders', json={'servico_id': servico_id})
+        order2_id = json.loads(res_order2.data)['order_id']
+        res_cancel = self.client.patch(f'/api/orders/{order2_id}/status', json={
+            'status': 'cancelado',
+            'motivo': 'Imprevisto de agenda'
+        })
+        self.assertEqual(res_cancel.status_code, 200)
+        orders_list2 = json.loads(self.client.get('/api/orders').data)
+        target2 = next(o for o in orders_list2 if o['order_id'] == order2_id)
+        self.assertEqual(target2['status'], 'cancelado')
+        self.assertEqual(target2['motivo_cancelamento'], 'Imprevisto de agenda')
+
+    def test_31_forgot_and_reset_password_flow(self):
+        import database
+        import time
+
+        # Cria usuário dedicado
+        self.client.post('/api/auth/register', json={
+            'nome': 'Usuario Reset',
+            'email': 'reset_user@pertoja.com',
+            'senha': 'oldpassword',
+            'tipo': 'cliente'
+        })
+
+        # 1. forgot-password retorna 200 sem vazar token
+        res_forgot = self.client.post('/api/auth/forgot-password', json={'email': 'reset_user@pertoja.com'})
+        self.assertEqual(res_forgot.status_code, 200)
+        forgot_json = json.loads(res_forgot.data)
+        self.assertNotIn('token', forgot_json)
+
+        # Recupera token diretamente do banco de testes
+        conn = database.get_db_connection()
+        user_row = conn.execute('SELECT id FROM users WHERE email = ?', ('reset_user@pertoja.com',)).fetchone()
+        tok_row = conn.execute(
+            'SELECT token FROM password_reset_tokens WHERE user_id = ? AND used = 0',
+            (user_row['id'],)
+        ).fetchone()
+        self.assertIsNotNone(tok_row)
+        valid_token = tok_row['token']
+
+        # 2. reset-password com token válido altera a senha
+        res_reset = self.client.post('/api/auth/reset-password', json={
+            'token': valid_token,
+            'nova_senha': 'newpassword123'
+        })
+        self.assertEqual(res_reset.status_code, 200)
+
+        # 3. Reutilizar o mesmo token falha com 400
+        res_reuse = self.client.post('/api/auth/reset-password', json={
+            'token': valid_token,
+            'nova_senha': 'anotherpassword'
+        })
+        self.assertEqual(res_reuse.status_code, 400)
+
+        # 4. Login com a nova senha funciona
+        res_login = self.client.post('/api/auth/login', json={
+            'email': 'reset_user@pertoja.com',
+            'senha': 'newpassword123'
+        })
+        self.assertEqual(res_login.status_code, 200)
+
+        # 5. Token expirado falha com 400
+        expired_token = 'expired-token-test-123'
+        conn.execute(
+            'INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)',
+            (expired_token, user_row['id'], time.time() - 60)
+        )
+        conn.commit()
+        conn.close()
+
+        res_exp = self.client.post('/api/auth/reset-password', json={
+            'token': expired_token,
+            'nova_senha': 'validpassword'
+        })
+        self.assertEqual(res_exp.status_code, 400)
+
+    def test_32_profile_null_fields_and_order_escrow_local_fallback(self):
+        # 1. Login como prestador para atualizar disponibilidade com campos null
+        res_login = self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.assertEqual(res_login.status_code, 200)
+
+        res_prof = self.client.put('/api/profile', json={
+            'disponivel': 0,
+            'telefone': None,
+            'bio': None
+        })
+        self.assertEqual(res_prof.status_code, 200)
+
+        res_get = self.client.get('/api/profile')
+        self.assertEqual(res_get.status_code, 200)
+        prof_data = json.loads(res_get.data)
+        self.assertFalse(prof_data['disponivel'])
+
+        # Restaura disponibilidade
+        self.client.put('/api/profile', json={'disponivel': 1})
+
+        # 2. Login como cliente padrão e envio de metodo_pagamento 'escrow_local' mapeia para 'escrow'
+        self.client.post('/api/auth/logout')
+        res_cli_login = self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        self.assertEqual(res_cli_login.status_code, 200)
+
+        res_svcs = self.client.get('/api/services')
+        svcs = json.loads(res_svcs.data)
+        self.assertTrue(len(svcs) > 0)
+        svc_id = svcs[0]['id']
+
+        res_order = self.client.post('/api/orders', json={
+            'servico_id': svc_id,
+            'metodo_pagamento': 'escrow_local'
+        })
+        self.assertEqual(res_order.status_code, 201)
+        order_data = json.loads(res_order.data)
+        self.assertEqual(order_data['metodo_pagamento'], 'escrow')
+        order_id = order_data['order_id']
+
+        res_orders = self.client.get('/api/orders')
+        orders = json.loads(res_orders.data)
+        created = next((o for o in orders if o['order_id'] == order_id), None)
+        self.assertIsNotNone(created)
+        self.assertEqual(created['metodo_pagamento'], 'escrow')
+
 if __name__ == '__main__':
     unittest.main()

@@ -112,13 +112,15 @@
     </a>
 
     <!-- Barra de busca rápida estilo iFood com label acessível -->
-    <div class="hidden md:flex items-center flex-1 max-w-md mx-6">
+    <form class="hidden md:flex items-center flex-1 max-w-md mx-6" onsubmit="event.preventDefault(); const termo = document.getElementById('busca-rapida-header').value.trim(); location.href = termo ? 'pedido.html?q=' + encodeURIComponent(termo) : 'pedido.html';">
       <div class="relative w-full">
         <label for="busca-rapida-header" class="sr-only">Buscar especialidades ou serviços locais</label>
-        <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-sea text-lg pointer-events-none" aria-hidden="true">search</span>
-        <input id="busca-rapida-header" type="text" onclick="location.href='pedido.html'" placeholder="Buscar diarista, eletricista, encanador..." class="w-full pl-10 pr-4 py-2 bg-perto-bg border border-perto-road rounded-full text-xs font-medium text-perto-ink placeholder:text-perto-ink/75 focus:outline-none focus:border-perto-sea cursor-pointer transition-all">
+        <input id="busca-rapida-header" type="text" placeholder="Buscar diarista, eletricista, encanador..." class="w-full pl-4 pr-10 py-2 bg-perto-bg border border-perto-road rounded-full text-xs font-medium text-perto-ink placeholder:text-perto-ink/75 focus:outline-none focus:border-perto-sea transition-all">
+        <button type="submit" aria-label="Buscar serviços" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-perto-sea hover:text-perto-ink p-1 rounded-full flex items-center justify-center">
+          <span class="material-symbols-outlined text-lg" aria-hidden="true">search</span>
+        </button>
       </div>
-    </div>
+    </form>
 
     <!-- Botão Hambúrguer Mobile -->
     <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
@@ -242,7 +244,7 @@
         </div>
       </div>
 
-      <div class="grid-home">
+      <div class="grid-home categories-carousel-mobile">
         <!-- Categoria 1: Limpeza -->
         <div class="card-home clicavel group" role="button" tabindex="0" onclick="irParaCategoria('Limpeza')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();irParaCategoria('Limpeza');}" aria-label="Ver serviços da categoria Limpeza">
           <div class="relative overflow-hidden">
@@ -454,24 +456,37 @@
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Institucional Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-perto-sea flex items-center justify-center text-perto-sun font-bold">
-          <span class="material-symbols-outlined text-lg">bolt</span>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
         </div>
-        <span class="text-xl font-black text-perto-ink">Perto<b>Já</b></span>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
-      
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
-        <a href="login.html">Área do Usuário</a>
-      </div>
-
       <div class="footer-direitos">
         <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>

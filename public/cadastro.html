@@ -152,41 +152,66 @@
           </div>
         </div>
 
-        <!-- Campos Universais (Contrato DOM: #nome, #email, #telefone, #senha) -->
-        <div class="campo-form">
-          <label for="nome" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nome Completo</label>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">badge</span>
-            <input type="text" id="nome" required placeholder="Ex: João da Silva" class="input-form pl-11 text-sm font-medium">
+        <!-- Stepper 3 Etapas (Modo Prestador - PA-06) -->
+        <div id="stepperPrestador" class="stepper-bar" style="display: none;" aria-label="Etapas do cadastro de prestador">
+          <div class="stepper-step active" data-step="1">
+            <span class="stepper-num">1</span>
+            <span>Dados de Acesso</span>
+          </div>
+          <div class="stepper-step" data-step="2">
+            <span class="stepper-num">2</span>
+            <span>Endereço &amp; CEP</span>
+          </div>
+          <div class="stepper-step" data-step="3">
+            <span class="stepper-num">3</span>
+            <span>Especialidade &amp; Plano</span>
           </div>
         </div>
 
-        <div class="campo-form">
-          <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">mail</span>
-            <input type="email" id="email" required placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+        <!-- Etapa 1: Campos Universais (Contrato DOM: #nome, #email, #telefone, #senha) -->
+        <div id="step1Campos" class="space-y-4">
+          <div class="campo-form">
+            <label for="nome" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nome Completo</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">badge</span>
+              <input type="text" id="nome" required placeholder="Ex: João da Silva" class="input-form pl-11 text-sm font-medium">
+            </div>
+          </div>
+
+          <div class="campo-form">
+            <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">mail</span>
+              <input type="email" id="email" required placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
+            </div>
+          </div>
+
+          <div class="campo-form">
+            <label for="telefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">phone</span>
+              <input type="text" id="telefone" required placeholder="(11) 98765-4321" class="input-form pl-11 text-sm font-medium">
+            </div>
+          </div>
+
+          <div class="campo-form">
+            <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">key</span>
+              <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres" class="input-form pl-11 text-sm font-medium">
+            </div>
+          </div>
+
+          <div id="step1Actions" class="pt-2 flex justify-end" style="display: none;">
+            <button type="button" id="btnStep1Next" onclick="irParaEtapa(2)" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
+              Continuar
+              <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
+            </button>
           </div>
         </div>
 
-        <div class="campo-form">
-          <label for="telefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp</label>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">phone</span>
-            <input type="text" id="telefone" required placeholder="(11) 98765-4321" class="input-form pl-11 text-sm font-medium">
-          </div>
-        </div>
-
-        <div class="campo-form">
-          <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none">key</span>
-            <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres" class="input-form pl-11 text-sm font-medium">
-          </div>
-        </div>
-
-        <!-- Seção de Endereço Real no Brasil (ViaCEP + Geocodificação) -->
-        <div class="pt-4 border-t border-perto-road space-y-3">
+        <!-- Etapa 2: Seção de Endereço Real no Brasil (ViaCEP + Geocodificação) -->
+        <div id="step2Campos" class="pt-4 border-t border-perto-road space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1.5 text-xs font-extrabold text-perto-sea uppercase tracking-wider">
               <span class="material-symbols-outlined text-sm">location_on</span>
@@ -226,13 +251,37 @@
           </div>
           <input type="hidden" id="lat">
           <input type="hidden" id="lng">
+
+          <div id="step2Actions" class="pt-3 flex items-center justify-between gap-3" style="display: none;">
+            <button type="button" id="btnStep2Back" onclick="irParaEtapa(1)" class="btn-neutral px-5 py-3 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
+              Voltar
+            </button>
+            <button type="button" id="btnStep2Next" onclick="irParaEtapa(3)" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
+              Continuar
+              <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
+            </button>
+          </div>
         </div>
 
-        <!-- Campos Adicionais Exclusivos do Prestador (Contrato DOM: #campos-prestador, #categoria, #preco_inicial, #bio) -->
+        <!-- Etapa 3: Campos Adicionais Exclusivos do Prestador (Contrato DOM: #campos-prestador, #categoria, #preco_inicial, #bio, #plano) -->
         <div id="campos-prestador" style="display: none;" class="pt-4 mt-4 border-t border-dashed border-perto-road space-y-4">
-          <div class="flex items-center gap-2 mb-2 text-xs font-extrabold text-perto-sea uppercase tracking-wider">
-            <span class="material-symbols-outlined text-sm">business_center</span>
-            Informações do Anúncio Inicial
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2 text-xs font-extrabold text-perto-sea uppercase tracking-wider">
+              <span class="material-symbols-outlined text-sm">business_center</span>
+              Informações do Anúncio Inicial
+            </div>
+            <span id="planoSelecionadoBadge" class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-perto-sun/25 text-perto-ink text-xs font-extrabold">
+              Plano Básico · Taxa 12%
+            </span>
+          </div>
+
+          <div class="campo-form">
+            <label for="plano" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Plano de Parceiro</label>
+            <select id="plano" class="input-form text-sm font-bold" onchange="atualizarBadgePlano()">
+              <option value="basico">Plano Básico (Taxa 12% · Isento até R$ 1.800/mês)</option>
+              <option value="pro">Plano Pro (Taxa 8% · Destaque no Radar · 1º mês grátis)</option>
+            </select>
           </div>
 
           <div class="campo-form">
@@ -260,9 +309,16 @@
             <label for="bio" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Apresentação Profissional / Biografia</label>
             <textarea id="bio" rows="3" placeholder="Fale sobre suas qualificações, anos de experiência e diferenciais..." class="input-form text-sm font-medium"></textarea>
           </div>
+
+          <div id="step3Actions" class="pt-1 flex items-center justify-start">
+            <button type="button" id="btnStep3Back" onclick="irParaEtapa(2)" class="btn-neutral px-5 py-2.5 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
+              Voltar
+            </button>
+          </div>
         </div>
 
-        <button type="submit" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-6 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
+        <button type="submit" id="btnSubmitCadastro" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-6 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
           <span class="material-symbols-outlined text-base">check_circle</span>
           Concluir Cadastro
         </button>
@@ -279,17 +335,39 @@
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
       <div class="footer-direitos">
-        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>
@@ -298,7 +376,12 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const redirectParam = urlParams.get('redirect');
+    const tipoParam = urlParams.get('tipo');
+    const planoParam = urlParams.get('plano');
+    const emailParam = urlParams.get('email');
     const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
+
+    let etapaAtualPrestador = 1;
 
     if (redirectParam || hasPendingOrder) {
       const alerta = document.getElementById('alerta-redirect');
@@ -311,13 +394,100 @@
       }
     }
 
+    function atualizarBadgePlano() {
+      const planoEl = document.getElementById('plano');
+      const badgeEl = document.getElementById('planoSelecionadoBadge');
+      if (!planoEl || !badgeEl) return;
+      const isPro = planoEl.value === 'pro';
+      badgeEl.textContent = isPro ? 'Plano Pro · Taxa 8%' : 'Plano Básico · Taxa 12%';
+    }
+
+    function atualizarVisualStepper() {
+      const tipo = document.querySelector('input[name="tipo"]:checked')?.value || 'cliente';
+      const stepper = document.getElementById('stepperPrestador');
+      const s1 = document.getElementById('step1Campos');
+      const s2 = document.getElementById('step2Campos');
+      const s3 = document.getElementById('campos-prestador');
+      const a1 = document.getElementById('step1Actions');
+      const a2 = document.getElementById('step2Actions');
+      const btnSubmit = document.getElementById('btnSubmitCadastro');
+
+      if (tipo !== 'prestador') {
+        if (stepper) stepper.style.display = 'none';
+        if (s1) s1.style.display = 'block';
+        if (s2) s2.style.display = 'block';
+        if (s3) s3.style.display = 'none';
+        if (a1) a1.style.display = 'none';
+        if (a2) a2.style.display = 'none';
+        if (btnSubmit) btnSubmit.style.display = 'flex';
+        return;
+      }
+
+      if (stepper) {
+        stepper.style.display = 'flex';
+        stepper.querySelectorAll('.stepper-step').forEach((el) => {
+          const stepNum = parseInt(el.dataset.step, 10);
+          el.classList.toggle('active', stepNum === etapaAtualPrestador);
+          el.classList.toggle('done', stepNum < etapaAtualPrestador);
+        });
+      }
+
+      if (s1) s1.style.display = etapaAtualPrestador === 1 ? 'block' : 'none';
+      if (s2) s2.style.display = etapaAtualPrestador === 2 ? 'block' : 'none';
+      if (s3) s3.style.display = etapaAtualPrestador === 3 ? 'block' : 'none';
+      if (a1) a1.style.display = etapaAtualPrestador === 1 ? 'flex' : 'none';
+      if (a2) a2.style.display = etapaAtualPrestador === 2 ? 'flex' : 'none';
+      if (btnSubmit) btnSubmit.style.display = etapaAtualPrestador === 3 ? 'flex' : 'none';
+    }
+
+    function validarEtapaAtual(etapa) {
+      const erroDiv = document.getElementById('mensagem-erro');
+      if (erroDiv) erroDiv.style.display = 'none';
+
+      if (etapa === 1) {
+        const nome = document.getElementById('nome');
+        const email = document.getElementById('email');
+        const telefone = document.getElementById('telefone');
+        const senha = document.getElementById('senha');
+        for (const field of [nome, email, telefone, senha]) {
+          if (field && !field.checkValidity()) {
+            field.reportValidity();
+            return false;
+          }
+        }
+        if (!senha || senha.value.length < 6) {
+          if (erroDiv) {
+            erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
+            erroDiv.style.display = 'block';
+          }
+          return false;
+        }
+      } else if (etapa === 2) {
+        const step2Inputs = document.querySelectorAll('#step2Campos input');
+        for (const field of step2Inputs) {
+          if (field.type !== 'hidden' && !field.checkValidity()) {
+            field.reportValidity();
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function irParaEtapa(novaEtapa) {
+      if (novaEtapa > etapaAtualPrestador && !validarEtapaAtual(etapaAtualPrestador)) {
+        return;
+      }
+      etapaAtualPrestador = Math.max(1, Math.min(3, novaEtapa));
+      atualizarVisualStepper();
+    }
+
     function alternarTipo(tipo) {
-      const camposPrestador = document.getElementById('campos-prestador');
       const lblCliente = document.getElementById('lblCliente');
       const lblPrestador = document.getElementById('lblPrestador');
 
       if (tipo === 'prestador') {
-        camposPrestador.style.display = 'block';
+        etapaAtualPrestador = 1;
         lblPrestador.classList.add('ativo');
         lblPrestador.style.borderColor = 'var(--sea)';
         lblPrestador.style.background = '#eef6f9';
@@ -325,7 +495,6 @@
         lblCliente.style.borderColor = 'var(--road)';
         lblCliente.style.background = '#ffffff';
       } else {
-        camposPrestador.style.display = 'none';
         lblCliente.classList.add('ativo');
         lblCliente.style.borderColor = 'var(--sea)';
         lblCliente.style.background = '#eef6f9';
@@ -333,6 +502,23 @@
         lblPrestador.style.borderColor = 'var(--road)';
         lblPrestador.style.background = '#ffffff';
       }
+      atualizarVisualStepper();
+    }
+
+    // Pré-preenchimento via querystring (?tipo=, ?plano=, ?email=) (PA-03)
+    if (emailParam) {
+      const emailEl = document.getElementById('email');
+      if (emailEl) emailEl.value = emailParam;
+    }
+    if (planoParam === 'pro' || planoParam === 'basico') {
+      const planoEl = document.getElementById('plano');
+      if (planoEl) planoEl.value = planoParam;
+    }
+    atualizarBadgePlano();
+    if (tipoParam === 'prestador' || planoParam) {
+      const radioPrestador = document.querySelector('input[name="tipo"][value="prestador"]');
+      if (radioPrestador) radioPrestador.checked = true;
+      alternarTipo('prestador');
     }
 
     async function buscarCEP(cepVal) {
@@ -387,7 +573,21 @@
         lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null
       };
 
+      if (!payload.nome || !payload.email || !payload.telefone) {
+        if (tipo === 'prestador') {
+          etapaAtualPrestador = 1;
+          atualizarVisualStepper();
+        }
+        erroDiv.textContent = 'Preencha nome, e-mail e telefone para continuar.';
+        erroDiv.style.display = 'block';
+        return;
+      }
+
       if (!payload.senha || payload.senha.length < 6) {
+        if (tipo === 'prestador') {
+          etapaAtualPrestador = 1;
+          atualizarVisualStepper();
+        }
         erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
         erroDiv.style.display = 'block';
         return;
@@ -398,6 +598,7 @@
         const precoVal = parseFloat(document.getElementById('preco_inicial').value);
         payload.preco_inicial = (!isNaN(precoVal) && precoVal > 0) ? precoVal : 100.0;
         payload.bio = document.getElementById('bio').value;
+        payload.plano = document.getElementById('plano')?.value || 'basico';
       }
 
       try {

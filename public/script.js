@@ -66,8 +66,13 @@ const STEPS = ['Requisitado', 'Localizado', 'Confirmado', 'Em Trânsito', 'Em Ex
 
 let cat = 'Todos', radius = 8, busy = false, order = null, timer = null;
 let currentOrder = 'distance';
+let searchQuery = '';
+let onlyAvailable = false;
 let loadingDepth = 0;
 let simulationTimers = [];
+let orderPollTimer = null;
+let currentOrderData = null;
+let cachedLoggedUser = null;
 
 function atualizarEstadoCarregamento(ativo) {
   const mapEl = document.getElementById('map');
@@ -152,8 +157,12 @@ function clearAllSimulationTimers() {
   simulationTimers.forEach(t => clearTimeout(t));
   simulationTimers = [];
 }
-const catURL = new URLSearchParams(location.search).get('cat');
+const urlParamsInit = new URLSearchParams(location.search);
+const catURL = urlParamsInit.get('cat');
 if (catURL) cat = catURL;
+const qURL = urlParamsInit.get('q');
+if (qURL) searchQuery = qURL.trim();
+const orderIdURL = urlParamsInit.get('order_id');
 
 function toast(t) {
   const container = $('#toasts');
@@ -194,7 +203,17 @@ async function carregarPrestadoresAPI() {
   startLoading();
   renderSkeletonList();
   try {
-    const res = await fetch(`/api/services?cat=${encodeURIComponent(cat)}&radius=${radius}&lat=${centerLat}&lng=${centerLng}&order=${encodeURIComponent(currentOrder)}`);
+    const params = new URLSearchParams({
+      cat,
+      radius: String(radius),
+      lat: String(centerLat),
+      lng: String(centerLng),
+      order: currentOrder
+    });
+    if (searchQuery) params.set('query', searchQuery);
+    if (onlyAvailable) params.set('only_available', '1');
+
+    const res = await fetch(`/api/services?${params.toString()}`);
     if (res.status === 429 || res.status >= 500) {
       exibirAlertaRetry(res.status);
     } else if (res.ok) {
@@ -208,6 +227,8 @@ async function carregarPrestadoresAPI() {
           c: item.categoria,
           p: item.preco,
           r: item.prestador ? item.prestador.avaliacao : 5.0,
+          total_avaliacoes: item.prestador ? (item.prestador.total_avaliacoes || 0) : 0,
+          super_profissional: Boolean(item.prestador && item.prestador.super_profissional),
           lat: (item.prestador && item.prestador.lat != null) ? item.prestador.lat : item.lat,
           lng: (item.prestador && item.prestador.lng != null) ? item.prestador.lng : item.lng,
           a: item.prestador ? item.prestador.disponivel : true,
@@ -227,7 +248,31 @@ async function carregarPrestadoresAPI() {
 }
 
 function visible() {
-  return P.filter(p => (mapInstance ? dist(p) <= radius : true) && (cat === 'Todos' || p.c.toLowerCase() === cat.toLowerCase()));
+  const qNorm = searchQuery.trim().toLowerCase();
+  return P.filter(p => {
+    if (mapInstance && dist(p) > radius) return false;
+    if (cat !== 'Todos' && p.c.toLowerCase() !== cat.toLowerCase()) return false;
+    if (onlyAvailable && !p.a) return false;
+    if (qNorm) {
+      const haystack = [p.s, p.n, p.c, p.bairro, p.cidade, p.endereco].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(qNorm)) return false;
+    }
+    return true;
+  });
+}
+
+function getCategoryIcon(catName) {
+  const mapa = {
+    limpeza: 'cleaning_services',
+    'elétrica': 'bolt',
+    eletrica: 'bolt',
+    encanamento: 'plumbing',
+    pintura: 'format_paint',
+    jardinagem: 'yard',
+    tecnologia: 'computer',
+    marcenaria: 'carpenter'
+  };
+  return mapa[(catName || '').toLowerCase()] || 'handyman';
 }
 
 function renderChips() {
@@ -252,20 +297,34 @@ function renderList() {
   if ($('#count')) $('#count').textContent = '(' + v.length + ')';
   listEl.innerHTML = v.length ? v.map(p => {
     const svcScore = Math.round(getServiceScore(p));
+    const isSuper = p.super_profissional || (p.r >= 4.8 && (p.total_avaliacoes || 0) >= 5);
+    const iconName = getCategoryIcon(p.c);
     return `
-   <div class="svc ${order && order.best.id === p.id ? 'best' : ''}">
-     <div class="top"><span>${escapeHtml(p.s)}</span><span class="price">${brl(p.p)}</span></div>
-     <div style="font-size: 0.8rem; color: var(--sea); font-weight: 600; margin: 3px 0; display: flex; align-items: center; gap: 4px;">
-       <span aria-hidden="true">📍</span> <span>${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
+   <div class="svc ${order && order.best && order.best.id === p.id ? 'best' : ''}">
+     <div class="svc-card-row">
+       <div class="svc-avatar" aria-hidden="true">
+         <span class="material-symbols-outlined">${iconName}</span>
+       </div>
+       <div class="flex-1 min-w-0">
+         <div class="top">
+           <span>${escapeHtml(p.s)}</span>
+           <span class="price">${brl(p.p)}</span>
+         </div>
+         <div class="text-xs font-semibold text-perto-sea mt-0.5 flex items-center gap-1 truncate">
+           <span aria-hidden="true">📍</span>
+           <span class="truncate">${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
+         </div>
+         <div class="meta mt-1.5">
+           <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
+           <span>★ ${p.r.toFixed(1)}</span>
+           <span>${dist(p).toFixed(1)} km</span>
+           <span class="score-badge" aria-label="Score ${svcScore}">Score ${svcScore}</span>
+           ${isSuper ? '<span class="super-badge">★ Super Profissional</span>' : ''}
+           <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
+         </div>
+       </div>
      </div>
-     <div class="meta">
-       <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
-       <span>Avaliação: ★ ${p.r.toFixed(1)}</span>
-       <span>${dist(p).toFixed(1)} km</span>
-       <span class="score-badge" aria-label="Score ${svcScore}">Score ${svcScore}</span>
-       <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
-     </div>
-     <div style="margin-top: 10px;">
+     <div class="mt-2.5 flex justify-end">
        <button type="button" class="btn btn-requisitar" data-req="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button>
      </div>
     </div>`;
@@ -298,7 +357,7 @@ function renderMap(posAtual) {
   searchMarker.bindPopup(`
     <div style="font-family: inherit; font-size: 0.85rem; min-width: 190px;">
       <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">📍 Local Pesquisado</h4>
-      <div style="color: var(--sea); font-weight: 700; margin-bottom: 4px;">${currentSearchAddress || 'Endereço atual'}</div>
+      <div style="color: var(--sea); font-weight: 700; margin-bottom: 4px;">${escapeHtml(currentSearchAddress || 'Endereço atual')}</div>
       <div style="font-size: 0.75rem; color: #666;">Coordenadas: ${centerLat.toFixed(5)}, ${centerLng.toFixed(5)}</div>
     </div>
   `);
@@ -315,14 +374,14 @@ function renderMap(posAtual) {
       fillOpacity: 1,
       weight: isBest ? 3 : 1.5
     });
-    marker.bindTooltip(p.n.split(' ')[0], { permanent: true, direction: 'right', className: 'map-label' });
+    marker.bindTooltip(escapeHtml(p.n.split(' ')[0]), { permanent: true, direction: 'right', className: 'map-label' });
     const isAvail = p.a && !busy;
     marker.bindPopup(`
       <div style="font-family: inherit; font-size: 0.85rem; min-width: 170px;">
-        <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">${p.s}</h4>
+        <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">${escapeHtml(p.s)}</h4>
         <div style="color: var(--sea); font-weight: 800; font-size: 1rem; margin-bottom: 4px;">${brl(p.p)}</div>
-        <div style="color: #444; margin-bottom: 3px;">👤 <b>${p.n}</b> · ★ ${p.r.toFixed(1)}</div>
-        <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${p.endereco || 'São Paulo - SP'}</div>
+        <div style="color: #444; margin-bottom: 3px;">👤 <b>${escapeHtml(p.n)}</b> · ★ ${p.r.toFixed(1)}</div>
+        <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}</div>
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
         <button type="button" class="btn btn-requisitar" data-req-popup="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
@@ -639,6 +698,316 @@ async function verificarERestaurarPedidoPendente() {
   };
 }
 
+function pararPollingPedido() {
+  if (orderPollTimer) {
+    clearInterval(orderPollTimer);
+    orderPollTimer = null;
+  }
+}
+
+function mapStatusToStep(status) {
+  const s = (status || '').toLowerCase();
+  if (s === 'solicitado') return 1;
+  if (s === 'confirmado') return 2;
+  if (s === 'em_transito') return 3;
+  if (s === 'em_execucao') return 4;
+  if (s === 'finalizado') return 5;
+  return 0;
+}
+
+function atualizarCodigoConfirmacao(codigo) {
+  const box = document.getElementById('codigoConfirmacaoBox');
+  const val = document.getElementById('codigoConfirmacaoValor');
+  if (!box || !val) return;
+  if (codigo) {
+    val.textContent = codigo;
+    box.hidden = false;
+  } else {
+    box.hidden = true;
+  }
+}
+
+function atualizarUIStatusPedido(pedidoApi, best) {
+  if (!pedidoApi || !order) return;
+  currentOrderData = pedidoApi;
+  if (pedidoApi.codigo_confirmacao) {
+    atualizarCodigoConfirmacao(pedidoApi.codigo_confirmacao);
+  }
+  const status = (pedidoApi.status || 'solicitado').toLowerCase();
+  const stepIdx = mapStatusToStep(status);
+  renderSteps(stepIdx);
+
+  if (status === 'solicitado') {
+    info(`Aguardando confirmação de <b>${escapeHtml(best.n)}</b> para <b>${escapeHtml(best.s)}</b>…`);
+  } else if (status === 'confirmado') {
+    info(`<b>${escapeHtml(best.n)}</b> confirmou o atendimento e está se preparando para sair.`);
+  } else if (status === 'em_transito') {
+    if (!order.drivingStarted) {
+      order.drivingStarted = true;
+      toast(`${best.n} iniciou o deslocamento até seu endereço.`);
+      driveVisualOnly(best);
+    }
+  } else if (status === 'em_execucao') {
+    clearAllSimulationTimers();
+    order.pos = { lat: centerLat, lng: centerLng };
+    renderMap(order.pos);
+    info(`<b>${escapeHtml(best.n)}</b> está no local executando o serviço.`);
+  } else if (status === 'finalizado') {
+    clearAllSimulationTimers();
+    pararPollingPedido();
+    order.pos = { lat: centerLat, lng: centerLng };
+    renderMap(order.pos);
+    info('Ordem de serviço concluída com sucesso!');
+    if ($('#pay')) $('#pay').hidden = Boolean(pedidoApi.pago);
+    if ($('#novo')) $('#novo').hidden = false;
+    const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
+    if (btnAvaliar) btnAvaliar.hidden = Boolean(pedidoApi.ja_avaliado);
+  } else if (status === 'cancelado') {
+    clearAllSimulationTimers();
+    pararPollingPedido();
+    localStorage.removeItem('pertoja_active_order_id');
+    info(`Pedido cancelado.${pedidoApi.motivo_cancelamento ? ' Motivo: ' + escapeHtml(pedidoApi.motivo_cancelamento) : ''}`);
+    if ($('#pay')) $('#pay').hidden = true;
+    if ($('#novo')) $('#novo').hidden = false;
+    const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
+    if (btnAvaliar) btnAvaliar.hidden = true;
+  }
+}
+
+async function buscarEstadoPedidoReal(orderDbId) {
+  try {
+    const res = await fetch('/api/orders');
+    if (!res.ok) return null;
+    const list = await res.json();
+    if (!Array.isArray(list)) return null;
+    return list.find(o => String(o.order_id) === String(orderDbId)) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function iniciarPollingPedido(orderDbId, best) {
+  pararPollingPedido();
+  orderPollTimer = setInterval(async () => {
+    if (!order || String(order.db_id) !== String(orderDbId)) {
+      pararPollingPedido();
+      return;
+    }
+    const found = await buscarEstadoPedidoReal(orderDbId);
+    if (found) {
+      atualizarUIStatusPedido(found, best);
+    }
+  }, 8000);
+}
+
+function driveVisualOnly(best) {
+  const n = 8;
+  let k = 0;
+  const tick = () => {
+    k++;
+    if (!order) return;
+    order.gps++;
+    if ($('#gps')) $('#gps').textContent = order.gps;
+    const f = Math.min(k / n, 0.92);
+    order.pos = {
+      lat: best.lat * (1 - f) + centerLat * f,
+      lng: best.lng * (1 - f) + centerLng * f
+    };
+    const left = mapInstance ? (mapInstance.distance([order.pos.lat, order.pos.lng], [centerLat, centerLng]) / 1000) : 0;
+    info(left > 0.05
+      ? `O profissional encontra-se a <b>${left.toFixed(1)} km</b> · Estimativa de chegada: ${Math.max(1, Math.round(left * 3))} min.`
+      : 'O profissional está chegando ao seu endereço.');
+    renderMap(order.pos);
+    if (k < n && currentOrderData && (currentOrderData.status === 'em_transito' || !currentOrderData.status)) {
+      const isBat = $('#bat') && $('#bat').checked;
+      timer = setTimeout(tick, isBat ? 2500 : 1200);
+      simulationTimers.push(timer);
+    }
+  };
+  timer = setTimeout(tick, 1000);
+  simulationTimers.push(timer);
+}
+
+function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
+  busy = true;
+  order = {
+    best,
+    pos: { lat: best.lat != null ? best.lat : centerLat, lng: best.lng != null ? best.lng : centerLng },
+    gps: 0,
+    db_id: orderDbId,
+    drivingStarted: false
+  };
+  best.a = false;
+
+  if (orderDbId) {
+    try { localStorage.setItem('pertoja_active_order_id', String(orderDbId)); } catch (e) {}
+  }
+
+  if ($('#painel-lista')) $('#painel-lista').hidden = true;
+  if ($('#pedidoBox')) $('#pedidoBox').hidden = false;
+  if ($('#pay')) $('#pay').hidden = true;
+  if ($('#novo')) $('#novo').hidden = true;
+  const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
+  if (btnAvaliar) btnAvaliar.hidden = true;
+  if ($('#gps')) $('#gps').textContent = 0;
+
+  atualizarCodigoConfirmacao(initialData.codigo_confirmacao || '');
+
+  const cands = P.filter(p => p.c && best.c && p.c.toLowerCase() === best.c.toLowerCase() && dist(p) <= radius)
+    .map(p => ({ p, score: score(p) }))
+    .sort((a, b) => b.score - a.score);
+
+  if ($('#rank')) {
+    $('#rank').innerHTML = '<tr><th>Profissional</th><th>Distância</th><th>Avaliação</th><th>Score</th></tr>' +
+      cands.map(c => `<tr class="${c.p.id === best.id ? 'win' : ''}"><td>${escapeHtml(c.p.n)}</td><td>${dist(c.p).toFixed(1)} km</td><td>★ ${c.p.r.toFixed(1)}</td><td>${Math.round(c.score)}</td></tr>`).join('');
+  }
+
+  renderAll();
+  atualizarUIStatusPedido({ status: initialData.status || 'solicitado', ...initialData }, best);
+  iniciarPollingPedido(orderDbId, best);
+}
+
+async function carregarPedidoAtivoPorId(orderDbId) {
+  if (!orderDbId) return;
+  const user = cachedLoggedUser || (typeof obterUsuarioLogado === 'function' ? await obterUsuarioLogado() : null);
+  if (!user || user.tipo !== 'cliente') return;
+  const found = await buscarEstadoPedidoReal(orderDbId);
+  if (!found) return;
+
+  const best = P.find(p => String(p.id) === String(found.servico_id) || p.n === found.prestador_nome) || {
+    id: found.servico_id || found.prestador_id || 0,
+    service_id: found.servico_id || 0,
+    n: found.prestador_nome || 'Profissional',
+    s: found.servico_titulo || 'Serviço Solicitado',
+    c: found.servico_categoria || 'Geral',
+    p: found.preco_total || 0,
+    r: 5.0,
+    lat: found.prestador_lat != null ? Number(found.prestador_lat) : centerLat,
+    lng: found.prestador_lng != null ? Number(found.prestador_lng) : centerLng,
+    a: false
+  };
+  iniciarTrackingPedido(found.order_id, best, found);
+}
+
+function abrirModalConfirmarPedido(sel, user) {
+  const modal = document.getElementById('modalConfirmarPedido');
+  if (!modal) return;
+  const triggerEl = document.activeElement;
+
+  document.getElementById('confTitulo').textContent = sel.s;
+  document.getElementById('confPrestador').textContent = `${sel.n} · ${sel.c}`;
+  document.getElementById('confPreco').textContent = brl(sel.p);
+
+  document.getElementById('confEndereco').value = (user && user.endereco) ? user.endereco : (currentSearchAddress || '');
+  document.getElementById('confNumero').value = (user && user.numero) ? user.numero : '';
+  document.getElementById('confComplemento').value = (user && user.complemento) ? user.complemento : '';
+  document.getElementById('confBairro').value = (user && user.bairro) ? user.bairro : '';
+  document.getElementById('confObservacoes').value = '';
+  document.getElementById('confMetodoPagamento').value = 'escrow';
+
+  const btnImediato = document.getElementById('btnModImediato');
+  const btnAgendado = document.getElementById('btnModAgendado');
+  const modInput = document.getElementById('confModalidade');
+  const agContainer = document.getElementById('confAgendadoContainer');
+  const setModalidade = (mod) => {
+    modInput.value = mod;
+    const isAg = mod === 'agendado';
+    btnImediato.classList.toggle('on', !isAg);
+    btnImediato.setAttribute('aria-pressed', !isAg ? 'true' : 'false');
+    btnAgendado.classList.toggle('on', isAg);
+    btnAgendado.setAttribute('aria-pressed', isAg ? 'true' : 'false');
+    agContainer.hidden = !isAg;
+  };
+  setModalidade('imediato');
+  btnImediato.onclick = () => setModalidade('imediato');
+  btnAgendado.onclick = () => setModalidade('agendado');
+
+  const fechar = () => {
+    modal.style.display = 'none';
+    document.removeEventListener('keydown', onKeyDown);
+    if (triggerEl && typeof triggerEl.focus === 'function') triggerEl.focus();
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      fechar();
+    }
+  };
+
+  modal.style.display = 'flex';
+  document.addEventListener('keydown', onKeyDown);
+  document.getElementById('btnFecharModalConfirmar').onclick = fechar;
+  document.getElementById('btnCancelarConfirmacao').onclick = fechar;
+  modal.onclick = (e) => { if (e.target === modal) fechar(); };
+  setTimeout(() => document.getElementById('confEndereco').focus(), 0);
+
+  document.getElementById('formConfirmarPedido').onsubmit = async (e) => {
+    e.preventDefault();
+    const btnEnviar = document.getElementById('btnEnviarConfirmacao');
+    btnEnviar.disabled = true;
+
+    const metodoPagamento = document.getElementById('confMetodoPagamento').value;
+    const modalidade = modInput.value;
+    const agendadoPara = modalidade === 'agendado' ? document.getElementById('confAgendadoPara').value : '';
+    const payload = {
+      servico_id: sel.service_id || sel.id,
+      lat: centerLat,
+      lng: centerLng,
+      cep: (user && user.cep) ? user.cep : '',
+      endereco: document.getElementById('confEndereco').value.trim(),
+      numero: document.getElementById('confNumero').value.trim(),
+      complemento: document.getElementById('confComplemento').value.trim(),
+      bairro: document.getElementById('confBairro').value.trim(),
+      cidade: (user && user.cidade) ? user.cidade : 'São Paulo',
+      estado: (user && user.estado) ? user.estado : 'SP',
+      observacoes: document.getElementById('confObservacoes').value.trim() || 'Solicitado via PertoJá',
+      metodo_pagamento: metodoPagamento,
+      modalidade,
+      agendado_para: agendadoPara || null
+    };
+
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.status === 429 || res.status >= 500) exibirAlertaRetry(res.status);
+      const data = await res.json();
+      if (res.status === 401) {
+        toast('Sua sessão expirou. Redirecionando para login...');
+        setTimeout(() => { window.location.href = 'login.html?redirect=pedido.html&pending_order=true'; }, 1200);
+        return;
+      }
+      if (!res.ok) {
+        toast(data.error || 'Erro ao processar pedido no servidor.');
+        return;
+      }
+
+      const orderDbId = data.order_id;
+      if (metodoPagamento === 'pix' || metodoPagamento === 'cartao') {
+        try {
+          await fetch(`/api/orders/${orderDbId}/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ escrow_hold: true, metodo_pagamento: metodoPagamento })
+          });
+        } catch (errPay) {}
+      }
+
+      sessionStorage.removeItem('pertoja_pending_order');
+      localStorage.removeItem('pertoja_pending_order');
+      fechar();
+      toast('Pedido confirmado! Acompanhe o status em tempo real.');
+      iniciarTrackingPedido(orderDbId, sel, data);
+    } catch (err) {
+      toast('Erro de conexão com o servidor ao registrar pedido.');
+    } finally {
+      btnEnviar.disabled = false;
+    }
+  };
+}
+
 async function request(id) {
   const sel = P.find(p => p.id === id);
   if (!sel || !sel.a) {
@@ -677,162 +1046,8 @@ async function request(id) {
     return;
   }
 
-  // 2. Criação do pedido com validação estrita no backend
-  const reqBtns = Array.from(document.querySelectorAll(`.btn-requisitar[data-req="${id}"], .btn-requisitar[data-req-popup="${id}"]`));
-  reqBtns.forEach(btn => {
-    btn.disabled = true;
-    btn.setAttribute('title', 'Enviando...');
-    btn.setAttribute('aria-busy', 'true');
-  });
-
-  let orderDbId = null;
-  try {
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        servico_id: sel.service_id || sel.id,
-        lat: centerLat,
-        lng: centerLng,
-        observacoes: 'Solicitado via monitoramento ao vivo'
-      })
-    });
-    if (res.status === 429 || res.status >= 500) {
-      exibirAlertaRetry(res.status);
-    }
-    const data = await res.json();
-    if (res.status === 401) {
-      toast('Sua sessão expirou. Redirecionando para login...');
-      const pendingOrder = {
-        service_id: sel.service_id || sel.id,
-        titulo: sel.s,
-        categoria: sel.c,
-        preco: sel.p,
-        prestador_nome: sel.n,
-        prestador_id: sel.id,
-        lat: centerLat,
-        lng: centerLng,
-        observacoes: 'Solicitado via monitoramento ao vivo',
-        salvo_em: Date.now()
-      };
-      sessionStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
-      setTimeout(() => {
-        window.location.href = 'login.html?redirect=pedido.html&pending_order=true';
-      }, 1200);
-      return;
-    }
-    if (res.status === 403) {
-      toast(data.error || 'Apenas clientes autenticados podem solicitar serviços.');
-      return;
-    }
-    if (!res.ok) {
-      toast(data.error || 'Erro ao processar pedido no servidor.');
-      return;
-    }
-    orderDbId = data.order_id;
-    sessionStorage.removeItem('pertoja_pending_order');
-    localStorage.removeItem('pertoja_pending_order');
-  } catch (err) {
-    console.error('Falha de rede ao criar pedido:', err);
-    toast('Erro de conexão com o servidor ao registrar pedido.');
-    return;
-  } finally {
-    if (!orderDbId) {
-      reqBtns.forEach(btn => {
-        btn.disabled = !sel.a || busy;
-        btn.removeAttribute('title');
-        btn.removeAttribute('aria-busy');
-      });
-    }
-  }
-
-  busy = true;
-  const best = sel;
-  order = { best, pos: { lat: best.lat, lng: best.lng }, gps: 0, db_id: orderDbId };
-  best.a = false;
-
-  if ($('#painel-lista')) $('#painel-lista').hidden = true;
-  if ($('#pedidoBox')) $('#pedidoBox').hidden = false;
-  if ($('#pay')) $('#pay').hidden = true;
-  if ($('#novo')) $('#novo').hidden = true;
-  if ($('#gps')) $('#gps').textContent = 0;
-
-  const cands = P.filter(p => p.c.toLowerCase() === sel.c.toLowerCase() && dist(p) <= radius)
-    .map(p => ({ p, score: score(p) }))
-    .sort((a, b) => b.score - a.score);
-
-  if ($('#rank')) {
-    $('#rank').innerHTML = '<tr><th>Profissional</th><th>Distância</th><th>Avaliação</th><th>Score</th></tr>' +
-      cands.map((c, i) => `<tr class="${c.p.id === best.id ? 'win' : ''}"><td>${c.p.n}</td><td>${dist(c.p).toFixed(1)} km</td><td>★ ${c.p.r.toFixed(1)}</td><td>${Math.round(c.score)}</td></tr>`).join('');
-  }
-
-  renderSteps(0);
-  renderAll();
-  info('Processando solicitação para <b>' + sel.s + '</b> com <b>' + best.n + '</b>…');
-
-  clearAllSimulationTimers();
-
-  simulationTimers.push(setTimeout(() => {
-    if (!order) return;
-    renderSteps(1);
-    info('Profissional designado: <b>' + best.n + '</b> a ' + dist(best).toFixed(1) + ' km.');
-    toast('Notificando prestador e cliente.');
-  }, 900));
-
-  simulationTimers.push(setTimeout(() => {
-    if (!order) return;
-    renderSteps(2);
-    toast(best.n + ' confirmou o atendimento.');
-  }, 2200));
-
-  simulationTimers.push(setTimeout(() => {
-    if (!order) return;
-    renderSteps(3);
-    toast(best.n + ' iniciou o deslocamento até seu endereço.');
-    drive(best);
-  }, 3300));
-}
-
-function drive(best) {
-  const n = 6;
-  let k = 0;
-  const tick = () => {
-    k++;
-    if (!order) return;
-    order.gps++;
-    if ($('#gps')) $('#gps').textContent = order.gps;
-    const f = k / n;
-    order.pos = {
-      lat: best.lat * (1 - f) + centerLat * f,
-      lng: best.lng * (1 - f) + centerLng * f
-    };
-    const left = mapInstance ? (mapInstance.distance([order.pos.lat, order.pos.lng], [centerLat, centerLng]) / 1000) : 0;
-    info(left > 0.05 ? 'O profissional encontra-se a <b>' + left.toFixed(1) + ' km</b> · Estimativa de chegada: ' + Math.max(1, Math.round(left * 3)) + ' min.' : 'O profissional chegou ao seu endereço.');
-    renderMap(order.pos);
-    if (k < n) {
-      const isBat = $('#bat') && $('#bat').checked;
-      timer = setTimeout(tick, isBat ? 2500 : 1000);
-      simulationTimers.push(timer);
-    } else {
-      arrive();
-    }
-  };
-  timer = setTimeout(tick, 1000);
-  simulationTimers.push(timer);
-}
-
-function arrive() {
-  toast('O profissional chegou ao local do serviço.');
-  renderSteps(4);
-  timer = setTimeout(() => {
-    if (!order) return;
-    renderSteps(5);
-    info('Ordem de serviço concluída com sucesso! Prossiga com o encerramento financeiro.');
-    toast('Serviço finalizado.');
-    if ($('#pay')) $('#pay').hidden = false;
-    if ($('#novo')) $('#novo').hidden = false;
-  }, 2500);
-  simulationTimers.push(timer);
+  // 2. Abre modal acessível de confirmação antes de enviar POST /api/orders
+  abrirModalConfirmarPedido(sel, user);
 }
 
 function renderAll() {
@@ -848,8 +1063,10 @@ function renderDestaques() {
   const destaquesEl = document.getElementById('destaques-home');
   if (!destaquesEl) return;
   const top3 = [...P].sort((a, b) => b.r - a.r).slice(0, 3);
-  destaquesEl.innerHTML = top3.map((p, index) => `
-    <div class="card-home" style="cursor: default; animation-delay: ${index * 0.1}s;">
+  destaquesEl.innerHTML = top3.map((p, index) => {
+    const destUrl = `pedido.html?cat=${encodeURIComponent(p.c)}&q=${encodeURIComponent(p.s)}`;
+    return `
+    <div class="card-home clicavel" role="button" tabindex="0" data-dest-url="${escapeHtml(destUrl)}" style="cursor: pointer; animation-delay: ${index * 0.1}s;" aria-label="Ver ${escapeHtml(p.s)} com ${escapeHtml(p.n)}">
       <div class="card-texto" style="text-align: center;">
         <div style="font-size: 0.85rem; font-weight: 800; color: var(--sun); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px;">★ Destaque da Semana</div>
         <h3 style="color: var(--ink); margin-bottom: 4px;">${escapeHtml(p.n)}</h3>
@@ -858,11 +1075,74 @@ function renderDestaques() {
         <p style="font-size: 1.1rem; color: var(--sea); font-weight: bold; margin-top: 8px;">${brl(p.p)}</p>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+  destaquesEl.querySelectorAll('[data-dest-url]').forEach((card) => {
+    const go = () => {
+      const url = card.getAttribute('data-dest-url');
+      if (url) location.href = url;
+    };
+    card.addEventListener('click', go);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        go();
+      }
+    });
+  });
+}
+
+async function inicializarLocalizacaoInicial() {
+  let atualizado = false;
+  try {
+    const savedLocRaw = localStorage.getItem('pertoja_search_loc');
+    if (savedLocRaw) {
+      const savedLoc = JSON.parse(savedLocRaw);
+      const sLat = parseFloat(savedLoc.lat);
+      const sLng = parseFloat(savedLoc.lng);
+      if (!isNaN(sLat) && !isNaN(sLng)) {
+        centerLat = sLat;
+        centerLng = sLng;
+        currentSearchAddress = savedLoc.label || savedLoc.address || currentSearchAddress;
+        atualizado = true;
+      }
+    }
+  } catch (e) {}
+
+  if (typeof obterUsuarioLogado === 'function') {
+    try {
+      cachedLoggedUser = await obterUsuarioLogado();
+    } catch (e) {
+      cachedLoggedUser = null;
+    }
+  }
+
+  if (!atualizado && cachedLoggedUser && cachedLoggedUser.tipo === 'cliente') {
+    const uLat = parseFloat(cachedLoggedUser.lat);
+    const uLng = parseFloat(cachedLoggedUser.lng);
+    if (!isNaN(uLat) && !isNaN(uLng)) {
+      centerLat = uLat;
+      centerLng = uLng;
+      const partes = [cachedLoggedUser.endereco, cachedLoggedUser.numero, cachedLoggedUser.bairro, cachedLoggedUser.cidade].filter(Boolean);
+      if (partes.length) currentSearchAddress = partes.join(', ');
+      atualizado = true;
+    }
+  }
+
+  if (atualizado) {
+    const locInfo = $('#locInfo');
+    if (locInfo) locInfo.textContent = `Ponto de busca: ${currentSearchAddress}`;
+    if (mapInstance) mapInstance.setView([centerLat, centerLng], 13);
+  }
 }
 
 // Inicialização segura
 document.addEventListener('DOMContentLoaded', async () => {
+  const inputFiltro = document.getElementById('inputFiltroServico');
+  if (inputFiltro && searchQuery) {
+    inputFiltro.value = searchQuery;
+  }
+
   const mapEl = document.getElementById('map');
   if (mapEl && typeof L !== 'undefined') {
     mapInstance = L.map('map', {
@@ -903,11 +1183,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  await inicializarLocalizacaoInicial();
   await carregarPrestadoresAPI();
 
   renderChips();
   renderAll();
   renderDestaques();
+
+  // Escuta alterações de localização disparadas pelo seletor global do header (auth.js)
+  window.addEventListener('pertoja:location-changed', async (e) => {
+    const det = (e && e.detail) ? e.detail : null;
+    if (!det) return;
+    const nLat = parseFloat(det.lat);
+    const nLng = parseFloat(det.lng);
+    if (!isNaN(nLat) && !isNaN(nLng)) {
+      centerLat = nLat;
+      centerLng = nLng;
+      currentSearchAddress = det.label || det.address || currentSearchAddress;
+      const locInfo = $('#locInfo');
+      if (locInfo) locInfo.textContent = `Ponto de busca: ${currentSearchAddress}`;
+      if (mapInstance) {
+        mapInstance.setView([centerLat, centerLng], 14, { animate: true });
+        setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 200);
+      }
+      await carregarPrestadoresAPI();
+      renderAll();
+    }
+  });
+
+  // Alternador Mobile Lista | Mapa (PA-08)
+  const btnViewLista = document.getElementById('btnViewLista');
+  const btnViewMapa = document.getElementById('btnViewMapa');
+  const colLista = document.getElementById('colListaPedido');
+  const colMapa = document.getElementById('colMapaPedido');
+  if (btnViewLista && btnViewMapa && colLista && colMapa) {
+    const setMobileView = (view) => {
+      const isMapa = view === 'mapa';
+      btnViewLista.classList.toggle('on', !isMapa);
+      btnViewLista.setAttribute('aria-pressed', !isMapa ? 'true' : 'false');
+      btnViewMapa.classList.toggle('on', isMapa);
+      btnViewMapa.setAttribute('aria-pressed', isMapa ? 'true' : 'false');
+      colLista.classList.toggle('max-[899px]:hidden', isMapa);
+      colMapa.classList.toggle('max-[899px]:hidden', !isMapa);
+      if (isMapa && mapInstance) {
+        setTimeout(() => mapInstance.invalidateSize(), 120);
+      }
+    };
+    btnViewLista.onclick = () => setMobileView('lista');
+    btnViewMapa.onclick = () => setMobileView('mapa');
+  }
+
+  // Busca textual em pedido.html (PA-07)
+  let timerBuscaDebounce = null;
+  if (inputFiltro) {
+    inputFiltro.oninput = (e) => {
+      searchQuery = e.target.value.trim();
+      renderAll();
+      clearTimeout(timerBuscaDebounce);
+      timerBuscaDebounce = setTimeout(async () => {
+        await carregarPrestadoresAPI();
+        renderAll();
+      }, 300);
+    };
+  }
+
+  // Toggle "Disponível agora" (PA-07)
+  const btnOnlyAvail = document.getElementById('btnOnlyAvailable');
+  if (btnOnlyAvail) {
+    btnOnlyAvail.onclick = async () => {
+      onlyAvailable = !onlyAvailable;
+      btnOnlyAvail.classList.toggle('on', onlyAvailable);
+      btnOnlyAvail.setAttribute('aria-pressed', onlyAvailable ? 'true' : 'false');
+      await carregarPrestadoresAPI();
+      renderAll();
+    };
+  }
 
   // Função reutilizável para geolocalização por satélite/dispositivo
   async function ativarGeolocalizacaoGPS() {
@@ -981,7 +1331,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if ($('#list')) {
     $('#list').onclick = e => {
-      const id = e.target.dataset.req;
+      const btn = e.target.closest('.btn-requisitar[data-req]');
+      if (!btn) return;
+      const id = btn.dataset.req;
       if (id && !busy) request(+id);
     };
   }
@@ -1021,12 +1373,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ($('#novo')) {
     $('#novo').onclick = async () => {
       clearAllSimulationTimers();
+      pararPollingPedido();
+      localStorage.removeItem('pertoja_active_order_id');
       busy = false;
       order = null;
+      currentOrderData = null;
       if ($('#pedidoBox')) $('#pedidoBox').hidden = true;
       if ($('#painel-lista')) $('#painel-lista').hidden = false;
       await carregarPrestadoresAPI();
       renderAll();
+    };
+  }
+
+  // Modal de Avaliação do Atendimento no Tracking (PA-11)
+  const btnAvaliarAtend = document.getElementById('btnAvaliarAtendimento');
+  const modalAvaliarAtend = document.getElementById('modalAvaliarAtendimento');
+  if (btnAvaliarAtend && modalAvaliarAtend) {
+    let avaliarAtendTrigger = null;
+    const fecharAvaliarAtend = () => {
+      modalAvaliarAtend.style.display = 'none';
+      document.removeEventListener('keydown', onAvaliarKeyDown);
+      if (avaliarAtendTrigger && typeof avaliarAtendTrigger.focus === 'function') avaliarAtendTrigger.focus();
+    };
+    const onAvaliarKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        fecharAvaliarAtend();
+      }
+    };
+    btnAvaliarAtend.onclick = () => {
+      avaliarAtendTrigger = document.activeElement;
+      document.getElementById('avaliarPedidoComentario').value = '';
+      document.getElementById('avaliarPedidoNota').value = '5';
+      modalAvaliarAtend.querySelectorAll('#avaliarPedidoEstrelas [data-nota]').forEach(b => {
+        const is5 = b.dataset.nota === '5';
+        b.classList.toggle('on', is5);
+        b.setAttribute('aria-pressed', is5 ? 'true' : 'false');
+      });
+      modalAvaliarAtend.style.display = 'flex';
+      document.addEventListener('keydown', onAvaliarKeyDown);
+      const firstStar = modalAvaliarAtend.querySelector('#avaliarPedidoEstrelas button');
+      if (firstStar) setTimeout(() => firstStar.focus(), 0);
+    };
+    modalAvaliarAtend.querySelectorAll('#avaliarPedidoEstrelas [data-nota]').forEach(btn => {
+      btn.onclick = () => {
+        const nota = btn.dataset.nota;
+        document.getElementById('avaliarPedidoNota').value = nota;
+        modalAvaliarAtend.querySelectorAll('#avaliarPedidoEstrelas [data-nota]').forEach(b => {
+          const active = b.dataset.nota === nota;
+          b.classList.toggle('on', active);
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      };
+    });
+    document.getElementById('btnFecharModalAvaliarAtendimento').onclick = fecharAvaliarAtend;
+    document.getElementById('btnCancelarAvaliarAtendimento').onclick = fecharAvaliarAtend;
+    modalAvaliarAtend.onclick = (e) => { if (e.target === modalAvaliarAtend) fecharAvaliarAtend(); };
+    document.getElementById('formAvaliarAtendimento').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!order || !order.db_id) return;
+      const btnSubmit = document.getElementById('btnEnviarAvaliarAtendimento');
+      btnSubmit.disabled = true;
+      try {
+        const nota = parseInt(document.getElementById('avaliarPedidoNota').value, 10) || 5;
+        const comentario = document.getElementById('avaliarPedidoComentario').value.trim();
+        const res = await fetch(`/api/orders/${order.db_id}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nota, comentario })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast('Avaliação registrada com sucesso!');
+          btnAvaliarAtend.hidden = true;
+          fecharAvaliarAtend();
+        } else {
+          toast(data.error || 'Erro ao enviar avaliação.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao enviar avaliação.');
+      } finally {
+        btnSubmit.disabled = false;
+      }
     };
   }
 
@@ -1035,6 +1463,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   gpsBtns.forEach(btn => {
     btn.onclick = ativarGeolocalizacaoGPS;
   });
+
+  // Carrega pedido ativo via ?order_id= ou localStorage (PA-02)
+  const targetOrderId = orderIdURL || localStorage.getItem('pertoja_active_order_id');
+  if (targetOrderId) {
+    await carregarPedidoAtivoPorId(targetOrderId);
+  }
 
   // Restaura e sugere pedidos pendentes caso o cliente tenha acabado de autenticar
   await verificarERestaurarPedidoPendente();

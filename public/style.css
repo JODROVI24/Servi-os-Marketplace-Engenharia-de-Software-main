@@ -17,6 +17,9 @@
     --ink: #10243e;
     --sea: #1f6f8b;
     --sun: #ffc233;
+    --sun-soft: #fff4d6;
+    --sea-soft: #eaf4f7;
+    --ok-soft: #e3f4ec;
     --bg: #f1f5f7;
     --road: #dce5ea;
     --ok: #1a8f5a;
@@ -1010,15 +1013,15 @@ textarea::placeholder {
 }
 
 .alerta-erro {
-    background: #fef2f2;
-    color: #991b1b;
+    background: var(--sun-soft);
+    color: var(--ink);
     padding: 12px 16px;
     border-radius: 12px;
     font-size: 0.9rem;
     font-weight: 600;
     margin-bottom: 18px;
-    border: 1px solid #fecaca;
-    border-left: 5px solid #dc2626;
+    border: 1.5px solid var(--sun);
+    border-left: 5px solid var(--ink);
 }
 
 .tipo-conta-selector {
@@ -1335,5 +1338,540 @@ footer {
     .map-spinner,
     .map-spinner-sm {
         animation: none;
+    }
+}
+
+/* ==========================================================================
+   PA-05, PA-06, PA-08, PA-09, PA-10, PA-12: Design System Extensions
+   ========================================================================== */
+
+/* PA-05: Header Location Pill & Modal Bottom Sheet */
+.header-loc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    min-height: 38px;
+    max-width: 240px;
+    border-radius: 9999px;
+    background: var(--sea-soft);
+    color: var(--ink);
+    border: 1px solid var(--road);
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+}
+
+.header-loc-pill:hover {
+    background: var(--sun-soft);
+    border-color: var(--sun);
+}
+
+.header-loc-pill:focus-visible {
+    outline: 3px solid var(--sea);
+    outline-offset: 2px;
+}
+
+.header-loc-pill .material-symbols-outlined {
+    font-size: 18px;
+    color: var(--sea);
+    flex-shrink: 0;
+}
+
+.header-loc-pill-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .header-loc-pill {
+        max-width: 165px;
+        padding: 6px 10px;
+        font-size: 0.78rem;
+    }
+
+    .modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .modal-conteudo {
+        border-radius: 20px 20px 0 0;
+        width: 100%;
+        max-width: 100%;
+        max-height: 90dvh;
+        margin: 0;
+    }
+}
+
+/* PA-05: Card .svc compacto, Avatar, Super Badge e Botões Semânticos */
+.svc-card-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.svc-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--sea-soft);
+    color: var(--sea);
+    border: 1px solid var(--road);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px;
+}
+
+.svc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.super-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    background: var(--sun);
+    color: var(--ink);
+    font-size: 0.75rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.btn-danger-soft {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    background: var(--sun-soft);
+    color: var(--ink);
+    border: 1.5px solid var(--sun);
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.btn-danger-soft:hover:not(:disabled) {
+    background: var(--sun);
+    border-color: var(--ink);
+}
+
+.btn-danger-soft:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+}
+
+.btn-neutral {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    background: var(--bg);
+    color: var(--ink);
+    border: 1px solid var(--road);
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-neutral:hover:not(:disabled) {
+    background: var(--road);
+    border-color: var(--ink);
+}
+
+.btn-neutral:focus-visible {
+    outline: 3px solid var(--sea);
+    outline-offset: 2px;
+}
+
+.badge-novo {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    background: var(--sun);
+    color: var(--ink);
+    font-size: 0.74rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.order-card-new {
+    border: 2px solid var(--sun) !important;
+    background: #fffdf5;
+    box-shadow: 0 4px 14px rgba(255, 194, 51, 0.22);
+}
+
+/* PA-06: Stepper 3 etapas do cadastro */
+.stepper-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.stepper-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg);
+    color: #3f5364;
+    border: 1px solid var(--road);
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+
+.stepper-step.active {
+    background: var(--sun-soft);
+    color: var(--ink);
+    border-color: var(--sun);
+    box-shadow: 0 2px 8px rgba(255, 194, 51, 0.2);
+}
+
+.stepper-step.done {
+    background: var(--ok-soft);
+    color: #11663f;
+    border-color: var(--ok);
+}
+
+.stepper-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    background: var(--card);
+    border: 1.5px solid var(--road);
+    color: var(--ink);
+    font-size: 0.75rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stepper-step.active .stepper-num {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--sun);
+}
+
+.stepper-step.done .stepper-num {
+    background: var(--ok);
+    border-color: var(--ok);
+    color: #ffffff;
+}
+
+@media (max-width: 540px) {
+    .stepper-step {
+        flex-direction: column;
+        text-align: center;
+        padding: 8px 6px;
+        font-size: 0.74rem;
+        gap: 4px;
+    }
+}
+
+/* PA-08: Carrossel mobile e Segmented Control Lista/Mapa */
+@media (max-width: 640px) {
+    .categories-carousel-mobile,
+    #chips {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .categories-carousel-mobile::-webkit-scrollbar,
+    #chips::-webkit-scrollbar {
+        display: none;
+    }
+
+    .categories-carousel-mobile > *,
+    #chips .chip {
+        flex-shrink: 0;
+    }
+}
+
+.view-toggle-mobile {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .view-toggle-mobile {
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        padding: 4px;
+        border-radius: 12px;
+        background: var(--bg);
+        border: 1px solid var(--road);
+        gap: 4px;
+        margin-bottom: 12px;
+    }
+
+    .view-toggle-mobile button {
+        flex: 1;
+        min-height: 40px;
+        border: none;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 0.88rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .view-toggle-mobile button.active,
+    .view-toggle-mobile button[aria-pressed="true"] {
+        background: var(--ink);
+        color: #ffffff;
+    }
+
+    .view-toggle-mobile button:focus-visible {
+        outline: 3px solid var(--sea);
+        outline-offset: 2px;
+    }
+}
+
+/* PA-10: KPIs, FAQ Accordion, Calculadora, Prova Social, FAB Help e Cards Semânticos */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+}
+
+.kpi-card {
+    background: var(--card);
+    border: 1px solid var(--road);
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 2px 6px rgba(16, 36, 62, 0.04);
+}
+
+.kpi-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #3f5364;
+}
+
+.kpi-value {
+    font-size: 1.55rem;
+    font-weight: 900;
+    color: var(--ink);
+    line-height: 1.15;
+}
+
+.faq-item {
+    background: var(--card);
+    border: 1px solid var(--road);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+}
+
+.faq-item:hover {
+    border-color: var(--sea);
+}
+
+.faq-trigger {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 0.96rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.faq-trigger:focus-visible {
+    outline: 3px solid var(--sea);
+    outline-offset: -3px;
+}
+
+.calc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+    align-items: start;
+}
+
+.social-proof-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.fab-help {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 900;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 10px 18px;
+    border-radius: 9999px;
+    background: var(--ink);
+    color: var(--sun);
+    border: 2px solid var(--sun);
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 8px 22px rgba(16, 36, 62, 0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fab-help:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 26px rgba(16, 36, 62, 0.32);
+}
+
+.fab-help:focus-visible {
+    outline: 3px solid var(--sea);
+    outline-offset: 3px;
+}
+
+.portal-card {
+    background: var(--card);
+    border: 1px solid var(--road);
+    border-radius: 16px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 6px rgba(16, 36, 62, 0.04);
+}
+
+.portal-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.portal-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+}
+
+/* PA-09: Footer em colunas no desktop */
+.footer-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1.4fr repeat(3, 1fr);
+    gap: 28px;
+    text-align: left;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--road);
+}
+
+.footer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.footer-brand-desc {
+    font-size: 0.85rem;
+    color: #3f5364;
+    line-height: 1.5;
+    margin: 4px 0 0;
+}
+
+.footer-col-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    margin-bottom: 4px;
+}
+
+.footer-col a {
+    color: #3f5364;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: color 0.15s ease;
+}
+
+.footer-col a:hover {
+    color: var(--sea);
+}
+
+.footer-col a:focus-visible,
+.footer-navegacao a:focus-visible {
+    outline: 3px solid var(--sea);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+@media (max-width: 900px) {
+    .footer-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .footer-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
     }
 }

@@ -144,7 +144,16 @@
         </div>
 
         <div id="listaPedidosCliente">
-          <p class="text-sm text-perto-ink/70">Carregando histórico...</p>
+          <div class="svc skeleton-card" style="padding: 16px; border-radius: 12px; margin-bottom: 12px;">
+            <div class="skeleton" style="height: 20px; width: 55%; margin-bottom: 8px;"></div>
+            <div class="skeleton" style="height: 14px; width: 80%; margin-bottom: 8px;"></div>
+            <div class="skeleton" style="height: 14px; width: 40%;"></div>
+          </div>
+          <div class="svc skeleton-card" style="padding: 16px; border-radius: 12px; margin-bottom: 12px;">
+            <div class="skeleton" style="height: 20px; width: 60%; margin-bottom: 8px;"></div>
+            <div class="skeleton" style="height: 14px; width: 75%; margin-bottom: 8px;"></div>
+            <div class="skeleton" style="height: 14px; width: 35%;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -253,20 +262,77 @@
 
   </main>
 
+  <!-- Modal Acessível de Avaliação do Prestador -->
+  <div id="modalAvaliarPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalAvaliarTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 440px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalAvaliarTitulo" class="text-lg font-black text-perto-ink m-0">Avaliar Prestador</h3>
+        <button type="button" id="btnFecharModalAvaliar" class="drawer-fechar" aria-label="Fechar modal de avaliação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p id="modalAvaliarSubtitulo" class="text-xs text-perto-ink/75 mb-4 font-body"></p>
+      <form id="formAvaliarPedido" class="space-y-4">
+        <input type="hidden" id="avaliarOrderId">
+        <div class="campo-form">
+          <span class="text-xs font-bold text-perto-ink uppercase tracking-wider block mb-2">Sua Nota (1 a 5 estrelas)</span>
+          <div id="avaliarEstrelas" class="flex items-center gap-2" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
+            <button type="button" class="chip on" data-nota="5" aria-pressed="true">★ 5</button>
+            <button type="button" class="chip" data-nota="4" aria-pressed="false">★ 4</button>
+            <button type="button" class="chip" data-nota="3" aria-pressed="false">★ 3</button>
+            <button type="button" class="chip" data-nota="2" aria-pressed="false">★ 2</button>
+            <button type="button" class="chip" data-nota="1" aria-pressed="false">★ 1</button>
+          </div>
+          <input type="hidden" id="avaliarNota" value="5">
+        </div>
+        <div class="campo-form">
+          <label for="avaliarComentario" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Comentário (opcional)</label>
+          <textarea id="avaliarComentario" rows="3" class="input-form text-sm" placeholder="Conte como foi o atendimento, pontualidade e qualidade..."></textarea>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" id="btnCancelarAvaliacao" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnEnviarAvaliacao" class="btn px-5 py-2 rounded-full text-xs font-extrabold text-perto-ink">Enviar Avaliação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Institucional Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
       <div class="footer-direitos">
-        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>
@@ -420,6 +486,109 @@
       }
     }
 
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function formatarMetodoPagamento(metodo) {
+      const mapa = {
+        escrow: 'Escrow no Local',
+        escrow_local: 'Escrow no Local',
+        pix: 'Pix (Escrow)',
+        cartao: 'Cartão (Escrow)'
+      };
+      return mapa[metodo] || metodo || 'Escrow no Local';
+    }
+
+    let avaliacaoTriggerEl = null;
+
+    function abrirModalAvaliacao(orderId, prestadorNome, servicoTitulo) {
+      avaliacaoTriggerEl = document.activeElement;
+      const modal = document.getElementById('modalAvaliarPedido');
+      if (!modal) return;
+      document.getElementById('avaliarOrderId').value = orderId;
+      document.getElementById('avaliarComentario').value = '';
+      document.getElementById('avaliarNota').value = '5';
+      document.querySelectorAll('#avaliarEstrelas [data-nota]').forEach(btn => {
+        const is5 = btn.dataset.nota === '5';
+        btn.classList.toggle('on', is5);
+        btn.setAttribute('aria-pressed', is5 ? 'true' : 'false');
+      });
+      document.getElementById('modalAvaliarSubtitulo').textContent = `Como foi o serviço "${servicoTitulo}" realizado por ${prestadorNome}?`;
+      modal.style.display = 'flex';
+      document.addEventListener('keydown', onModalAvaliarKeyDown);
+      const firstBtn = modal.querySelector('#avaliarEstrelas button');
+      if (firstBtn) setTimeout(() => firstBtn.focus(), 0);
+    }
+
+    function fecharModalAvaliacao() {
+      const modal = document.getElementById('modalAvaliarPedido');
+      if (modal) modal.style.display = 'none';
+      document.removeEventListener('keydown', onModalAvaliarKeyDown);
+      if (avaliacaoTriggerEl && typeof avaliacaoTriggerEl.focus === 'function') {
+        avaliacaoTriggerEl.focus();
+      }
+    }
+
+    function onModalAvaliarKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        fecharModalAvaliacao();
+      }
+    }
+
+    document.querySelectorAll('#avaliarEstrelas [data-nota]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nota = btn.dataset.nota;
+        document.getElementById('avaliarNota').value = nota;
+        document.querySelectorAll('#avaliarEstrelas [data-nota]').forEach(b => {
+          const active = b.dataset.nota === nota;
+          b.classList.toggle('on', active);
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      });
+    });
+
+    document.getElementById('btnFecharModalAvaliar').onclick = fecharModalAvaliacao;
+    document.getElementById('btnCancelarAvaliacao').onclick = fecharModalAvaliacao;
+    document.getElementById('modalAvaliarPedido').onclick = (e) => {
+      if (e.target.id === 'modalAvaliarPedido') fecharModalAvaliacao();
+    };
+
+    document.getElementById('formAvaliarPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('avaliarOrderId').value;
+      const nota = parseInt(document.getElementById('avaliarNota').value, 10) || 5;
+      const comentario = document.getElementById('avaliarComentario').value.trim();
+      const btnSubmit = document.getElementById('btnEnviarAvaliacao');
+      btnSubmit.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nota, comentario })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast('Avaliação registrada com sucesso! Obrigado pelo feedback.');
+          fecharModalAvaliacao();
+          await carregarHistoricoPedidos();
+        } else {
+          toast(data.error || 'Não foi possível enviar a avaliação.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao enviar avaliação.');
+      } finally {
+        btnSubmit.disabled = false;
+      }
+    };
+
     async function carregarHistoricoPedidos() {
       const div = document.getElementById('listaPedidosCliente');
       try {
@@ -429,13 +598,14 @@
 
         if (!pedidos.length) {
           div.innerHTML = `
-            <div class="text-center py-10 px-4">
+            <div class="empty-state-card" role="status" aria-live="polite">
               <div class="w-12 h-12 rounded-full bg-perto-bg flex items-center justify-center mx-auto mb-3 text-perto-sea">
-                <span class="material-symbols-outlined text-2xl">receipt_long</span>
+                <span class="material-symbols-outlined text-2xl" aria-hidden="true">receipt_long</span>
               </div>
-              <p class="text-sm text-perto-ink/70 mb-4 font-body">Você ainda não solicitou nenhum serviço na plataforma.</p>
+              <p class="empty-title">Nenhum pedido solicitado ainda</p>
+              <p class="empty-desc">Você ainda não solicitou nenhum serviço na plataforma. Explore os profissionais disponíveis na sua região.</p>
               <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-2.5 rounded-full text-xs inline-flex items-center gap-2 text-decoration-none">
-                <span class="material-symbols-outlined text-sm">search</span>
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">search</span>
                 Explorar Prestadores Locais
               </a>
             </div>
@@ -444,33 +614,53 @@
         }
 
         div.innerHTML = pedidos.map(p => {
-          let badgeClass = '';
-          if (p.status === 'finalizado') badgeClass = 'tag';
-          else if (p.status === 'cancelado') badgeClass = 'tag off';
-          else badgeClass = 'tag';
+          const badgeClass = p.status === 'cancelado' ? 'tag off' : 'tag';
+          const codigoHtml = p.codigo_confirmacao
+            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">Código: <b>${escapeHtml(p.codigo_confirmacao)}</b></span>`
+            : '';
+          const pagamentoHtml = `<span>💳 Pagamento: <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>`;
+          const podeAvaliar = p.status === 'finalizado' && !p.ja_avaliado;
+          const jaAvaliadoHtml = p.status === 'finalizado' && p.ja_avaliado
+            ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
+            : '';
 
           return `
             <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
               <div class="top">
-                <span><b>${p.servico_titulo}</b> (${p.servico_categoria})</span>
+                <span><b>${escapeHtml(p.servico_titulo)}</b> (${escapeHtml(p.servico_categoria)})</span>
                 <span class="price">${brl(p.preco_total)}</span>
               </div>
               <div class="meta" style="margin: 6px 0;">
-                <span>🛠️ Profissional: <b>${p.prestador_nome}</b></span>
-                <span>📞 Tel: ${p.prestador_telefone || 'Não informado'}</span>
-                <span>Status: <b class="${badgeClass}">${p.status.toUpperCase()}</b></span>
+                <span>🛠️ Profissional: <b>${escapeHtml(p.prestador_nome)}</b></span>
+                <span>📞 Tel: ${escapeHtml(p.prestador_telefone || 'Não informado')}</span>
+                ${pagamentoHtml}
+                <span>Status: <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b></span>
+                ${codigoHtml}
+                ${jaAvaliadoHtml}
               </div>
-              ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${[p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', ')}</div>` : ''}
-              ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${p.observacoes}</p>` : ''}
-              <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
-                <a href="pedido.html" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
-                  <span class="material-symbols-outlined" style="font-size: 1rem;">map</span>
+              ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
+              ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
+              <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+                ${podeAvaliar ? `
+                  <button type="button" class="btn btn-avaliar-pedido" data-order-id="${p.order_id}" data-prestador="${escapeHtml(p.prestador_nome)}" data-servico="${escapeHtml(p.servico_titulo)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span>
+                    Avaliar Prestador
+                  </button>
+                ` : ''}
+                <a href="pedido.html?order_id=${encodeURIComponent(p.order_id)}" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                  <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">map</span>
                   Ver no Mapa em Tempo Real
                 </a>
               </div>
             </div>
           `;
         }).join('');
+
+        div.querySelectorAll('.btn-avaliar-pedido').forEach(btn => {
+          btn.onclick = () => {
+            abrirModalAvaliacao(btn.dataset.orderId, btn.dataset.prestador, btn.dataset.servico);
+          };
+        });
       } catch (e) {
         div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar histórico de pedidos.</p>';
       }
@@ -519,7 +709,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       carregarPortalCliente();
       // Polling em segundo plano para status das ordens a cada 20 segundos
-      setInterval(carregarMeusPedidos, 20000);
+      setInterval(carregarHistoricoPedidos, 20000);
     });
   </script>
 </body>

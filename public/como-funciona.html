@@ -131,19 +131,33 @@
     </nav>
   </header>
 
-  <!-- Hero Explicativo -->
+  <!-- Hero Explicativo & Captação de Parceiros -->
   <section class="hero py-10 sm:py-14 text-center">
     <div class="max-w-3xl mx-auto px-4">
       <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
-        <span class="material-symbols-outlined text-sm">hub</span>
-        Tecnologia Geoespacial & Transparência
+        <span class="material-symbols-outlined text-sm" aria-hidden="true">hub</span>
+        1º mês grátis · Isenção de mensalidade &lt; R$ 1.800/mês
       </div>
       <h1 class="text-white font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight mb-4">
         Como a PertoJá conecta você à melhor solução local.
       </h1>
-      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto">
+      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto mb-6">
         Conheça as etapas do nosso modelo operacional, a segurança do pagamento Escrow e os planos sob medida para prestadores.
       </p>
+
+      <!-- Micro-formulário de Captação de Parceiro (PA-03) -->
+      <form id="formHeroParceiro" class="max-w-lg mx-auto flex flex-col sm:flex-row gap-2.5 bg-white/10 p-2 rounded-2xl border border-white/20 backdrop-blur-sm">
+        <input type="email" id="heroEmailParceiro" aria-label="Seu e-mail profissional" placeholder="Digite seu e-mail profissional" class="flex-1 rounded-xl border-0 bg-white px-4 py-3 text-sm font-medium text-perto-ink placeholder:text-perto-ink/60 focus:ring-2 focus:ring-perto-sun">
+        <button type="submit" class="btn px-6 py-3 rounded-xl text-sm font-extrabold text-perto-ink whitespace-nowrap justify-center">
+          Cadastrar agora
+        </button>
+      </form>
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs sm:text-sm text-white/85 font-body">
+        <span>Comece sem custo fixo: <strong class="text-perto-sun">1º mês grátis</strong> e isenção abaixo de <strong class="text-perto-sun">R$ 1.800/mês</strong>.</span>
+        <a href="login.html?tipo=prestador" class="text-white font-bold underline hover:text-perto-sun transition-colors">
+          Já sou parceiro
+        </a>
+      </div>
     </div>
   </section>
 
@@ -211,6 +225,77 @@
         </div>
       </section>
 
+      <!-- Seção: Requisitos e Passo a Passo para Prestadores (PA-06) -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm space-y-10">
+        <div>
+          <div class="text-center max-w-2xl mx-auto mb-8">
+            <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Pré-requisitos</span>
+            <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">O que é necessário para cadastrar</h2>
+            <p class="text-sm text-perto-ink/70 mt-2 font-body">Sem burocracia: tenha em mãos os dados essenciais para ativar seu perfil profissional.</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+              <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mb-3">
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">badge</span>
+              </div>
+              <h3 class="font-bold text-sm sm:text-base text-perto-ink mb-1">CPF ou MEI/CNPJ</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Atue como autônomo com CPF ou formalize seu negócio com MEI/CNPJ.</p>
+            </div>
+
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+              <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mb-3">
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">account_balance</span>
+              </div>
+              <h3 class="font-bold text-sm sm:text-base text-perto-ink mb-1">Conta/Pix para repasse Escrow</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Chave Pix ou conta bancária para receber os valores liberados após cada serviço.</p>
+            </div>
+
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+              <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mb-3">
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">pin_drop</span>
+              </div>
+              <h3 class="font-bold text-sm sm:text-base text-perto-ink mb-1">Endereço/CEP de atuação</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Informe seu CEP base para aparecer aos clientes mais próximos no radar.</p>
+            </div>
+
+            <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+              <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center mb-3">
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">sell</span>
+              </div>
+              <h3 class="font-bold text-sm sm:text-base text-perto-ink mb-1">Serviço e preço base</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Defina sua especialidade inicial e o valor de referência com autonomia total.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-8 border-t border-perto-road">
+          <div class="text-center max-w-2xl mx-auto mb-8">
+            <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Onboarding Rápido</span>
+            <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Como começar no PertoJá</h2>
+            <p class="text-sm text-perto-ink/70 mt-2 font-body">Do cadastro ao primeiro repasse protegido em 3 passos simples.</p>
+          </div>
+
+          <ol class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <li class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+              <span class="w-8 h-8 rounded-full bg-perto-sea text-white font-black text-sm flex items-center justify-center mb-3">1</span>
+              <h3 class="font-bold text-base text-perto-ink mb-1">Crie sua conta e escolha o plano</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Preencha seus dados de acesso, CEP e especialidade em menos de 3 minutos.</p>
+            </li>
+            <li class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+              <span class="w-8 h-8 rounded-full bg-perto-sea text-white font-black text-sm flex items-center justify-center mb-3">2</span>
+              <h3 class="font-bold text-base text-perto-ink mb-1">Ative seu catálogo no radar</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Publique seus serviços, ajuste preços e fique disponível para clientes da sua região.</p>
+            </li>
+            <li class="bg-perto-bg border border-perto-road rounded-2xl p-6 relative">
+              <span class="w-8 h-8 rounded-full bg-perto-ok text-white font-black text-sm flex items-center justify-center mb-3">3</span>
+              <h3 class="font-bold text-base text-perto-ink mb-1">Atenda e receba com Escrow</h3>
+              <p class="text-xs text-perto-ink/70 font-body leading-relaxed">Confirme o chamado, finalize com segurança e acompanhe o repasse direto no seu painel.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
       <!-- Seção: Comparativo de Planos & Taxas para Parceiros (Stitch P3 Inspiration) -->
       <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm">
         <div class="text-center max-w-2xl mx-auto mb-10">
@@ -265,7 +350,7 @@
               </ul>
             </div>
 
-            <a href="cadastro.html" class="btn2 w-full text-center font-bold py-3 rounded-full text-xs text-decoration-none">
+            <a href="cadastro.html?tipo=prestador&plano=basico" class="btn2 w-full text-center font-bold py-3 rounded-full text-xs text-decoration-none">
               Aderir ao Plano Básico
             </a>
           </div>
@@ -315,7 +400,7 @@
               </ul>
             </div>
 
-            <a href="cadastro.html" class="btn w-full text-center text-perto-ink font-black py-3 rounded-full text-xs text-decoration-none shadow-sm hover:scale-[1.02] transition-transform">
+            <a href="cadastro.html?tipo=prestador&plano=pro" class="btn w-full text-center text-perto-ink font-black py-3 rounded-full text-xs text-decoration-none shadow-sm hover:scale-[1.02] transition-transform">
               Começar com Plano Pro
             </a>
           </div>
@@ -323,30 +408,291 @@
         </div>
       </section>
 
+      <!-- Seção: Calculadora de Precificação & Ganho Líquido (PA-10) -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm" id="calculadora-ganhos">
+        <div class="text-center max-w-2xl mx-auto mb-8">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Simulador Financeiro</span>
+          <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Calculadora de Precificação &amp; Ganho Líquido</h2>
+          <p class="text-sm text-perto-ink/70 mt-2 font-body">Simule seu faturamento mensal, taxas da plataforma e verifique automaticamente se você tem isenção de mensalidade.</p>
+        </div>
+
+        <div class="calc-grid">
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-6 space-y-4">
+            <div class="campo-form">
+              <label for="calcPreco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Preço médio do serviço (R$)</label>
+              <input type="number" id="calcPreco" min="10" step="10" value="180" class="input-form text-sm font-bold">
+            </div>
+
+            <div class="campo-form">
+              <label for="calcAtendimentos" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nº de atendimentos / mês</label>
+              <input type="number" id="calcAtendimentos" min="1" step="1" value="15" class="input-form text-sm font-bold">
+            </div>
+
+            <div class="campo-form">
+              <label for="calcCusto" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Custo de material/deslocamento por serviço (R$)</label>
+              <input type="number" id="calcCusto" min="0" step="5" value="25" class="input-form text-sm font-bold">
+            </div>
+
+            <div class="campo-form">
+              <label for="calcPlano" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Plano escolhido</label>
+              <select id="calcPlano" class="input-form text-sm font-bold">
+                <option value="basico">Plano Básico (Taxa 12% · Mensalidade R$ 90)</option>
+                <option value="pro">Plano Pro (Taxa 8% · Mensalidade R$ 180)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="bg-white border-2 border-perto-sea/30 rounded-2xl p-6 flex flex-col justify-between space-y-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between text-sm font-body">
+                <span class="text-perto-ink/75">Faturamento bruto mensal</span>
+                <strong id="resBruto" class="text-perto-ink font-extrabold">R$ 2.700,00</strong>
+              </div>
+              <div class="flex items-center justify-between text-sm font-body">
+                <span class="text-perto-ink/75">Taxa da plataforma (<span id="resTaxaPct">12%</span>)</span>
+                <strong id="resTaxaValor" class="text-perto-ink font-bold">- R$ 324,00</strong>
+              </div>
+              <div class="flex items-center justify-between text-sm font-body">
+                <span class="text-perto-ink/75">Custos operacionais (material/desloc.)</span>
+                <strong id="resCustos" class="text-perto-ink font-bold">- R$ 375,00</strong>
+              </div>
+              <div class="flex items-center justify-between text-sm font-body">
+                <span class="text-perto-ink/75">Mensalidade do plano</span>
+                <strong id="resMensalidade" class="text-perto-ink font-bold">R$ 90,00</strong>
+              </div>
+              <div id="resIsencaoBadge" class="text-xs font-bold px-3 py-2 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center gap-2">
+                <span class="material-symbols-outlined text-base" aria-hidden="true">verified</span>
+                <span>1º mês grátis garantido!</span>
+              </div>
+            </div>
+
+            <div class="pt-4 border-t border-perto-road flex items-baseline justify-between">
+              <span class="text-sm font-extrabold uppercase tracking-wider text-perto-ink">Ganho líquido estimado</span>
+              <span id="resLiquido" class="text-2xl sm:text-3xl font-black text-perto-ok">R$ 1.911,00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção: Prova Social de Prestadores (PA-10) -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm">
+        <div class="text-center max-w-2xl mx-auto mb-8">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Histórias Reais</span>
+          <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Quem já atende pelo PertoJá</h2>
+          <p class="text-sm text-perto-ink/70 mt-2 font-body">Profissionais locais que reduziram deslocamentos e ganharam previsibilidade de renda.</p>
+        </div>
+
+        <div class="social-proof-grid">
+          <article class="bg-perto-bg border border-perto-road rounded-2xl p-6 flex flex-col justify-between">
+            <p class="text-sm text-perto-ink/85 font-body leading-relaxed mb-4">
+              "Antes eu cruzava a cidade para fazer orçamento. Hoje recebo chamados no meu bairro e o pagamento Escrow dá segurança total para mim e para o cliente."
+            </p>
+            <div class="flex items-center justify-between pt-3 border-t border-perto-road">
+              <div>
+                <strong class="text-sm font-bold text-perto-ink block">Carlos Mendes</strong>
+                <span class="text-xs text-perto-ink/70">Eletricista · Zona Sul, SP</span>
+              </div>
+              <span class="text-xs font-extrabold text-perto-sun bg-perto-ink px-2.5 py-1 rounded-full">★ 4.9</span>
+            </div>
+          </article>
+
+          <article class="bg-perto-bg border border-perto-road rounded-2xl p-6 flex flex-col justify-between">
+            <p class="text-sm text-perto-ink/85 font-body leading-relaxed mb-4">
+              "Comecei no Plano Básico sem pagar mensalidade nos primeiros meses porque faturava menos de R$ 1.800. Quando a agenda lotou, migrei para o Pro."
+            </p>
+            <div class="flex items-center justify-between pt-3 border-t border-perto-road">
+              <div>
+                <strong class="text-sm font-bold text-perto-ink block">Fernanda Souza</strong>
+                <span class="text-xs text-perto-ink/70">Diarista &amp; Limpeza · Guarulhos</span>
+              </div>
+              <span class="text-xs font-extrabold text-perto-sun bg-perto-ink px-2.5 py-1 rounded-full">★ 5.0</span>
+            </div>
+          </article>
+
+          <article class="bg-perto-bg border border-perto-road rounded-2xl p-6 flex flex-col justify-between">
+            <p class="text-sm text-perto-ink/85 font-body leading-relaxed mb-4">
+              "Com o painel de chamados e o botão de pausar serviço, controlo minha agenda na hora do pico sem perder avaliação."
+            </p>
+            <div class="flex items-center justify-between pt-3 border-t border-perto-road">
+              <div>
+                <strong class="text-sm font-bold text-perto-ink block">Rafael Lima</strong>
+                <span class="text-xs text-perto-ink/70">Encanador · Pinheiros, SP</span>
+              </div>
+              <span class="text-xs font-extrabold text-perto-sun bg-perto-ink px-2.5 py-1 rounded-full">★ 4.8</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Seção: FAQ de Objeções para Prestadores (PA-10) -->
+      <section class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-10 shadow-sm" id="faq-parceiro">
+        <div class="text-center max-w-2xl mx-auto mb-8">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Dúvidas Frequentes</span>
+          <h2 class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">Perguntas de quem quer ser parceiro</h2>
+        </div>
+
+        <div class="max-w-3xl mx-auto space-y-3">
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false" aria-controls="faq-ans-1">
+              <span>Preciso ter CNPJ/MEI ou posso me cadastrar com CPF?</span>
+              <span class="material-symbols-outlined text-lg" aria-hidden="true">expand_more</span>
+            </button>
+            <div id="faq-ans-1" class="px-5 pb-4 text-sm text-perto-ink/80 font-body" style="display: none;">
+              Você pode iniciar tanto com CPF (autônomo) quanto com MEI/CNPJ. Recomendamos o MEI caso queira emitir notas fiscais para clientes corporativos.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false" aria-controls="faq-ans-2">
+              <span>Como funciona a isenção de mensalidade abaixo de R$ 1.800/mês?</span>
+              <span class="material-symbols-outlined text-lg" aria-hidden="true">expand_more</span>
+            </button>
+            <div id="faq-ans-2" class="px-5 pb-4 text-sm text-perto-ink/80 font-body" style="display: none;">
+              Além do 1º mês 100% grátis, sempre que seu faturamento bruto mensal na plataforma for menor ou igual a R$ 1.800,00, a mensalidade fixa é isenta automaticamente — você paga apenas a taxa por serviço concluído.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false" aria-controls="faq-ans-3">
+              <span>Como funciona o pagamento Escrow e quando recebo o repasse?</span>
+              <span class="material-symbols-outlined text-lg" aria-hidden="true">expand_more</span>
+            </button>
+            <div id="faq-ans-3" class="px-5 pb-4 text-sm text-perto-ink/80 font-body" style="display: none;">
+              O cliente paga no momento da solicitação e o valor fica protegido em custódia (Escrow). Assim que você conclui o atendimento e o status passa para finalizado, o repasse líquido é liberado para sua conta/Pix cadastrada.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false" aria-controls="faq-ans-4">
+              <span>Qual o prazo de ativação do meu perfil após o cadastro?</span>
+              <span class="material-symbols-outlined text-lg" aria-hidden="true">expand_more</span>
+            </button>
+            <div id="faq-ans-4" class="px-5 pb-4 text-sm text-perto-ink/80 font-body" style="display: none;">
+              A ativação é imediata após concluir as 3 etapas do cadastro. Você já acessa o Cockpit do Prestador, pode configurar novos serviços e ficar disponível no mapa na hora.
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
 
   </main>
 
+  <!-- Botão Flutuante de Ajuda / Suporte (PA-10) -->
+  <a href="#faq-parceiro" class="fab-help" aria-label="Dúvidas e suporte ao parceiro">
+    <span class="material-symbols-outlined text-xl" aria-hidden="true">help</span>
+    <span>Ajuda</span>
+  </a>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
       <div class="footer-direitos">
-        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>
 
   <!-- Scripts do PertoJá com execução diferida -->
   <script src="auth.js" defer></script>
+  <script>
+    (function () {
+      const formHero = document.getElementById('formHeroParceiro');
+      if (formHero) {
+        formHero.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const email = (document.getElementById('heroEmailParceiro')?.value || '').trim();
+          const params = new URLSearchParams({ tipo: 'prestador' });
+          if (email) params.set('email', email);
+          window.location.href = `cadastro.html?${params.toString()}`;
+        });
+      }
+
+      const fmtBrl = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      function atualizarCalculadora() {
+        const preco = Math.max(0, parseFloat(document.getElementById('calcPreco')?.value) || 0);
+        const qtd = Math.max(0, parseInt(document.getElementById('calcAtendimentos')?.value, 10) || 0);
+        const custoUnit = Math.max(0, parseFloat(document.getElementById('calcCusto')?.value) || 0);
+        const plano = document.getElementById('calcPlano')?.value || 'basico';
+
+        const bruto = preco * qtd;
+        const taxaPct = plano === 'pro' ? 0.08 : 0.12;
+        const taxaValor = bruto * taxaPct;
+        const custosTotais = custoUnit * qtd;
+        const isento = bruto <= 1800;
+        const mensalidadeBase = plano === 'pro' ? 180 : 90;
+        const mensalidadeAplicada = isento ? 0 : mensalidadeBase;
+        const liquido = bruto - taxaValor - custosTotais - mensalidadeAplicada;
+
+        document.getElementById('resBruto').textContent = fmtBrl(bruto);
+        document.getElementById('resTaxaPct').textContent = `${Math.round(taxaPct * 100)}%`;
+        document.getElementById('resTaxaValor').textContent = `- ${fmtBrl(taxaValor)}`;
+        document.getElementById('resCustos').textContent = `- ${fmtBrl(custosTotais)}`;
+        document.getElementById('resMensalidade').textContent = isento ? 'Isento (R$ 0,00)' : fmtBrl(mensalidadeAplicada);
+
+        const badge = document.getElementById('resIsencaoBadge');
+        if (badge) {
+          badge.innerHTML = isento
+            ? '<span class="material-symbols-outlined text-base" aria-hidden="true">verified</span><span>Isenção de mensalidade aplicada (faturamento &le; R$ 1.800/mês) + 1º mês grátis!</span>'
+            : '<span class="material-symbols-outlined text-base" aria-hidden="true">info</span><span>Acima de R$ 1.800/mês: 1º mês grátis e depois ' + fmtBrl(mensalidadeBase) + '/mês.</span>';
+        }
+
+        const resLiq = document.getElementById('resLiquido');
+        resLiq.textContent = fmtBrl(liquido);
+        resLiq.classList.toggle('text-perto-ok', liquido > 0);
+        resLiq.classList.toggle('text-perto-ink', liquido <= 0);
+      }
+
+      ['calcPreco', 'calcAtendimentos', 'calcCusto', 'calcPlano'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', atualizarCalculadora);
+        if (el) el.addEventListener('change', atualizarCalculadora);
+      });
+      atualizarCalculadora();
+
+      document.querySelectorAll('.faq-trigger').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const expanded = btn.getAttribute('aria-expanded') === 'true';
+          const targetId = btn.getAttribute('aria-controls');
+          const panel = targetId ? document.getElementById(targetId) : null;
+          btn.setAttribute('aria-expanded', String(!expanded));
+          if (panel) panel.style.display = expanded ? 'none' : 'block';
+        });
+      });
+    })();
+  </script>
 </body>
 
 </html>

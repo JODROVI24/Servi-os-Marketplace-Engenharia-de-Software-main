@@ -1,6 +1,7 @@
 import os
 import re
 import math
+import secrets
 import requests
 import gzip
 import time
@@ -152,6 +153,22 @@ def rate_limit(limit, window_seconds=60):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+def _row_get(row, key, default=None):
+    """Acesso seguro a colunas em sqlite3.Row, HybridRow ou dict."""
+    if row is None:
+        return default
+    if hasattr(row, 'get'):
+        val = row.get(key, default)
+        return val if val is not None else default
+    try:
+        if key in row.keys():
+            val = row[key]
+            return val if val is not None else default
+    except Exception:
+        pass
+    return default
 
 
 def get_current_user():
@@ -508,6 +525,9 @@ def register():
     email = str(data.get('email') or '').strip().lower()
     senha = str(data.get('senha') or '')
     tipo = str(data.get('tipo') or 'cliente').strip()
+    plano = str(data.get('plano') or 'basico').strip().lower()
+    if plano not in ('basico', 'pro'):
+        plano = 'basico'
     telefone = str(data.get('telefone') or '').strip()
     bio = str(data.get('bio') or '').strip()
 
@@ -560,9 +580,9 @@ def register():
         senha_hash = generate_password_hash(senha)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng))
+            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng))
         user_id = cursor.lastrowid
 
         # Se for prestador e informou categoria e preço inicial, cria o primeiro serviço com endereço real
@@ -594,6 +614,7 @@ def register():
                 'nome': nome,
                 'email': email,
                 'tipo': tipo,
+                'plano': plano,
                 'telefone': telefone,
                 'cep': cep,
                 'endereco': endereco,
@@ -639,6 +660,7 @@ def login():
             'nome': user['nome'],
             'email': user['email'],
             'tipo': user['tipo'],
+            'plano': _row_get(user, 'plano', 'basico'),
             'telefone': user['telefone'],
             'bio': user['bio'],
             'cep': user['cep'],
@@ -660,6 +682,62 @@ def logout():
     return jsonify({'message': 'Sessão encerrada com sucesso.'})
 
 
+@app.route('/api/auth/forgot-password', methods=['POST'])
+@rate_limit(10, 60)
+def forgot_password():
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email') or '').strip().lower()
+    if email:
+        conn = get_db_connection()
+        try:
+            user = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+            if user:
+                token = secrets.token_urlsafe(24)
+                expires_at = time.time() + 1800
+                conn.execute(
+                    'INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)',
+                    (token, user['id'], expires_at)
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+    return jsonify({
+        'message': 'Se o e-mail estiver cadastrado, as instruções de redefinição foram geradas.'
+    }), 200
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+@rate_limit(10, 60)
+def reset_password():
+    data = request.get_json(silent=True) or {}
+    token = str(data.get('token') or '').strip()
+    nova_senha = str(data.get('nova_senha') or '')
+
+    if not token:
+        return jsonify({'error': 'Token de redefinição obrigatório.'}), 400
+    if len(nova_senha) < 6:
+        return jsonify({'error': 'A nova senha deve conter no mínimo 6 caracteres.'}), 400
+
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            'SELECT token, user_id, expires_at, used FROM password_reset_tokens WHERE token = ?',
+            (token,)
+        ).fetchone()
+        if not row or int(_row_get(row, 'used', 0)) != 0 or float(row['expires_at']) <= time.time():
+            return jsonify({'error': 'Token inválido ou expirado.'}), 400
+
+        senha_hash = generate_password_hash(nova_senha)
+        conn.execute('UPDATE users SET senha_hash = ? WHERE id = ?', (senha_hash, row['user_id']))
+        conn.execute('UPDATE password_reset_tokens SET used = 1 WHERE token = ?', (token,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Senha redefinida com sucesso.'}), 200
+
+
 @app.route('/api/auth/me', methods=['GET'])
 def me():
     user = get_current_user()
@@ -673,6 +751,7 @@ def me():
             'nome': user['nome'],
             'email': user['email'],
             'tipo': user['tipo'],
+            'plano': _row_get(user, 'plano', 'basico'),
             'telefone': user['telefone'],
             'bio': user['bio'],
             'foto_url': user['foto_url'],
@@ -686,6 +765,7 @@ def me():
             'lat': user['lat'],
             'lng': user['lng'],
             'disponivel': bool(user['disponivel']),
+            'plano': _row_get(user, 'plano', 'basico'),
             'avaliacao_media': user['avaliacao_media'],
             'total_avaliacoes': user['total_avaliacoes']
         }
@@ -709,6 +789,7 @@ def profile():
             'nome': user['nome'],
             'email': user['email'],
             'tipo': user['tipo'],
+            'plano': _row_get(user, 'plano', 'basico'),
             'telefone': user['telefone'],
             'bio': user['bio'],
             'cep': user['cep'],
@@ -721,22 +802,29 @@ def profile():
             'lat': user['lat'],
             'lng': user['lng'],
             'disponivel': bool(user['disponivel']),
+            'plano': _row_get(user, 'plano', 'basico'),
             'avaliacao_media': user['avaliacao_media']
         })
 
     # PUT: Atualização de perfil
     data = request.get_json() or {}
-    nome = data.get('nome', user['nome']).strip()
-    telefone = data.get('telefone', user['telefone']).strip()
-    bio = data.get('bio', user['bio']).strip()
 
-    cep = data.get('cep', user['cep'] or '').strip()
-    endereco = data.get('endereco', user['endereco'] or '').strip()
-    numero = data.get('numero', user['numero'] or '').strip()
-    complemento = data.get('complemento', user['complemento'] or '').strip()
-    bairro = data.get('bairro', user['bairro'] or '').strip()
-    cidade = data.get('cidade', user['cidade'] or '').strip()
-    estado = data.get('estado', user['estado'] or '').strip()
+    def _clean_str(val, fallback=''):
+        if val is None:
+            return str(fallback or '').strip()
+        return str(val).strip()
+
+    nome = _clean_str(data.get('nome'), user['nome'])
+    telefone = _clean_str(data.get('telefone'), user['telefone'])
+    bio = _clean_str(data.get('bio'), user['bio'])
+
+    cep = _clean_str(data.get('cep'), user['cep'])
+    endereco = _clean_str(data.get('endereco'), user['endereco'])
+    numero = _clean_str(data.get('numero'), user['numero'])
+    complemento = _clean_str(data.get('complemento'), user['complemento'])
+    bairro = _clean_str(data.get('bairro'), user['bairro'])
+    cidade = _clean_str(data.get('cidade'), user['cidade'])
+    estado = _clean_str(data.get('estado'), user['estado'])
 
     raw_lat = data.get('lat')
     raw_lng = data.get('lng')
@@ -789,6 +877,7 @@ def list_services():
     user_lng = request.args.get('lng', type=float)
     radius = request.args.get('radius', default=15.0, type=float)
     order = (request.args.get('order') or 'distance').strip().lower()
+    only_available = request.args.get('only_available', '').strip().lower() in ('1', 'true', 'yes')
 
     conn = get_db_connection()
     sql = '''
@@ -813,12 +902,16 @@ def list_services():
             u.bio AS prestador_bio,
             u.avaliacao_media,
             u.total_avaliacoes,
-            u.disponivel
+            u.disponivel,
+            COALESCE(u.plano, 'basico') AS plano
         FROM services s
         JOIN users u ON s.prestador_id = u.id
         WHERE s.ativo = 1
     '''
     params = []
+
+    if only_available:
+        sql += ' AND u.disponivel = 1'
 
     if cat and cat != 'Todos':
         sql += ' AND LOWER(s.categoria) = LOWER(?)'
@@ -890,6 +983,8 @@ def list_services():
                 'avaliacao': r['avaliacao_media'],
                 'total_avaliacoes': r['total_avaliacoes'],
                 'disponivel': bool(r['disponivel']),
+                'plano': _row_get(r, 'plano', 'basico'),
+                'super_profissional': bool((r['avaliacao_media'] or 0) >= 4.8 and (r['total_avaliacoes'] or 0) >= 5),
                 'lat': svc_lat,
                 'lng': svc_lng
             },
@@ -1102,6 +1197,17 @@ def create_order():
         }), 400
 
     observacoes = str(data.get('observacoes') or '').strip()
+    complemento_cli = str(data.get('complemento') or _row_get(user, 'complemento', '')).strip()
+    modalidade = str(data.get('modalidade') or 'imediato').strip().lower()
+    if modalidade not in ('imediato', 'agendado'):
+        modalidade = 'imediato'
+    agendado_para = str(data.get('agendado_para') or '').strip() or None
+    metodo_pagamento = str(data.get('metodo_pagamento') or 'escrow').strip().lower()
+    if metodo_pagamento == 'escrow_local':
+        metodo_pagamento = 'escrow'
+    elif metodo_pagamento not in ('pix', 'cartao', 'escrow'):
+        metodo_pagamento = 'escrow'
+    codigo_confirmacao = f"{secrets.randbelow(9000) + 1000}"
 
     # Endereço onde o serviço será realizado (com fallbacks dos dados cadastrais do cliente)
     cep_cli = str(data.get('cep') or user['cep'] or '').strip()
@@ -1118,9 +1224,19 @@ def create_order():
 
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO orders (cliente_id, prestador_id, servico_id, preco_total, observacoes, cep_cliente, endereco_cliente, numero_cliente, bairro_cliente, cidade_cliente, estado_cliente, lat_cliente, lng_cliente, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'solicitado')
-    ''', (user['id'], service['prestador_id'], service['id'], service['preco'], observacoes, cep_cli, end_cli, num_cli, bairro_cli, cidade_cli, estado_cli, lat_cliente, lng_cliente))
+        INSERT INTO orders (
+            cliente_id, prestador_id, servico_id, preco_total, observacoes,
+            cep_cliente, endereco_cliente, numero_cliente, complemento_cliente,
+            bairro_cliente, cidade_cliente, estado_cliente, lat_cliente, lng_cliente,
+            modalidade, agendado_para, metodo_pagamento, pago, codigo_confirmacao, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'solicitado')
+    ''', (
+        user['id'], service['prestador_id'], service['id'], service['preco'], observacoes,
+        cep_cli, end_cli, num_cli, complemento_cli,
+        bairro_cli, cidade_cli, estado_cli, lat_cliente, lng_cliente,
+        modalidade, agendado_para, metodo_pagamento, codigo_confirmacao
+    ))
     conn.commit()
     order_id = cursor.lastrowid
     conn.close()
@@ -1129,7 +1245,10 @@ def create_order():
         'message': 'Pedido solicitado com sucesso!',
         'order_id': order_id,
         'status': 'solicitado',
-        'cliente_id': user['id']
+        'cliente_id': user['id'],
+        'codigo_confirmacao': codigo_confirmacao,
+        'modalidade': modalidade,
+        'metodo_pagamento': metodo_pagamento
     }), 201
 
 
@@ -1152,18 +1271,42 @@ def pay_order(order_id):
         conn.close()
         return jsonify({'error': 'Sem permissão para pagar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
 
+    data = request.get_json(silent=True) or {}
+    escrow_hold = bool(data.get('escrow_hold'))
+    metodo_pagamento = str(data.get('metodo_pagamento') or _row_get(order, 'metodo_pagamento', 'escrow')).strip().lower()
+    if metodo_pagamento not in ('pix', 'cartao', 'escrow'):
+        metodo_pagamento = 'escrow'
+
+    if escrow_hold:
+        conn.execute('''
+            UPDATE orders
+            SET pago = 1, metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (metodo_pagamento, order_id))
+        conn.commit()
+        current_status = order['status']
+        conn.close()
+        return jsonify({
+            'message': 'Pagamento retido em garantia (escrow) com sucesso!',
+            'order_id': order_id,
+            'status': current_status,
+            'pago': True,
+            'metodo_pagamento': metodo_pagamento
+        }), 200
+
     conn.execute('''
         UPDATE orders 
-        SET status = 'finalizado', atualizado_em = CURRENT_TIMESTAMP 
+        SET pago = 1, status = 'finalizado', metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP 
         WHERE id = ?
-    ''', (order_id,))
+    ''', (metodo_pagamento, order_id))
     conn.commit()
     conn.close()
 
     return jsonify({
         'message': 'Pagamento confirmado e pedido finalizado com sucesso!',
         'order_id': order_id,
-        'status': 'finalizado'
+        'status': 'finalizado',
+        'pago': True
     }), 200
 
 
@@ -1181,6 +1324,14 @@ def list_orders():
                 o.status,
                 o.preco_total,
                 o.observacoes,
+                o.complemento_cliente,
+                o.modalidade,
+                o.agendado_para,
+                o.metodo_pagamento,
+                o.pago,
+                o.codigo_confirmacao,
+                o.motivo_cancelamento,
+                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
                 COALESCE(s.categoria, 'Geral') AS servico_categoria,
@@ -1212,11 +1363,19 @@ def list_orders():
                 o.cep_cliente,
                 o.endereco_cliente,
                 o.numero_cliente,
+                o.complemento_cliente,
                 o.bairro_cliente,
                 o.cidade_cliente,
                 o.estado_cliente,
                 o.lat_cliente,
                 o.lng_cliente,
+                o.modalidade,
+                o.agendado_para,
+                o.metodo_pagamento,
+                o.pago,
+                o.codigo_confirmacao,
+                o.motivo_cancelamento,
+                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
                 COALESCE(s.categoria, 'Geral') AS servico_categoria,
@@ -1232,7 +1391,12 @@ def list_orders():
         orders = conn.execute(sql, (user['id'],)).fetchall()
 
     conn.close()
-    return jsonify([dict(o) for o in orders])
+    result = []
+    for o in orders:
+        item = dict(o)
+        item['ja_avaliado'] = bool(item.get('ja_avaliado'))
+        result.append(item)
+    return jsonify(result)
 
 
 @app.route('/api/orders/<int:order_id>/status', methods=['PATCH'])
@@ -1243,6 +1407,7 @@ def update_order_status(order_id):
 
     data = request.get_json() or {}
     novo_status = data.get('status')
+    motivo = str(data.get('motivo') or '').strip()
     valid_statuses = ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')
     if novo_status not in valid_statuses:
         return jsonify({'error': f'Status inválido. Escolha: {", ".join(valid_statuses)}'}), 400
@@ -1261,15 +1426,85 @@ def update_order_status(order_id):
         conn.close()
         return jsonify({'error': 'Sem permissão para alterar este pedido.'}), 403
 
-    conn.execute('''
-        UPDATE orders 
-        SET status = ?, atualizado_em = CURRENT_TIMESTAMP 
-        WHERE id = ?
-    ''', (novo_status, order_id))
+    if novo_status == 'cancelado' and motivo:
+        conn.execute('''
+            UPDATE orders 
+            SET status = ?, motivo_cancelamento = ?, atualizado_em = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (novo_status, motivo, order_id))
+    else:
+        conn.execute('''
+            UPDATE orders 
+            SET status = ?, atualizado_em = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (novo_status, order_id))
     conn.commit()
     conn.close()
 
     return jsonify({'message': f'Status do pedido atualizado para {novo_status}.', 'status': novo_status})
+
+
+@app.route('/api/orders/<int:order_id>/review', methods=['POST'])
+def review_order(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória para avaliar pedido.', 'code': 'UNAUTHORIZED'}), 401
+
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas clientes podem avaliar pedidos.', 'code': 'FORBIDDEN'}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw_nota = data.get('nota')
+    try:
+        nota = float(raw_nota)
+        if nota < 1 or nota > 5 or math.isnan(nota) or math.isinf(nota):
+            raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({'error': 'A nota deve ser um valor numérico entre 1 e 5.'}), 400
+
+    comentario = str(data.get('comentario') or '').strip()
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.', 'code': 'NOT_FOUND'}), 404
+
+        if order['cliente_id'] != user['id']:
+            return jsonify({'error': 'Sem permissão para avaliar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
+
+        if order['status'] != 'finalizado':
+            return jsonify({'error': 'Apenas pedidos finalizados podem ser avaliados.'}), 400
+
+        existing = conn.execute('SELECT id FROM reviews WHERE order_id = ?', (order_id,)).fetchone()
+        if existing:
+            return jsonify({'error': 'Este pedido já foi avaliado.'}), 409
+
+        conn.execute('''
+            INSERT INTO reviews (order_id, cliente_id, prestador_id, nota, comentario)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (order_id, user['id'], order['prestador_id'], nota, comentario))
+
+        stats = conn.execute(
+            'SELECT AVG(nota) AS media, COUNT(*) AS total FROM reviews WHERE prestador_id = ?',
+            (order['prestador_id'],)
+        ).fetchone()
+        nova_media = round(float(stats['media']), 2) if stats and stats['media'] is not None else nota
+        novo_total = int(stats['total']) if stats and stats['total'] is not None else 1
+
+        conn.execute(
+            'UPDATE users SET avaliacao_media = ?, total_avaliacoes = ? WHERE id = ?',
+            (nova_media, novo_total, order['prestador_id'])
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Avaliação registrada com sucesso!',
+        'avaliacao_media': nova_media,
+        'total_avaliacoes': novo_total
+    }), 201
 
 
 # ================= Inicialização do Servidor =================

@@ -306,7 +306,7 @@ class PostgresCursorWrapper:
         needs_returning = False
         is_insert = upper_sql.startswith('INSERT INTO') or upper_sql.startswith('INSERT')
         has_returning = 'RETURNING' in upper_sql
-        is_no_id_table = any(t in upper_sql for t in ('GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS'))
+        is_no_id_table = any(t in upper_sql for t in ('GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS', 'PASSWORD_RESET_TOKENS'))
 
         if is_insert and not has_returning and not is_no_id_table:
             needs_returning = True
@@ -466,6 +466,7 @@ CREATE TABLE IF NOT EXISTS users (
     avaliacao_media DOUBLE PRECISION DEFAULT 5.0,
     total_avaliacoes INTEGER DEFAULT 0,
     disponivel INTEGER DEFAULT 1,
+    plano TEXT DEFAULT 'basico',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -505,6 +506,13 @@ CREATE TABLE IF NOT EXISTS orders (
     estado_cliente TEXT,
     lat_cliente DOUBLE PRECISION,
     lng_cliente DOUBLE PRECISION,
+    complemento_cliente TEXT,
+    modalidade TEXT DEFAULT 'imediato',
+    agendado_para TEXT,
+    metodo_pagamento TEXT DEFAULT 'escrow',
+    pago INTEGER DEFAULT 0,
+    codigo_confirmacao TEXT,
+    motivo_cancelamento TEXT,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -542,6 +550,15 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     version TEXT PRIMARY KEY,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at DOUBLE PRECISION NOT NULL,
+    used INTEGER DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 '''
 
 SQLITE_SCHEMA_SQL = '''
@@ -566,6 +583,7 @@ CREATE TABLE IF NOT EXISTS users (
     avaliacao_media REAL DEFAULT 5.0,
     total_avaliacoes INTEGER DEFAULT 0,
     disponivel INTEGER DEFAULT 1,
+    plano TEXT DEFAULT 'basico',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -605,6 +623,13 @@ CREATE TABLE IF NOT EXISTS orders (
     estado_cliente TEXT,
     lat_cliente REAL,
     lng_cliente REAL,
+    complemento_cliente TEXT,
+    modalidade TEXT DEFAULT 'imediato',
+    agendado_para TEXT,
+    metodo_pagamento TEXT DEFAULT 'escrow',
+    pago INTEGER DEFAULT 0,
+    codigo_confirmacao TEXT,
+    motivo_cancelamento TEXT,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -641,6 +666,15 @@ CREATE TABLE IF NOT EXISTS rate_limit (
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version TEXT PRIMARY KEY,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at REAL NOT NULL,
+    used INTEGER DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 '''
 
@@ -739,6 +773,42 @@ def run_migrations(conn=None, dry_run=False):
     return report
 
 
+def _ensure_columns(conn, cursor, engine):
+    """Garante defensivamente que colunas novas existam em bancos SQLite e PostgreSQL já existentes."""
+    expected_columns = {
+        'users': [
+            ('plano', "TEXT DEFAULT 'basico'"),
+        ],
+        'orders': [
+            ('complemento_cliente', 'TEXT'),
+            ('modalidade', "TEXT DEFAULT 'imediato'"),
+            ('agendado_para', 'TEXT'),
+            ('metodo_pagamento', "TEXT DEFAULT 'escrow'"),
+            ('pago', 'INTEGER DEFAULT 0'),
+            ('codigo_confirmacao', 'TEXT'),
+            ('motivo_cancelamento', 'TEXT'),
+        ],
+    }
+
+    for table, cols in expected_columns.items():
+        if engine == 'postgresql':
+            for col_name, col_def in cols:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_def}")
+            conn.commit()
+        else:
+            info_rows = cursor.execute(f"PRAGMA table_info({table})").fetchall()
+            existing_cols = set()
+            for r in info_rows:
+                try:
+                    existing_cols.add(r['name'])
+                except (KeyError, TypeError, IndexError):
+                    existing_cols.add(r[1])
+            for col_name, col_def in cols:
+                if col_name not in existing_cols:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+            conn.commit()
+
+
 def init_db():
     engine = get_active_engine()
     conn = get_db_connection()
@@ -752,6 +822,9 @@ def init_db():
         schema_sql = POSTGRES_SCHEMA_SQL if engine == 'postgresql' else SQLITE_SCHEMA_SQL
         cursor.executescript(schema_sql)
         conn.commit()
+
+    # Garantia defensiva de colunas novas em bancos já existentes
+    _ensure_columns(conn, cursor, engine)
 
     # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
     run_migrations(conn=conn, dry_run=False)

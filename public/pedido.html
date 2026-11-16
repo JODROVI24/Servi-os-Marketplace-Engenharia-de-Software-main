@@ -175,9 +175,31 @@
       </div>
     </div>
 
-    <!-- Filtros por Categoria e Raio (Contrato DOM: #chips, #raio, #raioV) -->
-    <div class="panel filters p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-center gap-3 flex-wrap flex-1">
+    <!-- Filtros por Categoria, Busca Textual, Disponibilidade e Raio (Contrato DOM: #chips, #raio, #raioV) -->
+    <div class="panel filters p-4 sm:p-5 flex flex-col gap-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="relative flex-1">
+          <label for="inputFiltroServico" class="sr-only">Buscar serviço ou profissional</label>
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-perto-sea text-base pointer-events-none" aria-hidden="true">search</span>
+          <input type="text" id="inputFiltroServico" placeholder="Filtrar por serviço, profissional ou bairro..." class="input-form pl-9 text-xs sm:text-sm py-2 w-full">
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" id="btnOnlyAvailable" class="chip flex items-center gap-1.5" aria-pressed="false" aria-label="Filtrar apenas profissionais disponíveis agora">
+            <span class="w-2 h-2 rounded-full bg-perto-ok" aria-hidden="true"></span>
+            Disponível agora
+          </button>
+          <div class="flex items-center gap-3 shrink-0 bg-perto-bg px-4 py-2 rounded-xl border border-perto-road">
+            <label for="raio" class="text-xs font-bold text-perto-ink shrink-0 flex items-center gap-1">
+              <span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">radar</span>
+              Raio de busca:
+            </label>
+            <input type="range" id="raio" min="1" max="15" value="8" aria-label="Raio de busca em quilômetros" class="cursor-pointer w-28 sm:w-36">
+            <span id="raioV" class="text-xs font-extrabold text-perto-sea min-w-[45px] text-right">8 km</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 flex-wrap">
         <span class="text-xs font-bold text-perto-ink/80 uppercase tracking-wider shrink-0 flex items-center gap-1">
           <span class="material-symbols-outlined text-base text-perto-sea" aria-hidden="true">tune</span> Especialidade:
         </span>
@@ -185,21 +207,24 @@
           <!-- Injetado dinamicamente por script.js: renderChips() -->
         </div>
       </div>
+    </div>
 
-      <div class="flex items-center gap-3 shrink-0 bg-perto-bg px-4 py-2 rounded-xl border border-perto-road">
-        <label for="raio" class="text-xs font-bold text-perto-ink shrink-0 flex items-center gap-1">
-          <span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">radar</span>
-          Raio de busca:
-        </label>
-        <input type="range" id="raio" min="1" max="15" value="8" aria-label="Raio de busca em quilômetros" class="cursor-pointer w-28 sm:w-36">
-        <span id="raioV" class="text-xs font-extrabold text-perto-sea min-w-[45px] text-right">8 km</span>
-      </div>
+    <!-- Alternador Mobile Lista | Mapa (PA-08) -->
+    <div class="view-toggle-mobile" role="group" aria-label="Alternar visualização mobile entre lista e mapa">
+      <button type="button" id="btnViewLista" class="on" aria-pressed="true">
+        <span class="material-symbols-outlined text-base" aria-hidden="true">view_list</span>
+        Lista
+      </button>
+      <button type="button" id="btnViewMapa" aria-pressed="false">
+        <span class="material-symbols-outlined text-base" aria-hidden="true">map</span>
+        Mapa
+      </button>
     </div>
 
     <!-- Grid com Lista de Prestadores e Mapa Leaflet -->
     <div class="grid">
       <!-- Coluna da Esquerda: Lista e Painel de Monitoramento -->
-      <div class="flex flex-col gap-4">
+      <div id="colListaPedido" class="flex flex-col gap-4">
         <!-- Lista de Prestadores Disponíveis (Contrato DOM: #painel-lista, #count, #list) -->
         <div id="painel-lista" class="panel">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-2 border-b border-perto-road">
@@ -240,6 +265,14 @@
             <!-- Injetado dinamicamente por script.js: renderSteps() -->
           </div>
 
+          <!-- Código de Confirmação de 4 Dígitos -->
+          <div id="codigoConfirmacaoBox" class="my-3 p-3 rounded-xl border border-perto-sun bg-[#fff7dd] flex items-center justify-between" hidden>
+            <div class="text-xs font-bold text-perto-ink">
+              Código de Confirmação com o Prestador:
+            </div>
+            <span id="codigoConfirmacaoValor" class="text-lg font-black tracking-widest text-perto-ink bg-white px-3 py-1 rounded-lg border border-perto-sun">----</span>
+          </div>
+
           <!-- Caixa de Informações Dinâmicas -->
           <div id="info" class="p-3.5 my-3 bg-perto-bg border border-perto-road rounded-xl text-sm font-medium text-perto-ink leading-relaxed">
             <!-- Injetado dinamicamente por script.js: info() -->
@@ -263,7 +296,10 @@
               Telemetria GPS: <b id="gps" class="text-perto-sea font-bold">0</b> pacotes
             </span>
 
-            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <button type="button" aria-label="Avaliar atendimento concluído" class="btn font-bold px-4 py-2 rounded-full text-xs text-perto-ink" id="btnAvaliarAtendimento" hidden>
+                ★ Avaliar Atendimento
+              </button>
               <button type="button" aria-label="Processar pagamento do serviço" class="btn2 font-bold px-4 py-2 rounded-full text-xs" id="pay" hidden>
                 💳 Processar Pagamento
               </button>
@@ -276,7 +312,7 @@
       </div>
 
       <!-- Coluna da Direita: Mapeamento Leaflet -->
-      <div class="panel flex flex-col">
+      <div id="colMapaPedido" class="panel flex flex-col max-[899px]:hidden">
         <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
           <h2 class="text-lg font-bold text-perto-ink m-0 flex items-center gap-2">
             <span class="material-symbols-outlined text-perto-sea text-xl">map</span>
@@ -304,20 +340,151 @@
 
   </main>
 
+  <!-- Modal Acessível de Confirmação do Pedido (PA-02) -->
+  <div id="modalConfirmarPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 520px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalConfirmarTitulo" class="text-lg font-black text-perto-ink m-0">Confirmar Solicitação de Serviço</h3>
+        <button type="button" id="btnFecharModalConfirmar" class="drawer-fechar" aria-label="Fechar modal de confirmação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div id="confResumoServico" class="p-3 rounded-xl bg-perto-bg border border-perto-road mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div id="confTitulo" class="text-sm font-black text-perto-ink">Serviço</div>
+          <div id="confPrestador" class="text-xs text-perto-sea font-semibold">Profissional</div>
+        </div>
+        <div id="confPreco" class="text-base font-black text-perto-ink">R$ 0,00</div>
+      </div>
+
+      <form id="formConfirmarPedido" class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div class="campo-form sm:col-span-2">
+            <label for="confEndereco" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Endereço de Atendimento</label>
+            <input type="text" id="confEndereco" required class="input-form text-xs font-medium" placeholder="Rua / Avenida">
+          </div>
+          <div class="campo-form sm:col-span-1">
+            <label for="confNumero" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Número</label>
+            <input type="text" id="confNumero" required class="input-form text-xs font-medium" placeholder="Nº">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div class="campo-form">
+            <label for="confComplemento" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Complemento</label>
+            <input type="text" id="confComplemento" class="input-form text-xs font-medium" placeholder="Apto, bloco, casa...">
+          </div>
+          <div class="campo-form">
+            <label for="confBairro" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Bairro</label>
+            <input type="text" id="confBairro" class="input-form text-xs font-medium" placeholder="Bairro">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <span class="text-[11px] font-bold text-perto-ink uppercase tracking-wider block mb-1">Modalidade de Atendimento</span>
+          <div class="flex gap-2">
+            <button type="button" id="btnModImediato" class="chip on flex-1 justify-center" aria-pressed="true">Imediato</button>
+            <button type="button" id="btnModAgendado" class="chip flex-1 justify-center" aria-pressed="false">Agendado</button>
+          </div>
+          <input type="hidden" id="confModalidade" value="imediato">
+          <div id="confAgendadoContainer" class="mt-2" hidden>
+            <label for="confAgendadoPara" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Data e Hora Desejada</label>
+            <input type="datetime-local" id="confAgendadoPara" class="input-form text-xs font-medium mt-1">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="confMetodoPagamento" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Forma de Pagamento (Protegido por Escrow)</label>
+          <select id="confMetodoPagamento" class="input-form text-xs font-semibold">
+            <option value="escrow">Pagamento protegido em Escrow (Escrow no Local)</option>
+            <option value="pix">Pix (Reserva Escrow imediata)</option>
+            <option value="cartao">Cartão (Reserva Escrow imediata)</option>
+          </select>
+        </div>
+
+        <div class="campo-form">
+          <label for="confObservacoes" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Observações para o Profissional</label>
+          <textarea id="confObservacoes" rows="2" class="input-form text-xs font-medium" placeholder="Descreva o problema, ponto de referência ou instruções de acesso..."></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
+          <button type="button" id="btnCancelarConfirmacao" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnEnviarConfirmacao" class="btn px-5 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Confirmar Solicitação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Acessível de Avaliação do Atendimento (PA-11) -->
+  <div id="modalAvaliarAtendimento" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalAvaliarAtendimentoTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 440px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalAvaliarAtendimentoTitulo" class="text-lg font-black text-perto-ink m-0">Avaliar Atendimento</h3>
+        <button type="button" id="btnFecharModalAvaliarAtendimento" class="drawer-fechar" aria-label="Fechar modal de avaliação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form id="formAvaliarAtendimento" class="space-y-4">
+        <div class="campo-form">
+          <span class="text-xs font-bold text-perto-ink uppercase tracking-wider block mb-2">Sua Nota (1 a 5 estrelas)</span>
+          <div id="avaliarPedidoEstrelas" class="flex items-center gap-2" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
+            <button type="button" class="chip on" data-nota="5" aria-pressed="true">★ 5</button>
+            <button type="button" class="chip" data-nota="4" aria-pressed="false">★ 4</button>
+            <button type="button" class="chip" data-nota="3" aria-pressed="false">★ 3</button>
+            <button type="button" class="chip" data-nota="2" aria-pressed="false">★ 2</button>
+            <button type="button" class="chip" data-nota="1" aria-pressed="false">★ 1</button>
+          </div>
+          <input type="hidden" id="avaliarPedidoNota" value="5">
+        </div>
+        <div class="campo-form">
+          <label for="avaliarPedidoComentario" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Comentário (opcional)</label>
+          <textarea id="avaliarPedidoComentario" rows="3" class="input-form text-sm" placeholder="Conte como foi o atendimento..."></textarea>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" id="btnCancelarAvaliarAtendimento" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnEnviarAvaliarAtendimento" class="btn px-5 py-2 rounded-full text-xs font-extrabold text-perto-ink">Enviar Avaliação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Institucional Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
-        <a href="sobre-nos.html">Sobre Nós</a>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
       <div class="footer-direitos">
-        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>

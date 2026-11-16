@@ -121,12 +121,39 @@
       </div>
     </div>
 
-    <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #contPedidos) -->
+    <!-- Faixa de KPIs do Prestador (PA-10) -->
+    <section class="kpi-grid" aria-label="Indicadores de Desempenho">
+      <div class="kpi-card">
+        <span class="kpi-label">Chamados Pendentes</span>
+        <strong id="kpiPendentes" class="kpi-value">0</strong>
+        <span class="text-xs text-perto-ink/70 font-body">Aguardando confirmação</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Serviços Ativos</span>
+        <strong id="kpiServicosAtivos" class="kpi-value">0</strong>
+        <span class="text-xs text-perto-ink/70 font-body">Visíveis no catálogo</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Avaliação Média</span>
+        <strong id="kpiAvaliacao" class="kpi-value">★ 5.0</strong>
+        <span class="text-xs text-perto-ink/70 font-body">Reputação na região</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Faturamento vs Isenção (R$ 1.800)</span>
+        <strong id="kpiFaturamento" class="kpi-value">R$ 0,00</strong>
+        <div class="w-full h-2 bg-perto-bg rounded-full overflow-hidden mt-1 border border-perto-road">
+          <div id="kpiProgressoBarra" class="h-full bg-perto-ok transition-all" style="width: 0%;"></div>
+        </div>
+        <span id="kpiIsencaoTexto" class="text-[11px] font-semibold text-perto-ok font-body">Isento de mensalidade até R$ 1.800/mês</span>
+      </div>
+    </section>
+
+    <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #tabBtnFinanceiro, #contPedidos) -->
     <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
       <div class="chips flex flex-wrap gap-2" role="tablist" aria-label="Navegação do Painel do Prestador">
         <button class="chip on flex items-center gap-2" id="tabBtnServicos" role="tab" aria-selected="true" aria-controls="aba-servicos-painel" onclick="mudarAba('servicos')">
           <span class="material-symbols-outlined text-base">storefront</span>
-          Meus Serviços & Preços
+          Meus Serviços &amp; Preços
         </button>
         <button class="chip flex items-center gap-2" id="tabBtnPedidos" role="tab" aria-selected="false" aria-controls="aba-pedidos-painel" onclick="mudarAba('pedidos')">
           <span class="material-symbols-outlined text-base">assignment</span>
@@ -134,7 +161,11 @@
         </button>
         <button class="chip flex items-center gap-2" id="tabBtnPerfil" role="tab" aria-selected="false" aria-controls="aba-perfil-painel" onclick="mudarAba('perfil')">
           <span class="material-symbols-outlined text-base">tune</span>
-          Dados de Perfil & GPS
+          Dados de Perfil &amp; GPS
+        </button>
+        <button class="chip flex items-center gap-2" id="tabBtnFinanceiro" role="tab" aria-selected="false" aria-controls="aba-financeiro-painel" onclick="mudarAba('financeiro')">
+          <span class="material-symbols-outlined text-base">account_balance_wallet</span>
+          Financeiro &amp; Plano
         </button>
       </div>
     </div>
@@ -165,12 +196,26 @@
     <!-- ABA 2: CHAMADOS RECEBIDOS (Contrato DOM: #aba-pedidos-painel, #listaPedidosRecebidos) -->
     <div id="aba-pedidos-painel" role="tabpanel" aria-labelledby="tabBtnPedidos" style="display: none;">
       <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8">
-        <div class="mb-6 pb-4 border-b border-perto-road">
-          <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
-            <span class="material-symbols-outlined text-perto-sea">pending_actions</span>
-            Fila de Atendimento & Chamados de Clientes
-          </h2>
-          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Gerencie o fluxo de atendimento em tempo real. Atualize as etapas para que o cliente acompanhe no mapa.</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-perto-road">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+              <span class="material-symbols-outlined text-perto-sea">pending_actions</span>
+              Fila de Atendimento &amp; Chamados de Clientes
+            </h2>
+            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Gerencie o fluxo de atendimento em tempo real. Atualize as etapas para que o cliente acompanhe no mapa.</p>
+          </div>
+          <button type="button" id="btnAlertaSonoro" onclick="alternarAlertaSonoro()" aria-pressed="false" class="btn-neutral px-4 py-2 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shrink-0">
+            <span class="material-symbols-outlined text-base" id="iconAlertaSonoro" aria-hidden="true">notifications_off</span>
+            <span id="txtAlertaSonoro">Alerta Sonoro: Off</span>
+          </button>
+        </div>
+
+        <!-- Sub-filtros de Status (PA-04) -->
+        <div class="chips flex flex-wrap gap-2 mb-5" role="group" aria-label="Filtrar chamados por status">
+          <button type="button" class="chip on" data-filtro="todos" onclick="filtrarPedidos('todos', this)">Todos</button>
+          <button type="button" class="chip" data-filtro="novos" onclick="filtrarPedidos('novos', this)">Novos</button>
+          <button type="button" class="chip" data-filtro="andamento" onclick="filtrarPedidos('andamento', this)">Em andamento</button>
+          <button type="button" class="chip" data-filtro="finalizados" onclick="filtrarPedidos('finalizados', this)">Finalizados</button>
         </div>
 
         <div id="listaPedidosRecebidos">
@@ -277,6 +322,64 @@
       </div>
     </div>
 
+    <!-- ABA 4: FINANCEIRO & PLANO (PA-10) -->
+    <div id="aba-financeiro-painel" role="tabpanel" aria-labelledby="tabBtnFinanceiro" style="display: none;">
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 space-y-6">
+        <div class="pb-4 border-b border-perto-road flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+              <span class="material-symbols-outlined text-perto-sea">account_balance_wallet</span>
+              Financeiro, Escrow &amp; Plano
+            </h2>
+            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Acompanhe valores protegidos em custódia (Escrow), repasses liberados e detalhes do seu plano.</p>
+          </div>
+          <span id="finPlanoBadge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-perto-sun/25 text-perto-ink text-xs font-extrabold uppercase tracking-wider">
+            Plano Básico (12%)
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Saldo em Escrow (Retido)</span>
+            <strong id="finSaldoEscrow" class="text-2xl font-black text-perto-sea">R$ 0,00</strong>
+            <span class="text-xs text-perto-ink/70 font-body block mt-1">Liberado ao finalizar cada atendimento</span>
+          </div>
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Total Liberado (Líquido)</span>
+            <strong id="finTotalLiberado" class="text-2xl font-black text-perto-ok">R$ 0,00</strong>
+            <span class="text-xs text-perto-ink/70 font-body block mt-1">Atendimentos finalizados já descontada a taxa</span>
+          </div>
+          <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
+            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Regra de Mensalidade</span>
+            <strong id="finRegraMensalidade" class="text-lg font-black text-perto-ink">Isento &le; R$ 1.800/mês</strong>
+            <span id="finTaxaInfo" class="text-xs text-perto-ink/70 font-body block mt-1">Taxa atual do plano: 12% por serviço</span>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-base font-extrabold text-perto-ink mb-3">Extrato de Atendimentos</h3>
+          <div class="overflow-x-auto border border-perto-road rounded-2xl">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead class="bg-perto-bg text-perto-ink/80 uppercase text-[11px] font-extrabold">
+                <tr>
+                  <th class="py-3 px-4">Chamado</th>
+                  <th class="py-3 px-4">Cliente</th>
+                  <th class="py-3 px-4">Valor Bruto</th>
+                  <th class="py-3 px-4">Repasse Líquido</th>
+                  <th class="py-3 px-4">Situação</th>
+                </tr>
+              </thead>
+              <tbody id="tabelaExtratoFinanceiro" class="divide-y divide-perto-road font-body">
+                <tr>
+                  <td colspan="5" class="py-4 px-4 text-center text-perto-ink/70">Carregando extrato financeiro...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <!-- MODAL DE CADASTRO / EDIÇÃO DE SERVIÇO E PREÇO (Contrato DOM: #modalServico, #formServicoModal, #modalTitulo, #modalServicoId, #servicoTitulo, #servicoCategoria, #servicoPreco, #servicoDescricao, #btnSalvarModal, fecharModalServico) -->
@@ -326,19 +429,64 @@
     </div>
   </div>
 
+  <!-- MODAL DE MOTIVO DE RECUSA / CANCELAMENTO (PA-04) -->
+  <div id="modalMotivoPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalMotivo" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalMotivo" class="text-lg font-black text-perto-ink m-0">Informar Motivo</h3>
+        <button type="button" id="btnFecharModalMotivo" aria-label="Fechar modal de motivo" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalMotivoPedido()">✕</button>
+      </div>
+
+      <form id="formMotivoPedido" class="mt-4 space-y-4">
+        <input type="hidden" id="motivoOrderId">
+        <div class="campo-form">
+          <label for="motivoPedidoTexto" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Motivo da recusa ou cancelamento</label>
+          <textarea id="motivoPedidoTexto" rows="3" required minlength="3" placeholder="Ex: Agenda indisponível neste horário ou fora da área de atendimento..." class="input-form text-sm font-medium"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalMotivoPedido()">Voltar</button>
+          <button type="submit" class="btn-danger-soft px-6 py-2.5 rounded-full text-xs font-extrabold">Confirmar Cancelamento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- Footer Institucional -->
+  <!-- Footer Unificado -->
   <footer>
     <div class="footer-conteudo">
-      <div class="footer-navegacao">
-        <a href="index.html">Início</a>
-        <a href="pedido.html">Buscar Serviços</a>
-        <a href="como-funciona.html">Como Funciona</a>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="login.html">Entrar</a>
+        </div>
       </div>
       <div class="footer-direitos">
-        <p>© 2026 PertoJá · Sistema de Demonstração Institucional · Todos os direitos reservados.</p>
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>
@@ -348,6 +496,11 @@
   <script>
     let dadosPrestador = null;
     let listaMeusServicos = [];
+    let listaPedidos = [];
+    let filtroPedidosAtual = 'todos';
+    let alertaSonoroAtivo = false;
+    let idsSolicitadosConhecidos = new Set();
+    let primeiraCargaPedidos = true;
 
     function toast(t) {
       const d = document.createElement('div');
@@ -357,24 +510,66 @@
       setTimeout(() => d.remove(), 4000);
     }
 
-    const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function escapeHtml(texto) {
+      return String(texto ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function tocarAlertaSonoro() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      } catch (e) {}
+    }
+
+    function alternarAlertaSonoro() {
+      alertaSonoroAtivo = !alertaSonoroAtivo;
+      const btn = document.getElementById('btnAlertaSonoro');
+      const icon = document.getElementById('iconAlertaSonoro');
+      const txt = document.getElementById('txtAlertaSonoro');
+      if (btn) btn.setAttribute('aria-pressed', String(alertaSonoroAtivo));
+      if (icon) icon.textContent = alertaSonoroAtivo ? 'notifications_active' : 'notifications_off';
+      if (txt) txt.textContent = alertaSonoroAtivo ? 'Alerta Sonoro: On' : 'Alerta Sonoro: Off';
+      if (alertaSonoroAtivo) tocarAlertaSonoro();
+    }
 
     function mudarAba(aba) {
       document.getElementById('aba-servicos-painel').style.display = aba === 'servicos' ? 'block' : 'none';
       document.getElementById('aba-pedidos-painel').style.display = aba === 'pedidos' ? 'block' : 'none';
       document.getElementById('aba-perfil-painel').style.display = aba === 'perfil' ? 'block' : 'none';
+      document.getElementById('aba-financeiro-painel').style.display = aba === 'financeiro' ? 'block' : 'none';
 
       const btnServicos = document.getElementById('tabBtnServicos');
       const btnPedidos = document.getElementById('tabBtnPedidos');
       const btnPerfil = document.getElementById('tabBtnPerfil');
+      const btnFinanceiro = document.getElementById('tabBtnFinanceiro');
 
       btnServicos.classList.toggle('on', aba === 'servicos');
       btnPedidos.classList.toggle('on', aba === 'pedidos');
       btnPerfil.classList.toggle('on', aba === 'perfil');
+      btnFinanceiro.classList.toggle('on', aba === 'financeiro');
 
       btnServicos.setAttribute('aria-selected', (aba === 'servicos').toString());
       btnPedidos.setAttribute('aria-selected', (aba === 'pedidos').toString());
       btnPerfil.setAttribute('aria-selected', (aba === 'perfil').toString());
+      btnFinanceiro.setAttribute('aria-selected', (aba === 'financeiro').toString());
     }
 
     async function carregarPainel() {
@@ -436,11 +631,97 @@
       }
     }
 
+    function atualizarKPIsEFinanceiro() {
+      const pendentes = listaPedidos.filter(p => p.status === 'solicitado').length;
+      const ativos = listaMeusServicos.filter(s => s.ativo).length;
+      const avaliacao = dadosPrestador && dadosPrestador.avaliacao_media != null ? Number(dadosPrestador.avaliacao_media).toFixed(1) : '5.0';
+
+      const plano = (dadosPrestador && dadosPrestador.plano === 'pro') ? 'pro' : 'basico';
+      const taxaPct = plano === 'pro' ? 0.08 : 0.12;
+      const taxaLabel = plano === 'pro' ? '8%' : '12%';
+
+      let faturamentoBruto = 0;
+      let saldoEscrow = 0;
+      let totalLiberado = 0;
+
+      listaPedidos.forEach(p => {
+        const valor = Number(p.preco_total || 0);
+        if (p.status !== 'cancelado') {
+          faturamentoBruto += valor;
+        }
+        if (p.status === 'finalizado') {
+          totalLiberado += valor * (1 - taxaPct);
+        } else if (p.status !== 'cancelado' && Number(p.pago) === 1) {
+          saldoEscrow += valor * (1 - taxaPct);
+        }
+      });
+
+      const elPend = document.getElementById('kpiPendentes');
+      const elAtiv = document.getElementById('kpiServicosAtivos');
+      const elAval = document.getElementById('kpiAvaliacao');
+      const elFat = document.getElementById('kpiFaturamento');
+      const elBar = document.getElementById('kpiProgressoBarra');
+      const elIsen = document.getElementById('kpiIsencaoTexto');
+
+      if (elPend) elPend.textContent = pendentes;
+      if (elAtiv) elAtiv.textContent = ativos;
+      if (elAval) elAval.textContent = `★ ${avaliacao}`;
+      if (elFat) elFat.textContent = brl(faturamentoBruto);
+      if (elBar) {
+        const pct = Math.min(100, Math.round((faturamentoBruto / 1800) * 100));
+        elBar.style.width = `${pct}%`;
+        elBar.classList.toggle('bg-perto-ok', faturamentoBruto <= 1800);
+        elBar.classList.toggle('bg-perto-sea', faturamentoBruto > 1800);
+      }
+      if (elIsen) {
+        elIsen.textContent = faturamentoBruto <= 1800
+          ? `Isento de mensalidade (faltam ${brl(1800 - faturamentoBruto)} p/ teto)`
+          : 'Teto de R$ 1.800/mês atingido';
+      }
+
+      const finBadge = document.getElementById('finPlanoBadge');
+      const finEscrow = document.getElementById('finSaldoEscrow');
+      const finLib = document.getElementById('finTotalLiberado');
+      const finTaxa = document.getElementById('finTaxaInfo');
+      const tbody = document.getElementById('tabelaExtratoFinanceiro');
+
+      if (finBadge) finBadge.textContent = plano === 'pro' ? 'Plano Pro (8%)' : 'Plano Básico (12%)';
+      if (finEscrow) finEscrow.textContent = brl(saldoEscrow);
+      if (finLib) finLib.textContent = brl(totalLiberado);
+      if (finTaxa) finTaxa.textContent = `Taxa atual do plano: ${taxaLabel} por serviço concluído`;
+
+      if (tbody) {
+        if (!listaPedidos.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="py-4 px-4 text-center text-perto-ink/70">Nenhum atendimento registrado ainda.</td></tr>';
+        } else {
+          tbody.innerHTML = listaPedidos.map(p => {
+            const bruto = Number(p.preco_total || 0);
+            const liquido = p.status === 'cancelado' ? 0 : bruto * (1 - taxaPct);
+            const situacao = p.status === 'finalizado'
+              ? '<span class="tag">Liberado</span>'
+              : (p.status === 'cancelado'
+                ? '<span class="tag off">Cancelado</span>'
+                : (Number(p.pago) === 1 ? '<span class="badge-novo">Em Escrow</span>' : '<span class="tag">Aguardando</span>'));
+            return `
+              <tr>
+                <td class="py-3 px-4 font-semibold text-perto-ink">#${escapeHtml(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
+                <td class="py-3 px-4 text-perto-ink/80">${escapeHtml(p.cliente_nome)}</td>
+                <td class="py-3 px-4 font-semibold">${brl(bruto)}</td>
+                <td class="py-3 px-4 font-bold text-perto-ok">${brl(liquido)}</td>
+                <td class="py-3 px-4">${situacao}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      }
+    }
+
     async function carregarServicos() {
       const div = document.getElementById('listaServicos');
       try {
-        const res = await fetch('/api/my-services');
+        const res = await fetch('/api/my-services?all=1');
         listaMeusServicos = await res.json();
+        atualizarKPIsEFinanceiro();
 
         if (!listaMeusServicos.length) {
           div.innerHTML = '<p class="text-sm text-perto-ink/70">Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!</p>';
@@ -450,25 +731,46 @@
         div.innerHTML = listaMeusServicos.map(s => {
           const endSvc = s.endereco ? `${s.endereco}${s.numero ? ', ' + s.numero : ''} · ${s.bairro || ''} · ${s.cidade || 'SP'}` : (dadosPrestador && dadosPrestador.endereco ? `${dadosPrestador.endereco}, ${dadosPrestador.numero || ''} · ${dadosPrestador.cidade || 'SP'}` : 'São Paulo - SP');
           return `
-          <div class="svc" style="border-left: 5px solid var(--sea);">
+          <div class="svc border-l-4 border-perto-sea">
             <div class="top">
-              <span>${s.titulo}</span>
+              <span>${escapeHtml(s.titulo)}</span>
               <span class="price text-xl">${brl(s.preco)}</span>
             </div>
-            <p style="font-size: 0.9rem; color: #4b6073; margin: 6px 0;">${s.descricao || 'Sem descrição informada.'}</p>
-            <p style="font-size: 0.8rem; color: var(--sea); font-weight: 600; margin: 4px 0;">📍 Endereço de Atendimento: ${endSvc}</p>
-            <div class="meta" style="margin-top: 8px;">
-              <span class="tag">${s.categoria}</span>
+            <p class="text-sm text-perto-ink/75 my-1.5 font-body">${s.descricao ? escapeHtml(s.descricao) : 'Sem descrição informada.'}</p>
+            <p class="text-xs text-perto-sea font-semibold my-1">📍 Endereço de Atendimento: ${escapeHtml(endSvc)}</p>
+            <div class="meta mt-2">
+              <span class="tag">${escapeHtml(s.categoria)}</span>
               <span class="tag ${s.ativo ? '' : 'off'}">${s.ativo ? 'Ativo' : 'Pausado'}</span>
             </div>
-            <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
-              <button class="btn" style="font-size: 0.85rem; padding: 6px 14px;" onclick="editarServico(${s.id})">✏️ Alterar Preço / Detalhes</button>
-              <button class="btn2" style="font-size: 0.85rem; padding: 6px 14px; background: #5a6b7c;" onclick="excluirServico(${s.id})">Excluir</button>
+            <div class="flex flex-wrap gap-2 mt-3 justify-end">
+              <button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="alternarAtivoServico(${Number(s.id)}, ${!s.ativo})">
+                ${s.ativo ? 'Pausar' : 'Ativar'}
+              </button>
+              <button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="editarServico(${Number(s.id)})">✏️ Alterar Preço / Detalhes</button>
+              <button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="excluirServico(${Number(s.id)})">Excluir</button>
             </div>
           </div>
         `;}).join('');
       } catch (e) {
         div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar serviços.</p>';
+      }
+    }
+
+    async function alternarAtivoServico(id, novoAtivo) {
+      try {
+        const res = await fetch(`/api/services/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ativo: novoAtivo })
+        });
+        if (res.ok) {
+          toast(novoAtivo ? 'Serviço ativado no catálogo!' : 'Serviço pausado temporariamente.');
+          await carregarServicos();
+        } else {
+          toast('Erro ao atualizar visibilidade do serviço.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação.');
       }
     }
 
@@ -589,58 +891,163 @@
       }
     };
 
+    function filtrarPedidos(filtro, btnEl) {
+      filtroPedidosAtual = filtro;
+      document.querySelectorAll('#aba-pedidos-painel [data-filtro]').forEach(b => b.classList.remove('on'));
+      if (btnEl) btnEl.classList.add('on');
+      renderizarPedidos();
+    }
+
+    function renderizarPedidos() {
+      const div = document.getElementById('listaPedidosRecebidos');
+      if (!div) return;
+
+      const filtrados = listaPedidos.filter(p => {
+        if (filtroPedidosAtual === 'novos') return p.status === 'solicitado';
+        if (filtroPedidosAtual === 'andamento') return ['confirmado', 'em_transito', 'em_execucao'].includes(p.status);
+        if (filtroPedidosAtual === 'finalizados') return ['finalizado', 'cancelado'].includes(p.status);
+        return true;
+      });
+
+      if (!filtrados.length) {
+        div.innerHTML = '<p class="text-sm text-perto-ink/70">Nenhum chamado encontrado para este filtro.</p>';
+        return;
+      }
+
+      div.innerHTML = filtrados.map(p => {
+        const enderecoCompleto = [p.endereco_cliente, p.numero_cliente, p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(', ');
+        const isNovo = p.status === 'solicitado';
+
+        let acoesHtml = '';
+        const orderIdNum = Number(p.order_id);
+        if (p.status === 'solicitado') {
+          acoesHtml = `
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'confirmado')">Confirmar Atendimento</button>
+            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" onclick="abrirModalMotivoPedido(${orderIdNum})">Recusar</button>
+          `;
+        } else if (p.status === 'confirmado') {
+          acoesHtml = `
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'em_transito')">A Caminho</button>
+            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" onclick="abrirModalMotivoPedido(${orderIdNum})">Cancelar</button>
+          `;
+        } else if (p.status === 'em_transito') {
+          acoesHtml = `
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'em_execucao')">Iniciar Execução</button>
+          `;
+        } else if (p.status === 'em_execucao') {
+          acoesHtml = `
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'finalizado')">Finalizar Serviço</button>
+          `;
+        } else {
+          acoesHtml = `<span class="text-xs font-semibold text-perto-ink/70">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
+        }
+
+        return `
+        <div class="svc mb-3.5 ${isNovo ? 'order-card-new' : 'border-l-4 border-perto-sun'}">
+          <div class="top">
+            <span class="flex items-center gap-2 flex-wrap">
+              <b>${escapeHtml(p.servico_titulo)}</b> (${escapeHtml(p.servico_categoria)})
+              ${isNovo ? '<span class="badge-novo">Novo</span>' : ''}
+            </span>
+            <span class="price">${brl(p.preco_total)}</span>
+          </div>
+          <div class="meta my-1.5">
+            <span>👤 Cliente: <b>${escapeHtml(p.cliente_nome)}</b></span>
+            <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Não informado'}</span>
+            <span>Status: <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b></span>
+            ${p.codigo_confirmacao ? `<span class="tag">Código: ${escapeHtml(p.codigo_confirmacao)}</span>` : ''}
+          </div>
+          ${enderecoCompleto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 Local do Atendimento: ${escapeHtml(enderecoCompleto)} ${p.cep_cliente ? `(CEP ${escapeHtml(p.cep_cliente)})` : ''}</div>` : ''}
+          ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
+          <div class="flex gap-2 mt-3 flex-wrap items-center">
+            ${acoesHtml}
+          </div>
+        </div>
+      `;}).join('');
+    }
+
     async function carregarPedidos() {
       const div = document.getElementById('listaPedidosRecebidos');
       try {
         const res = await fetch('/api/orders');
         const pedidos = await res.json();
-        document.getElementById('contPedidos').textContent = pedidos.length;
+        listaPedidos = Array.isArray(pedidos) ? pedidos : [];
+        document.getElementById('contPedidos').textContent = listaPedidos.length;
 
-        if (!pedidos.length) {
-          div.innerHTML = '<p class="text-sm text-perto-ink/70">Nenhum chamado de cliente recebido até o momento.</p>';
-          return;
+        const novosIds = new Set(listaPedidos.filter(p => p.status === 'solicitado').map(p => p.order_id));
+        const chegouNovo = !primeiraCargaPedidos && [...novosIds].some(id => !idsSolicitadosConhecidos.has(id));
+        idsSolicitadosConhecidos = novosIds;
+        primeiraCargaPedidos = false;
+
+        if (chegouNovo) {
+          toast('Novo chamado recebido!');
+          if (alertaSonoroAtivo) tocarAlertaSonoro();
         }
 
-        div.innerHTML = pedidos.map(p => {
-          const enderecoCompleto = [p.endereco_cliente, p.numero_cliente, p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(', ');
-          return `
-          <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sun);">
-            <div class="top">
-              <span><b>${p.servico_titulo}</b> (${p.servico_categoria})</span>
-              <span class="price">${brl(p.preco_total)}</span>
-            </div>
-            <div class="meta" style="margin: 6px 0;">
-              <span>👤 Cliente: <b>${p.cliente_nome}</b></span>
-              <span>📞 Tel: ${p.cliente_telefone || 'Não informado'}</span>
-              <span>Status: <b class="tag">${p.status.toUpperCase()}</b></span>
-            </div>
-            ${enderecoCompleto ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Local do Atendimento: ${enderecoCompleto} ${p.cep_cliente ? `(CEP ${p.cep_cliente})` : ''}</div>` : ''}
-            ${p.observacoes ? `<p style="font-size:0.85rem; color:#444;">Obs: ${p.observacoes}</p>` : ''}
-            <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'confirmado')">Confirmar Atendimento</button>
-              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'em_transito')">A Caminho</button>
-              <button class="btn" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alterarStatusPedido(${p.order_id}, 'em_execucao')">Em Execução</button>
-              <button class="btn2" style="font-size: 0.8rem; padding: 6px 12px; background: var(--ok);" onclick="alterarStatusPedido(${p.order_id}, 'finalizado')">Finalizar Serviço</button>
-            </div>
-          </div>
-        `;}).join('');
+        atualizarKPIsEFinanceiro();
+        renderizarPedidos();
       } catch (e) {
         div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar chamados.</p>';
       }
     }
 
-    async function alterarStatusPedido(orderId, status) {
+    let modalMotivoTriggerEl = null;
+
+    function onModalMotivoKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        fecharModalMotivoPedido();
+      }
+    }
+
+    function abrirModalMotivoPedido(orderId) {
+      modalMotivoTriggerEl = document.activeElement;
+      document.getElementById('formMotivoPedido').reset();
+      document.getElementById('motivoOrderId').value = orderId;
+      const modalEl = document.getElementById('modalMotivoPedido');
+      modalEl.style.display = 'flex';
+      document.addEventListener('keydown', onModalMotivoKeyDown);
+      modalEl.onclick = (e) => {
+        if (e.target === modalEl) fecharModalMotivoPedido();
+      };
+      setTimeout(() => document.getElementById('motivoPedidoTexto')?.focus(), 0);
+    }
+
+    function fecharModalMotivoPedido() {
+      document.getElementById('modalMotivoPedido').style.display = 'none';
+      document.removeEventListener('keydown', onModalMotivoKeyDown);
+      if (modalMotivoTriggerEl && typeof modalMotivoTriggerEl.focus === 'function') {
+        modalMotivoTriggerEl.focus();
+      }
+      modalMotivoTriggerEl = null;
+    }
+
+    document.getElementById('formMotivoPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('motivoOrderId').value;
+      const motivo = (document.getElementById('motivoPedidoTexto').value || '').trim();
+      if (!motivo) {
+        toast('Informe o motivo para cancelar ou recusar.');
+        return;
+      }
+      await alterarStatusPedido(orderId, 'cancelado', motivo);
+      fecharModalMotivoPedido();
+    };
+
+    async function alterarStatusPedido(orderId, status, motivo = null) {
       try {
+        const body = motivo ? { status, motivo } : { status };
         const res = await fetch(`/api/orders/${orderId}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status })
+          body: JSON.stringify(body)
         });
         if (res.ok) {
           toast(`Status atualizado para: ${status}`);
           await carregarPedidos();
         } else {
-          toast('Erro ao atualizar chamado.');
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Erro ao atualizar chamado.');
         }
       } catch (e) {
         toast('Erro de conexão.');
