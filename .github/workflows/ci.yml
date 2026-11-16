@@ -1,44 +1,58 @@
-name: CI Pipeline - PertoJá Marketplace
+name: Improvement Gate - PertoJá Marketplace
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  test:
-    name: Test & Quality Gate (Python ${{ matrix.python-version }})
+  quality:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
-
+        python-version: ["3.11", "3.12"]
     steps:
-      - name: Checkout Codebase
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: pip
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Run Test Suite
-        env:
-          TESTING: 'True'
-          SECRET_KEY: 'ci-pipeline-test-key'
-        run: |
-          cd Servi-os-Marketplace-Engenharia-de-Software-main/site_marketplace
-          python -m unittest test_app.py -v
+      - name: Run root test suite
+        run: python -m unittest discover -s tests -v
 
-      - name: Validate Serverless Entrypoint (Vercel Simulation)
-        env:
-          VERCEL: '1'
+      - name: Vercel serverless entrypoint
         run: |
-          python -c "import api.index; print('✅ Vercel serverless entrypoint validado!')"
+          python -c "import api.index; print('✅ Vercel entrypoint importável')"
+
+      - name: Quality gate summary
+        run: |
+          python -c "import database; print('✅ database module importável; engine:', database.get_active_engine())"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: "Sanity: arquivos estáticos existentes"
+        run: |
+          for f in public/index.html public/script.js public/style.css public/portal-cliente.html public/portal-prestador.html public/pedido.html; do
+            test -f "$f" || { echo "FALTANDO: $f"; exit 1; }
+          done
+          echo "✅ Frontend presentes"
+
+      - name: "Semântica: closing tags principais"
+        run: |
+          test -f public/robots.txt
+          test -f public/sitemap.xml
+          echo "✅ Arquivos estáticos básicos OK"

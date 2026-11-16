@@ -7,10 +7,8 @@ from urllib.parse import parse_qs, urlencode
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 
-# Diretório base do backend do marketplace
-marketplace_dir = os.path.join(root_dir, 'Servi-os-Marketplace-Engenharia-de-Software-main', 'site_marketplace')
-if not os.path.isdir(marketplace_dir):
-    marketplace_dir = os.path.join(root_dir, 'site_marketplace')
+# Diretório base do backend do marketplace (raiz canônica do repositório)
+marketplace_dir = root_dir
 
 if marketplace_dir not in sys.path:
     sys.path.insert(0, marketplace_dir)

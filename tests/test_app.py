@@ -3,8 +3,10 @@ import json
 import os
 import sys
 
-# Garante importação correta
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Garante importação correta a partir da raiz do repositório
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 from app import app
 from database import init_db
 
@@ -539,13 +541,14 @@ class TestMarketplaceFull(unittest.TestCase):
         try:
             app.config['TESTING'] = False
             rate_limiter.reset()
-            # 5 tentativas permitidas por minuto no login
-            for _ in range(5):
+            # 10 tentativas permitidas por minuto no login
+            for _ in range(10):
                 self.client.post('/api/auth/login', json={'email': 'inexistente@pertoja.com', 'senha': 'errada'})
-            
-            # 6ª tentativa deve retornar HTTP 429 Too Many Requests
+
+            # 11ª tentativa deve retornar HTTP 429 Too Many Requests com header Retry-After
             res_blocked = self.client.post('/api/auth/login', json={'email': 'inexistente@pertoja.com', 'senha': 'errada'})
             self.assertEqual(res_blocked.status_code, 429)
+            self.assertIn('Retry-After', res_blocked.headers)
             data_blocked = json.loads(res_blocked.data)
             self.assertIn('error', data_blocked)
             self.assertIn('retry_after_seconds', data_blocked)
@@ -737,6 +740,61 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(mock_cursor.execute.call_count, 1)
         executed_sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("SELECT COUNT(*)", executed_sql)
+
+    def test_24_services_order_by_score(self):
+        res_dist = self.client.get('/api/services?order=distance')
+        self.assertEqual(res_dist.status_code, 200)
+        dist_list = json.loads(res_dist.data)
+        self.assertGreater(len(dist_list), 1)
+        self.assertEqual(
+            [s['distancia_km'] for s in dist_list],
+            sorted(s['distancia_km'] for s in dist_list)
+        )
+
+        res_score = self.client.get('/api/services?order=score')
+        self.assertEqual(res_score.status_code, 200)
+        score_list = json.loads(res_score.data)
+        self.assertGreater(len(score_list), 1)
+        self.assertEqual(
+            [(s['score'], -s['distancia_km']) for s in score_list],
+            sorted(((s['score'], -s['distancia_km']) for s in score_list), reverse=True)
+        )
+
+    def test_25_geocode_query_normalization(self):
+        from database import _normalizar_query, save_cached_geocode, get_cached_geocode
+        self.assertEqual(
+            _normalizar_query("  São   Paulo,  Avenida   Paulista  "),
+            "sao paulo, avenida paulista"
+        )
+        save_cached_geocode("Praça da Sé, 100   São Paulo", -23.5505, -46.6333, origem='norm-test')
+        cached = get_cached_geocode("  praca da se, 100 sao   paulo ")
+        self.assertIsNotNone(cached)
+        self.assertAlmostEqual(cached[0], -23.5505, places=4)
+
+    def test_26_static_path_traversal_and_404(self):
+        res_trav = self.client.get('/../../etc/passwd')
+        self.assertEqual(res_trav.status_code, 404)
+
+        res_missing = self.client.get('/rota-que-nao-existe-abc')
+        self.assertEqual(res_missing.status_code, 404)
+
+        res_friendly = self.client.get('/pedido')
+        self.assertEqual(res_friendly.status_code, 200)
+
+    def test_27_resolve_db_path_local_vs_serverless(self):
+        import database
+        from unittest.mock import patch
+
+        with patch.dict(os.environ, {}, clear=True):
+            local_path = database._resolve_db_path()
+            self.assertFalse(local_path.startswith('/tmp'))
+            self.assertTrue(local_path.endswith('marketplace.db'))
+
+        with patch.dict(os.environ, {'VERCEL': '1'}, clear=True):
+            self.assertEqual(database._resolve_db_path(), '/tmp/marketplace.db')
+
+        with patch.dict(os.environ, {'AWS_LAMBDA_FUNCTION_NAME': 'fn'}, clear=True):
+            self.assertEqual(database._resolve_db_path(), '/tmp/marketplace.db')
 
 if __name__ == '__main__':
     unittest.main()

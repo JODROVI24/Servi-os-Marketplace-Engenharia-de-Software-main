@@ -10,11 +10,23 @@ Plataforma web completa desenvolvida para conectar clientes a profissionais e pr
 * Python 3.10 ou superior (com `Flask` e `Pillow` instalados).
 
 ### Passo a Passo
-1. No terminal, na raiz do projeto, execute o comando:
+1. **Configurar variáveis de ambiente**:
+   Copie o arquivo `.env.example` para `.env` na raiz do projeto e ajuste os valores para o seu ambiente local (nunca faça commit do `.env` real):
+   ```env
+   SECRET_KEY=exemplo_chave_secreta_gerada_com_secrets_token_hex
+   MARKETPLACE_DB=marketplace.db
+   # Opcional (PostgreSQL em nuvem):
+   # DATABASE_URL=postgresql://usuario:senha@ep-exemplo.us-east-1.aws.neon.tech/neondb?sslmode=require
+   ```
+   Para gerar uma `SECRET_KEY` segura:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+2. No terminal, na raiz do projeto, execute o comando:
    ```bash
    python app.py
    ```
-2. Abra o seu navegador e acesse:
+3. Abra o seu navegador e acesse:
    ```
    http://localhost:5000
    ```
@@ -73,7 +85,12 @@ A aplicação conta com uma suíte de testes de integração cobrindo fluxos de 
 
 Para executar os testes:
 ```bash
-python .\Servi-os-Marketplace-Engenharia-de-Software-main\site_marketplace\test_app.py
+python -m unittest discover -s tests -v
+```
+
+Para executar migrations do banco manualmente ou simular (`--dry-run`):
+```bash
+python -m scripts.migrate --dry-run
 ```
 
 ---
@@ -110,8 +127,9 @@ vercel
 vercel --prod
 ```
 
-> **💡 Nota sobre Persistência em Serverless:**  
-> Por padrão na Vercel, o banco SQLite é alocado no diretório transitório `/tmp/marketplace.db`, gerando os dados de demonstração automaticamente. Para persistência permanente de produção mesmo após instâncias serverless recicladas, basta definir a variável de ambiente `DATABASE_URL` conectada a um PostgreSQL gratuito do **Neon** (`https://neon.tech`) ou **Supabase**.
+> **💡 Nota sobre Persistência e Rate Limiting em Serverless:**  
+> Por padrão na Vercel, o banco SQLite é alocado no diretório transitório `/tmp/marketplace.db`, gerando os dados de demonstração automaticamente. Para persistência permanente de produção mesmo após instâncias serverless recicladas, basta definir a variável de ambiente `DATABASE_URL` conectada a um PostgreSQL gratuito do **Neon** (`https://neon.tech`) ou **Supabase**.  
+> O rate limiting da API persiste na tabela `rate_limit` do banco configurado; em produção serverless de alto tráfego, recomenda-se complementar com um WAF/proxy de borda (como **Cloudflare** ou **Akamai**) para mitigação antes da invocação da função.
 
 ---
 

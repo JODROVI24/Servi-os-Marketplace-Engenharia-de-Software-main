@@ -502,12 +502,22 @@ button {
     gap: 8px;
 }
 
+a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
-    outline: 2px solid var(--sea);
+textarea:focus-visible,
+[tabindex]:focus-visible,
+[role="button"]:focus-visible {
+    outline: 3px solid var(--sea);
     outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(31, 111, 139, 0.22);
+}
+
+.hero a:focus-visible,
+.hero button:focus-visible {
+    outline-color: var(--sun);
+    box-shadow: 0 0 0 4px rgba(255, 194, 51, 0.35);
 }
 
 .btn {
@@ -691,7 +701,7 @@ input[type=range] {
     padding: 3px 10px;
     border-radius: 9999px;
     background: #e3f4ec;
-    color: var(--ok);
+    color: #11663f;
     font-weight: 700;
     display: inline-flex;
     align-items: center;
@@ -700,7 +710,7 @@ input[type=range] {
 
 .tag.off {
     background: #eceff1;
-    color: #607d8b;
+    color: #3f5364;
 }
 
 .price {
@@ -743,6 +753,7 @@ input[type=range] {
 
 /* Map */
 #map {
+    position: relative;
     width: 100%;
     height: clamp(320px, 50vh, 480px);
     border-radius: 14px;
@@ -779,7 +790,7 @@ input[type=range] {
     padding: 6px 12px;
     border-radius: 9999px;
     background: var(--bg);
-    color: #5d7182;
+    color: #3f5364;
     font-weight: 700;
     border: 1px solid var(--road);
     transition: all 0.2s;
@@ -985,6 +996,13 @@ tr.win td {
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.input-form::placeholder,
+input::placeholder,
+textarea::placeholder {
+    color: #526577;
+    opacity: 1;
+}
+
 .input-form:focus {
     border-color: var(--sea);
     box-shadow: 0 0 0 3px rgba(31, 111, 139, 0.15);
@@ -1029,7 +1047,7 @@ tr.win td {
 
 .radio-card small {
     display: block;
-    color: #5d7182;
+    color: #4b6073;
     font-size: 0.8rem;
     margin-top: 3px;
     font-weight: 500;
@@ -1146,5 +1164,176 @@ footer {
 
 .footer-direitos p {
     font-size: 0.85rem;
-    color: #7b8e9e;
+    color: #4b6073;
+}
+
+/* ==========================================================================
+   T-006 & T-009: Loading States, Empty State, Retry Alert, Sort & Score Badge
+   ========================================================================== */
+
+@keyframes pertojaSpin {
+    to { transform: rotate(360deg); }
+}
+
+.map-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 500;
+    background: rgba(241, 245, 247, 0.82);
+    backdrop-filter: blur(2px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 0.92rem;
+    pointer-events: auto;
+}
+
+.map-spinner {
+    width: 36px;
+    height: 36px;
+    border: 4px solid var(--road);
+    border-top-color: var(--sea);
+    border-radius: 50%;
+    animation: pertojaSpin 0.8s linear infinite;
+}
+
+.map-spinner-sm {
+    width: 16px;
+    height: 16px;
+    border: 2.5px solid var(--road);
+    border-top-color: var(--sea);
+    border-radius: 50%;
+    display: inline-block;
+    animation: pertojaSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.list-loading-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #eaf4f7;
+    border: 1px solid #b8d8e3;
+    color: var(--ink);
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.empty-state-card {
+    background: var(--bg);
+    border: 1.5px dashed #9fb3c4;
+    border-radius: 14px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--ink);
+}
+
+.empty-state-card .empty-title {
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--ink);
+    margin: 0 0 6px;
+}
+
+.empty-state-card .empty-desc {
+    font-size: 0.86rem;
+    color: #3f5364;
+    margin: 0 0 14px;
+}
+
+/* Mensagem roxa fixa para 429 / >=500 (contraste >= 4.5:1) */
+.alerta-retry {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    z-index: 10001;
+    max-width: min(92vw, 440px);
+    background: #f3e8ff;
+    color: #581c87;
+    border: 1.5px solid #9333ea;
+    border-left: 5px solid #7e22ce;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 10px 26px rgba(88, 28, 135, 0.2);
+}
+
+.alerta-retry-close {
+    background: transparent;
+    color: #581c87;
+    border: 1px solid #c084fc;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.alerta-retry-close:hover {
+    background: #e9d5ff;
+}
+
+/* Controles de ordenação e mini-badge de score (T-009) */
+.sort-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.sort-btn {
+    background: var(--bg);
+    color: var(--ink);
+    border: 1px solid var(--road);
+    border-radius: 9999px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sort-btn:hover {
+    border-color: var(--sea);
+    background: #eaf1f5;
+}
+
+.sort-btn.on {
+    background: var(--ink);
+    color: #ffffff;
+    border-color: var(--ink);
+    box-shadow: 0 2px 6px rgba(16, 36, 62, 0.18);
+}
+
+.score-badge {
+    font-size: 0.76rem;
+    padding: 2px 9px;
+    border-radius: 9999px;
+    background: #fff4d6;
+    color: #5c3d00;
+    border: 1px solid #f0c96d;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .map-spinner,
+    .map-spinner-sm {
+        animation: none;
+    }
 }

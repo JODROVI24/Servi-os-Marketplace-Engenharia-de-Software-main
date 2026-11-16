@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+import unicodedata
 import urllib.parse
 from werkzeug.security import generate_password_hash
 
@@ -30,26 +31,26 @@ else:
 
 DBIntegrityError = (sqlite3.IntegrityError, Psycopg2IntegrityError)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MIGRATIONS_DIR = os.path.join(BASE_DIR, 'scripts', 'migrations')
+
 
 def _load_dotenv_defensive():
     """Carrega variáveis de ambiente de arquivos .env locais se presentes."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.abspath(os.path.join(base_dir, '..', '..'))
-    for candidate_dir in (root_dir, base_dir, os.path.join(root_dir, 'site_marketplace')):
-        env_file = os.path.join(candidate_dir, '.env')
-        if os.path.isfile(env_file):
-            try:
-                with open(env_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            k, v = line.split('=', 1)
-                            k = k.strip()
-                            v = v.strip().strip("'\"")
-                            if k not in os.environ:
-                                os.environ[k] = v
-            except Exception:
-                pass
+    env_file = os.path.join(BASE_DIR, '.env')
+    if os.path.isfile(env_file):
+        try:
+            with open(env_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
 
 
 _load_dotenv_defensive()
@@ -105,13 +106,17 @@ def get_active_engine():
 
 
 def _resolve_db_path():
-    if 'MARKETPLACE_DB' in os.environ:
-        return os.environ['MARKETPLACE_DB']
+    """
+    Resolve o caminho do banco SQLite.
+    Usa /tmp/marketplace.db APENAS quando um ambiente serverless
+    (VERCEL, AWS_LAMBDA_FUNCTION_NAME, VERCEL_REGION ou NOW_REGION) está ativo.
+    Em ambientes locais, utiliza sempre o arquivo 'marketplace.db' na raiz do projeto.
+    """
+    if 'MARKETPLACE_DB' in os.environ and os.environ['MARKETPLACE_DB'].strip():
+        return os.environ['MARKETPLACE_DB'].strip()
 
-    # Se Vercel ou qualquer ambiente serverless estiver ativo
     is_serverless = (
-        os.environ.get('VERCEL') == '1'
-        or os.environ.get('VERCEL') == 'true'
+        os.environ.get('VERCEL') in ('1', 'true')
         or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
         or 'VERCEL_REGION' in os.environ
         or 'NOW_REGION' in os.environ
@@ -119,19 +124,24 @@ def _resolve_db_path():
     if is_serverless:
         return '/tmp/marketplace.db'
 
-    # Testa se o diretório local é gravável; se não for, usa /tmp
-    local_dir = os.path.dirname(os.path.abspath(__file__))
-    try:
-        test_file = os.path.join(local_dir, '.write_test')
-        with open(test_file, 'w') as f:
-            f.write('1')
-        os.remove(test_file)
-        return os.path.join(local_dir, 'marketplace.db')
-    except (OSError, IOError, PermissionError):
-        return '/tmp/marketplace.db'
+    return os.path.join(BASE_DIR, 'marketplace.db')
 
 
 DB_PATH = _resolve_db_path()
+
+
+def _normalizar_query(texto):
+    """
+    Normaliza consultas de endereço para chave de cache de geocodificação:
+    - remove espaços no início e fim;
+    - converte para minúsculas;
+    - remove acentos via decomposição NFD e filtragem ASCII;
+    - colapsa múltiplos espaços em um único espaço.
+    """
+    if not texto:
+        return ''
+    sem_acentos = unicodedata.normalize('NFD', str(texto)).encode('ascii', 'ignore').decode('ascii')
+    return re.sub(r'\s+', ' ', sem_acentos).strip().lower()
 
 
 def translate_placeholders(sql):
@@ -296,9 +306,9 @@ class PostgresCursorWrapper:
         needs_returning = False
         is_insert = upper_sql.startswith('INSERT INTO') or upper_sql.startswith('INSERT')
         has_returning = 'RETURNING' in upper_sql
-        is_geocode = 'GEOCODE_CACHE' in upper_sql
+        is_no_id_table = any(t in upper_sql for t in ('GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS'))
 
-        if is_insert and not has_returning and not is_geocode:
+        if is_insert and not has_returning and not is_no_id_table:
             needs_returning = True
             sql_to_run = clean_sql.rstrip().rstrip(';') + ' RETURNING id'
         else:
@@ -523,41 +533,15 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
-CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
-CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
-CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
-CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
-'''
+CREATE TABLE IF NOT EXISTS rate_limit (
+    rate_key TEXT NOT NULL,
+    ts DOUBLE PRECISION NOT NULL
+);
 
-POSTGRES_MIGRATIONS_SQL = '''
-ALTER TABLE users ADD COLUMN IF NOT EXISTS cep TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS endereco TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS numero TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS complemento TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS bairro TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS cidade TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS estado TEXT;
-
-ALTER TABLE services ADD COLUMN IF NOT EXISTS cep TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS endereco TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS numero TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS bairro TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS cidade TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS estado TEXT;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
-
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cep_cliente TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS endereco_cliente TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS numero_cliente TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS bairro_cliente TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cidade_cliente TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS estado_cliente TEXT;
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 '''
 
 SQLITE_SCHEMA_SQL = '''
@@ -649,16 +633,107 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
-CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
-CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
-CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
-CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
+CREATE TABLE IF NOT EXISTS rate_limit (
+    rate_key TEXT NOT NULL,
+    ts REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 '''
+
+
+def _table_exists(cursor, table_name, engine):
+    """Verifica se uma tabela já existe no banco ativo."""
+    if engine == 'postgresql':
+        row = cursor.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
+            (table_name,)
+        ).fetchone()
+    else:
+        row = cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,)
+        ).fetchone()
+    return row is not None
+
+
+def _ensure_migrations_table(cursor):
+    """Garante a existência da tabela schema_migrations para controle de versão."""
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+
+def list_migration_files():
+    """Lista em ordem alfabética os arquivos .sql em scripts/migrations/."""
+    if not os.path.isdir(MIGRATIONS_DIR):
+        return []
+    files = [
+        f for f in os.listdir(MIGRATIONS_DIR)
+        if f.endswith('.sql') and os.path.isfile(os.path.join(MIGRATIONS_DIR, f))
+    ]
+    return sorted(files)
+
+
+def run_migrations(conn=None, dry_run=False):
+    """
+    Executa migrations pendentes de scripts/migrations/*.sql registrando em schema_migrations.
+    Quando dry_run=True, apenas inspeciona e retorna o relatório sem alterar o banco.
+    Retorna lista de dicionários com status de cada arquivo.
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection()
+
+    cursor = conn.cursor()
+    engine = get_active_engine()
+    report = []
+
+    migration_files = list_migration_files()
+
+    if dry_run:
+        applied_versions = set()
+        if _table_exists(cursor, 'schema_migrations', engine):
+            rows = cursor.execute("SELECT version FROM schema_migrations").fetchall()
+            applied_versions = {r['version'] for r in rows}
+        for filename in migration_files:
+            status = 'already_applied' if filename in applied_versions else 'pending'
+            report.append({'version': filename, 'status': status})
+        if own_conn:
+            conn.close()
+        return report
+
+    _ensure_migrations_table(cursor)
+    conn.commit()
+
+    rows = cursor.execute("SELECT version FROM schema_migrations").fetchall()
+    applied_versions = {r['version'] for r in rows}
+
+    for filename in migration_files:
+        if filename in applied_versions:
+            report.append({'version': filename, 'status': 'already_applied'})
+            continue
+
+        filepath = os.path.join(MIGRATIONS_DIR, filename)
+        with open(filepath, 'r', encoding='utf-8') as f:
+            sql_script = f.read()
+
+        if sql_script.strip():
+            cursor.executescript(sql_script)
+
+        cursor.execute("INSERT INTO schema_migrations (version) VALUES (?)", (filename,))
+        conn.commit()
+        report.append({'version': filename, 'status': 'applied'})
+
+    if own_conn:
+        conn.close()
+    return report
 
 
 def init_db():
@@ -666,45 +741,17 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    if engine == 'postgresql':
-        cursor.executescript(POSTGRES_SCHEMA_SQL)
-        conn.commit()
-        cursor.executescript(POSTGRES_MIGRATIONS_SQL)
-        conn.commit()
-    else:
-        cursor.executescript(SQLITE_SCHEMA_SQL)
+    # Verifica se as tabelas principais já existem antes de executar o schema inicial
+    core_tables = ('users', 'services', 'orders', 'reviews', 'geocode_cache')
+    missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
+
+    if missing_core:
+        schema_sql = POSTGRES_SCHEMA_SQL if engine == 'postgresql' else SQLITE_SCHEMA_SQL
+        cursor.executescript(schema_sql)
         conn.commit()
 
-        # Migração defensiva para colunas de endereço caso já existisse o banco SQLite
-        cursor.execute("PRAGMA table_info(users)")
-        user_cols = [c[1] for c in cursor.fetchall()]
-        for col_name, col_type in [
-            ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
-            ('complemento', 'TEXT'), ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT')
-        ]:
-            if col_name not in user_cols:
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-
-        cursor.execute("PRAGMA table_info(services)")
-        serv_cols = [c[1] for c in cursor.fetchall()]
-        for col_name, col_type in [
-            ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
-            ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT'),
-            ('lat', 'REAL'), ('lng', 'REAL')
-        ]:
-            if col_name not in serv_cols:
-                cursor.execute(f"ALTER TABLE services ADD COLUMN {col_name} {col_type}")
-
-        cursor.execute("PRAGMA table_info(orders)")
-        ord_cols = [c[1] for c in cursor.fetchall()]
-        for col_name, col_type in [
-            ('cep_cliente', 'TEXT'), ('endereco_cliente', 'TEXT'), ('numero_cliente', 'TEXT'),
-            ('bairro_cliente', 'TEXT'), ('cidade_cliente', 'TEXT'), ('estado_cliente', 'TEXT')
-        ]:
-            if col_name not in ord_cols:
-                cursor.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
-
-        conn.commit()
+    # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
+    run_migrations(conn=conn, dry_run=False)
 
     # Seed inicial e sincronização completa dos prestadores
     cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
@@ -821,10 +868,18 @@ def sincronizar_todos_prestadores(conn):
 
 
 def get_cached_geocode(query):
-    """Recupera coordenadas em cache para uma consulta de endereço."""
-    if not query or not query.strip():
+    """
+    Recupera coordenadas em cache para uma consulta de endereço normalizada.
+
+    Nota serverless (T-004): Quando VERCEL ou AWS_LAMBDA_FUNCTION_NAME estiver ativo,
+    NÃO se deve usar um cache SQLite local separado se o motor ativo for 'postgresql'.
+    get_db_connection() roteia automaticamente para a tabela 'geocode_cache' no
+    PostgreSQL sempre que get_active_engine() == 'postgresql', e utiliza SQLite
+    (DB_PATH) apenas quando o motor ativo for 'sqlite'.
+    """
+    normalized = _normalizar_query(query)
+    if not normalized:
         return None
-    normalized = query.strip().lower()
     try:
         conn = get_db_connection()
         row = conn.execute('SELECT lat, lng FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
@@ -840,10 +895,14 @@ def save_cached_geocode(query, lat, lng, origem='nominatim'):
     """
     Salva coordenadas em cache para consultas futuras utilizando SQL padrão upsert:
     ON CONFLICT (query) DO UPDATE compatível tanto com SQLite (>=3.24) quanto com PostgreSQL (>=9.5).
+
+    Quando VERCEL ou AWS_LAMBDA_FUNCTION_NAME está ativo e o motor é PostgreSQL
+    (get_active_engine() == 'postgresql'), grava diretamente na tabela 'geocode_cache'
+    do PostgreSQL (nunca em um arquivo SQLite local separado); em SQLite, usa DB_PATH.
     """
-    if not query or lat is None or lng is None:
+    normalized = _normalizar_query(query)
+    if not normalized or lat is None or lng is None:
         return
-    normalized = query.strip().lower()
     try:
         conn = get_db_connection()
         conn.execute('''

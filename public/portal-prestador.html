@@ -10,7 +10,8 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#10243e">
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/png" href="/img/icone-192.png">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" type="image/png" href="/img/icone-192.png">
 
 
   <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
@@ -279,11 +280,11 @@
   </main>
 
   <!-- MODAL DE CADASTRO / EDIÇÃO DE SERVIÇO E PREÇO (Contrato DOM: #modalServico, #formServicoModal, #modalTitulo, #modalServicoId, #servicoTitulo, #servicoCategoria, #servicoPreco, #servicoDescricao, #btnSalvarModal, fecharModalServico) -->
-  <div id="modalServico" class="modal-backdrop" style="display: none;">
+  <div id="modalServico" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitulo" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
         <h3 id="modalTitulo" class="text-lg font-black text-perto-ink m-0">Cadastrar Serviço</h3>
-        <button type="button" class="text-perto-ink/40 hover:text-perto-ink text-xl" onclick="fecharModalServico()">✕</button>
+        <button type="button" id="btnFecharModalServico" aria-label="Fechar modal de serviço" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalServico()">✕</button>
       </div>
 
       <form id="formServicoModal" class="mt-4 space-y-4">
@@ -471,11 +472,26 @@
       }
     }
 
+    let modalServicoTriggerEl = null;
+
+    function onModalServicoKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        fecharModalServico();
+      }
+    }
+
     function abrirModalServico(id = null) {
+      modalServicoTriggerEl = document.activeElement;
       document.getElementById('formServicoModal').reset();
       document.getElementById('modalServicoId').value = '';
       document.getElementById('modalTitulo').textContent = 'Cadastrar Novo Serviço';
-      document.getElementById('modalServico').style.display = 'flex';
+      const modalEl = document.getElementById('modalServico');
+      modalEl.style.display = 'flex';
+      document.addEventListener('keydown', onModalServicoKeyDown);
+      modalEl.onclick = (e) => {
+        if (e.target === modalEl) fecharModalServico();
+      };
 
       if (id) {
         const serv = listaMeusServicos.find(s => s.id === id);
@@ -488,10 +504,18 @@
           document.getElementById('servicoDescricao').value = serv.descricao || '';
         }
       }
+
+      const tituloInput = document.getElementById('servicoTitulo');
+      if (tituloInput) setTimeout(() => tituloInput.focus(), 0);
     }
 
     function fecharModalServico() {
       document.getElementById('modalServico').style.display = 'none';
+      document.removeEventListener('keydown', onModalServicoKeyDown);
+      if (modalServicoTriggerEl && typeof modalServicoTriggerEl.focus === 'function') {
+        modalServicoTriggerEl.focus();
+      }
+      modalServicoTriggerEl = null;
     }
 
     function editarServico(id) {

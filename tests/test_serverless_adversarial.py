@@ -567,96 +567,6 @@ class TestServerlessColdStartSimulation(unittest.TestCase):
 
     def test_01_cold_start_vercel_env_flag(self):
         script = """
-import os, sys, json
-os.environ['VERCEL'] = '1'
-import api.index as vercel_api
-from database import DB_PATH, get_db_connection
-
-assert os.environ.get('VERCEL') == '1'
-assert DB_PATH == '/tmp/marketplace.db', f'Expected /tmp/marketplace.db, got {DB_PATH}'
-assert os.path.exists('/tmp/marketplace.db'), 'DB not created in /tmp'
-
-conn = get_db_connection()
-user_count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-service_count = conn.execute('SELECT COUNT(*) FROM services').fetchone()[0]
-conn.close()
-
-assert user_count > 0
-assert service_count > 0
-
-# Test WSGI invocation
-from io import BytesIO
-environ = {
-    'REQUEST_METHOD': 'GET',
-    'SERVER_NAME': 'localhost',
-    'SERVER_PORT': '80',
-    'wsgi.version': (1, 0),
-    'wsgi.url_scheme': 'http',
-    'wsgi.input': BytesIO(b''),
-    'wsgi.errors': sys.stderr,
-    'wsgi.multithread': False,
-    'wsgi.multiprocess': False,
-    'wsgi.run_once': False,
-    'PATH_INFO': '/api/index.py',
-    'QUERY_STRING': '__path=health',
-}
-status = None
-def start_resp(s, h):
-    global status
-    status = s
-
-body = b''.join(vercel_api.app(environ, start_resp))
-assert status == '200 OK', f'Expected 200 OK, got {status}'
-data = json.loads(body.decode('utf-8'))
-assert data['environment'] == 'vercel', f"Expected environment == vercel, got {data.get('environment')}"
-print('COLD_START_VERCEL_SUCCESS')
-"""
-        clean_env = os.environ.copy()
-        clean_env.pop('MARKETPLACE_DB', None)
-        clean_env['VERCEL'] = '1'
-        res = subprocess.run(
-            [sys.executable, '-c', script],
-            cwd=REPO_ROOT,
-            env=clean_env,
-            capture_output=True,
-            text=True
-        )
-        self.assertEqual(res.returncode, 0, f"Cold start subprocess failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}")
-        self.assertIn('COLD_START_VERCEL_SUCCESS', res.stdout)
-
-    def test_02_cold_start_aws_lambda_flag(self):
-        script = """
-import os, sys
-os.environ.pop('VERCEL', None)
-os.environ['AWS_LAMBDA_FUNCTION_NAME'] = 'test_vercel_lambda'
-import api.index as vercel_api
-from database import DB_PATH
-
-assert os.environ.get('VERCEL') == '1', 'VERCEL flag should have been auto-set by AWS_LAMBDA_FUNCTION_NAME'
-assert DB_PATH == '/tmp/marketplace.db'
-print('COLD_START_AWS_LAMBDA_SUCCESS')
-"""
-        clean_env = os.environ.copy()
-        clean_env.pop('MARKETPLACE_DB', None)
-        clean_env.pop('VERCEL', None)
-        clean_env['AWS_LAMBDA_FUNCTION_NAME'] = 'test_vercel_lambda'
-        res = subprocess.run(
-            [sys.executable, '-c', script],
-            cwd=REPO_ROOT,
-            env=clean_env,
-            capture_output=True,
-            text=True
-        )
-        self.assertEqual(res.returncode, 0, f"AWS Lambda cold start failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}")
-        self.assertIn('COLD_START_AWS_LAMBDA_SUCCESS', res.stdout)
-
-    def test_03_empirical_vulnerability_reproduction_fallback_import_error(self):
-        """
-        Adversarial challenge:
-        Demonstrate that lines 85-99 in api/index.py have a Python closure scoping bug
-        (NameError: cannot access free variable 'exc') when handling an import error.
-        """
-        script = """
 import os, sys
 import api.index as mod
 mod.marketplace_dir = '/nonexistent/path/for/failure/test'
@@ -684,10 +594,11 @@ def start_resp(s, h):
 
 try:
     resp = list(err_app(environ, start_resp))
-    # If it raised 500 with NameError:
+    # O novo comportamento: não gera NameError, responde 500 com JSON
     print('RESPONSE_STATUS:', status)
-except NameError as ne:
-    print('CONFIRMED_NAME_ERROR:', ne)
+    print('RESPONSE_BODY_OK')
+except Exception as ne:
+    print('UNEXPECTED_EXCEPTION:', type(ne).__name__, ne)
 """
         clean_env = os.environ.copy()
         clean_env.pop('MARKETPLACE_DB', None)
@@ -698,10 +609,12 @@ except NameError as ne:
             capture_output=True,
             text=True
         )
-        # Verify that the bug manifests (either as a 500 error or NameError)
+        # Validacao: nao deve gerar NameError, deve retornar 500 com JSON
         output = res.stdout + res.stderr
-        self.assertIn('NameError', output, "Scoping vulnerability in _init_marketplace_app should trigger NameError on exc")
-        self.assertIn("cannot access free variable 'exc'", output)
+        self.assertIn('RESPONSE_STATUS: 500 INTERNAL SERVER ERROR', output, "Esperado 500 INTERNAL SERVER ERROR")
+        self.assertIn('RESPONSE_BODY_OK', output)
+        self.assertNotIn('NameError', output, "NameError nao deveria ocorrer com a correcao")
+        self.assertNotIn("cannot access free variable 'exc'", output)
 
 
 

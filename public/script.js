@@ -65,7 +65,87 @@ const score = p => 1000 * (1 - Math.min(dist(p) / 10, 1)) + p.r * 100 + (p.a ? 2
 const STEPS = ['Requisitado', 'Localizado', 'Confirmado', 'Em Trânsito', 'Em Execução', 'Finalizado'];
 
 let cat = 'Todos', radius = 8, busy = false, order = null, timer = null;
+let currentOrder = 'distance';
+let loadingDepth = 0;
 let simulationTimers = [];
+
+function atualizarEstadoCarregamento(ativo) {
+  const mapEl = document.getElementById('map');
+  if (mapEl) {
+    let overlay = mapEl.querySelector('.map-loading-overlay');
+    if (ativo) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'map-loading-overlay';
+        overlay.setAttribute('role', 'status');
+        overlay.setAttribute('aria-live', 'polite');
+        overlay.innerHTML = '<div class="map-spinner" aria-hidden="true"></div><span>Buscando serviços...</span>';
+        mapEl.appendChild(overlay);
+      }
+    } else if (overlay) {
+      overlay.remove();
+    }
+  }
+
+  const painelLista = document.getElementById('painel-lista');
+  if (painelLista) {
+    let statusEl = painelLista.querySelector('.list-loading-status');
+    if (ativo) {
+      if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.className = 'list-loading-status';
+        statusEl.setAttribute('role', 'status');
+        statusEl.setAttribute('aria-live', 'polite');
+        statusEl.innerHTML = '<span class="map-spinner-sm" aria-hidden="true"></span><span>Buscando serviços...</span>';
+        const listEl = document.getElementById('list');
+        if (listEl && listEl.parentNode === painelLista) {
+          painelLista.insertBefore(statusEl, listEl);
+        } else {
+          painelLista.appendChild(statusEl);
+        }
+      }
+    } else if (statusEl) {
+      statusEl.remove();
+    }
+  }
+}
+
+function startLoading() {
+  loadingDepth++;
+  atualizarEstadoCarregamento(true);
+}
+
+function stopLoading() {
+  loadingDepth = Math.max(0, loadingDepth - 1);
+  if (loadingDepth === 0) {
+    atualizarEstadoCarregamento(false);
+  }
+}
+
+function exibirAlertaRetry(status) {
+  let banner = document.getElementById('alertaRetryBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'alertaRetryBanner';
+    banner.className = 'alerta-retry';
+    banner.setAttribute('role', 'alert');
+    banner.setAttribute('aria-live', 'assertive');
+    document.body.appendChild(banner);
+  }
+  const codigo = status ? ` (HTTP ${status})` : '';
+  banner.innerHTML = `
+    <span>Serviço temporariamente ocupado ou indisponível${escapeHtml(codigo)}. Tente novamente em alguns segundos.</span>
+    <button type="button" class="alerta-retry-close" aria-label="Fechar aviso">Fechar</button>
+  `;
+  const btnClose = banner.querySelector('.alerta-retry-close');
+  if (btnClose) {
+    btnClose.onclick = () => banner.remove();
+  }
+}
+
+function getServiceScore(p) {
+  return p.score != null && !isNaN(p.score) ? Number(p.score) : score(p);
+}
 
 function clearAllSimulationTimers() {
   clearTimeout(timer);
@@ -111,10 +191,13 @@ function renderSkeletonList() {
 
 // Carregar prestadores da API se disponível
 async function carregarPrestadoresAPI() {
+  startLoading();
   renderSkeletonList();
   try {
-    const res = await fetch(`/api/services?cat=${encodeURIComponent(cat)}&radius=${radius}&lat=${centerLat}&lng=${centerLng}`);
-    if (res.ok) {
+    const res = await fetch(`/api/services?cat=${encodeURIComponent(cat)}&radius=${radius}&lat=${centerLat}&lng=${centerLng}&order=${encodeURIComponent(currentOrder)}`);
+    if (res.status === 429 || res.status >= 500) {
+      exibirAlertaRetry(res.status);
+    } else if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
         P = data.map(item => ({
@@ -131,12 +214,15 @@ async function carregarPrestadoresAPI() {
           endereco: item.endereco ? item.endereco.completo : (item.endereco_completo || 'São Paulo - SP'),
           bairro: item.endereco ? item.endereco.bairro : (item.bairro || ''),
           cidade: item.endereco ? item.endereco.cidade : (item.cidade || 'São Paulo'),
-          distancia: item.distancia_km
+          distancia: item.distancia_km,
+          score: item.score != null ? item.score : null
         }));
       }
     }
   } catch (e) {
     console.log('Utilizando base de prestadores local/fallback.');
+  } finally {
+    stopLoading();
   }
 }
 
@@ -148,28 +234,46 @@ function renderChips() {
   const chipsEl = $('#chips');
   if (!chipsEl) return;
   const cats = ['Todos', 'Limpeza', 'Elétrica', 'Encanamento', 'Pintura', 'Jardinagem', 'Tecnologia', 'Marcenaria'];
-  chipsEl.innerHTML = cats.map(c => `<button class="chip ${c.toLowerCase() === cat.toLowerCase() ? 'on' : ''}" data-c="${c}">${c}</button>`).join('');
+  chipsEl.innerHTML = cats.map(c => {
+    const isSelected = c.toLowerCase() === cat.toLowerCase();
+    return `<button type="button" class="chip ${isSelected ? 'on' : ''}" data-c="${c}" aria-pressed="${isSelected}" aria-label="Filtrar por categoria ${c}">${c}</button>`;
+  }).join('');
 }
 
 function renderList() {
   const listEl = $('#list');
   if (!listEl) return;
-  const v = visible().sort((a, b) => dist(a) - dist(b));
+  const v = visible().sort((a, b) => {
+    if (currentOrder === 'score') {
+      return (getServiceScore(b) - getServiceScore(a)) || (dist(a) - dist(b));
+    }
+    return dist(a) - dist(b);
+  });
   if ($('#count')) $('#count').textContent = '(' + v.length + ')';
-  listEl.innerHTML = v.length ? v.map(p => `
+  listEl.innerHTML = v.length ? v.map(p => {
+    const svcScore = Math.round(getServiceScore(p));
+    return `
    <div class="svc ${order && order.best.id === p.id ? 'best' : ''}">
      <div class="top"><span>${escapeHtml(p.s)}</span><span class="price">${brl(p.p)}</span></div>
      <div style="font-size: 0.8rem; color: var(--sea); font-weight: 600; margin: 3px 0; display: flex; align-items: center; gap: 4px;">
-       <span>📍</span> <span>${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
+       <span aria-hidden="true">📍</span> <span>${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
      </div>
-     <div class="meta"><span>👤 ${escapeHtml(p.n)}</span><span>Avaliação: ★ ${p.r.toFixed(1)}</span><span>${dist(p).toFixed(1)} km</span>
-       <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span></div>
-     <div style="margin-top: 10px;"><button class="btn btn-requisitar" data-req="${p.id}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button></div>
-    </div>`).join('') : `
-     <div style="color: #666; padding: 16px 8px; text-align: center;">
-       <p style="font-weight: 700; color: #10243e; margin: 0 0 6px;">Nenhum prestador encontrado neste raio de ${radius} km.</p>
-       <p style="font-size: 0.85rem; color: #666; margin: 0 0 12px;">Experimente aumentar o raio de atendimento para visualizar prestadores próximos.</p>
-       <button class="btn" style="font-size: 0.8rem; padding: 6px 14px; border-radius: 9999px;" onclick="const r = document.getElementById('raio'); if(r){ r.value = 15; r.dispatchEvent(new Event('input')); }">
+     <div class="meta">
+       <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
+       <span>Avaliação: ★ ${p.r.toFixed(1)}</span>
+       <span>${dist(p).toFixed(1)} km</span>
+       <span class="score-badge" aria-label="Score ${svcScore}">Score ${svcScore}</span>
+       <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
+     </div>
+     <div style="margin-top: 10px;">
+       <button type="button" class="btn btn-requisitar" data-req="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button>
+     </div>
+    </div>`;
+  }).join('') : `
+     <div class="empty-state-card" role="status" aria-live="polite">
+       <p class="empty-title">Nenhum serviço encontrado nesta área</p>
+       <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de ${radius} km. Experimente expandir o raio de busca.</p>
+       <button type="button" class="btn" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;" onclick="const r = document.getElementById('raio'); if(r){ r.value = 15; r.dispatchEvent(new Event('input')); }">
          Expandir raio para 15 km
        </button>
      </div>`;
@@ -220,7 +324,7 @@ function renderMap(posAtual) {
         <div style="color: #444; margin-bottom: 3px;">👤 <b>${p.n}</b> · ★ ${p.r.toFixed(1)}</div>
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${p.endereco || 'São Paulo - SP'}</div>
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
-        <button class="btn btn-requisitar" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
+        <button type="button" class="btn btn-requisitar" data-req-popup="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
         </button>
       </div>
@@ -242,6 +346,7 @@ async function buscarPorEnderecoCliente() {
   const cleanCep = q.replace(/\D/g, '');
 
   toast('Buscando localização...');
+  startLoading();
   try {
     let lat = null, lng = null, label = q;
 
@@ -249,7 +354,9 @@ async function buscarPorEnderecoCliente() {
     if (cleanCep.length === 8) {
       try {
         const res = await fetch(`/api/cep/${cleanCep}`);
-        if (res.ok) {
+        if (res.status === 429 || res.status >= 500) {
+          exibirAlertaRetry(res.status);
+        } else if (res.ok) {
           const d = await res.json();
           lat = d.lat != null ? parseFloat(d.lat) : null;
           lng = d.lng != null ? parseFloat(d.lng) : null;
@@ -322,7 +429,9 @@ async function buscarPorEnderecoCliente() {
     if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
       try {
         const resG = await fetch(`/api/geocode?q=${encodeURIComponent(q + ', Brasil')}`);
-        if (resG.ok) {
+        if (resG.status === 429 || resG.status >= 500) {
+          exibirAlertaRetry(resG.status);
+        } else if (resG.ok) {
           const d = await resG.json();
           if (d.lat != null && d.lng != null) {
             lat = parseFloat(d.lat);
@@ -377,6 +486,8 @@ async function buscarPorEnderecoCliente() {
   } catch (e) {
     console.error('Erro ao buscar localização:', e);
     toast('Erro ao buscar localização.');
+  } finally {
+    stopLoading();
   }
 }
 
@@ -394,6 +505,7 @@ function info(h) {
 
 // Modal Acessível de Autenticação Obrigatória no Checkout
 function exibirModalAuthObrigatoria(pendingOrder) {
+  const triggerEl = document.activeElement;
   let modalBackdrop = document.getElementById('modalAuthCheckout');
   if (!modalBackdrop) {
     modalBackdrop = document.createElement('div');
@@ -408,40 +520,59 @@ function exibirModalAuthObrigatoria(pendingOrder) {
   modalBackdrop.innerHTML = `
     <div class="modal-conteudo" style="max-width: 460px; text-align: center;">
       <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(0, 150, 166, 0.12); color: var(--sea); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-        <span class="material-symbols-outlined" style="font-size: 28px;">lock</span>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 28px;">lock</span>
       </div>
       <h3 id="modalAuthTitulo" style="color: var(--ink); font-size: 1.35rem; font-weight: 900; margin: 0 0 8px;">Identificação Obrigatória</h3>
       <p style="color: #4b6073; font-size: 0.9rem; margin: 0 0 16px; line-height: 1.45;">
         Para concluir a solicitação de <b>${escapeHtml(pendingOrder.titulo)}</b> por <b>${brl(pendingOrder.preco)}</b> com <b>${escapeHtml(pendingOrder.prestador_nome)}</b>, você precisa estar conectado como Cliente.
       </p>
       <div style="background: var(--bg); border: 1px solid var(--road); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 0.8rem; color: #2e384d; text-align: left; display: flex; align-items: center; gap: 8px;">
-        <span class="material-symbols-outlined" style="font-size: 18px; color: var(--sea);">bookmark_check</span>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 18px; color: var(--sea);">bookmark_check</span>
         <span>Seus itens selecionados e endereço foram salvos e serão restaurados após o acesso!</span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 10px;">
-        <a href="login.html?redirect=pedido.html&pending_order=true" class="btn" style="width: 100%; padding: 12px; font-weight: 800; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ink);">
-          <span class="material-symbols-outlined" style="font-size: 18px;">login</span> Entrar na Minha Conta
+        <a href="login.html?redirect=pedido.html&pending_order=true" class="btn" aria-label="Entrar na minha conta" style="width: 100%; padding: 12px; font-weight: 800; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ink);">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 18px;">login</span> Entrar na Minha Conta
         </a>
-        <a href="cadastro.html?redirect=pedido.html&pending_order=true" class="btn2" style="width: 100%; padding: 10px; font-weight: 700; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <span class="material-symbols-outlined" style="font-size: 18px;">person_add</span> Criar Cadastro Gratuito
+        <a href="cadastro.html?redirect=pedido.html&pending_order=true" class="btn2" aria-label="Criar cadastro gratuito" style="width: 100%; padding: 10px; font-weight: 700; border-radius: 9999px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 18px;">person_add</span> Criar Cadastro Gratuito
         </a>
-        <button id="btnFecharModalAuth" style="background: none; border: none; font-size: 0.85rem; color: #718096; cursor: pointer; padding: 6px; margin-top: 4px;">
+        <button type="button" id="btnFecharModalAuth" aria-label="Cancelar e continuar navegando" style="background: none; border: none; font-size: 0.85rem; color: #4b6073; font-weight: 600; cursor: pointer; padding: 8px; margin-top: 4px;">
           Cancelar e Continuar Navegando
         </button>
       </div>
     </div>
   `;
 
+  const fecharModalAuth = () => {
+    modalBackdrop.style.display = 'none';
+    document.removeEventListener('keydown', onModalKeyDown);
+    if (triggerEl && typeof triggerEl.focus === 'function') {
+      triggerEl.focus();
+    }
+  };
+
+  const onModalKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      fecharModalAuth();
+    }
+  };
+
   modalBackdrop.style.display = 'flex';
+  document.addEventListener('keydown', onModalKeyDown);
+
   const btnFechar = modalBackdrop.querySelector('#btnFecharModalAuth');
   if (btnFechar) {
-    btnFechar.onclick = () => {
-      modalBackdrop.style.display = 'none';
-    };
+    btnFechar.onclick = fecharModalAuth;
+  }
+  const firstAction = modalBackdrop.querySelector('a.btn') || btnFechar;
+  if (firstAction && typeof firstAction.focus === 'function') {
+    setTimeout(() => firstAction.focus(), 0);
   }
   modalBackdrop.onclick = (e) => {
     if (e.target === modalBackdrop) {
-      modalBackdrop.style.display = 'none';
+      fecharModalAuth();
     }
   };
 }
@@ -547,6 +678,13 @@ async function request(id) {
   }
 
   // 2. Criação do pedido com validação estrita no backend
+  const reqBtns = Array.from(document.querySelectorAll(`.btn-requisitar[data-req="${id}"], .btn-requisitar[data-req-popup="${id}"]`));
+  reqBtns.forEach(btn => {
+    btn.disabled = true;
+    btn.setAttribute('title', 'Enviando...');
+    btn.setAttribute('aria-busy', 'true');
+  });
+
   let orderDbId = null;
   try {
     const res = await fetch('/api/orders', {
@@ -559,6 +697,9 @@ async function request(id) {
         observacoes: 'Solicitado via monitoramento ao vivo'
       })
     });
+    if (res.status === 429 || res.status >= 500) {
+      exibirAlertaRetry(res.status);
+    }
     const data = await res.json();
     if (res.status === 401) {
       toast('Sua sessão expirou. Redirecionando para login...');
@@ -595,6 +736,14 @@ async function request(id) {
     console.error('Falha de rede ao criar pedido:', err);
     toast('Erro de conexão com o servidor ao registrar pedido.');
     return;
+  } finally {
+    if (!orderDbId) {
+      reqBtns.forEach(btn => {
+        btn.disabled = !sel.a || busy;
+        btn.removeAttribute('title');
+        btn.removeAttribute('aria-busy');
+      });
+    }
   }
 
   busy = true;
@@ -788,6 +937,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Event Listeners protegidos
+  const sortBtns = document.querySelectorAll('.sort-btn[data-order]');
+  sortBtns.forEach(btn => {
+    btn.onclick = async () => {
+      const nextOrder = btn.dataset.order;
+      if (!nextOrder || nextOrder === currentOrder) return;
+      currentOrder = nextOrder;
+      sortBtns.forEach(b => {
+        const active = b.dataset.order === currentOrder;
+        b.classList.toggle('on', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      await carregarPrestadoresAPI();
+      renderAll();
+    };
+  });
+
   if ($('#chips')) {
     $('#chips').onclick = async e => {
       const c = e.target.dataset.c;
@@ -835,6 +1000,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           });
+          if (res.status === 429 || res.status >= 500) {
+            exibirAlertaRetry(res.status);
+          }
           if (res.status === 401) {
             toast('Sua sessão expirou. Faça login para confirmar o pagamento.');
             window.location.href = 'login.html?redirect=pedido.html';
