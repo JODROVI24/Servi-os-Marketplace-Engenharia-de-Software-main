@@ -611,32 +611,36 @@
     </div>
   </div>
 
-  <!-- MODAL ET-15: AVALIAR CLIENTE -->
+  <!-- MODAL ET-15: AVALIAR CLIENTE (padronizado com portal-cliente.html) -->
   <div id="modalAvaliarCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalAvaliar" style="display: none;">
-    <div class="modal-conteudo">
-      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+    <div class="modal-conteudo" style="max-width: 440px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
         <h3 id="tituloModalAvaliar" class="text-lg font-black text-perto-ink m-0">Avaliar Cliente</h3>
-        <button type="button" aria-label="Fechar modal de avaliação" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalAvaliar()">✕</button>
+        <button type="button" class="drawer-fechar" aria-label="Fechar modal de avaliação" onclick="fecharModalAvaliar()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
       </div>
-      <form id="formAvaliarCliente" class="mt-4 space-y-4">
+      <p id="modalAvaliarClienteSubtitulo" class="text-xs text-perto-ink/75 mb-4 font-body"></p>
+      <form id="formAvaliarCliente" class="space-y-4">
         <input type="hidden" id="avaliarOrderId">
         <div class="campo-form">
-          <label for="avaliarNotaInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nota (1 a 5)</label>
-          <select id="avaliarNotaInput" class="input-form text-sm font-bold">
-            <option value="5">5 - Excelente</option>
-            <option value="4">4 - Muito bom</option>
-            <option value="3">3 - Regular</option>
-            <option value="2">2 - Abaixo do esperado</option>
-            <option value="1">1 - Insatisfatório</option>
-          </select>
+          <span class="text-xs font-bold text-perto-ink uppercase tracking-wider block mb-2">Sua Nota (1 a 5 estrelas)</span>
+          <div id="avaliarClienteEstrelas" class="flex items-center gap-2 flex-wrap" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
+            <button type="button" class="chip on" data-nota="5" aria-pressed="true">★ 5</button>
+            <button type="button" class="chip" data-nota="4" aria-pressed="false">★ 4</button>
+            <button type="button" class="chip" data-nota="3" aria-pressed="false">★ 3</button>
+            <button type="button" class="chip" data-nota="2" aria-pressed="false">★ 2</button>
+            <button type="button" class="chip" data-nota="1" aria-pressed="false">★ 1</button>
+          </div>
+          <input type="hidden" id="avaliarNotaInput" value="5">
         </div>
         <div class="campo-form">
           <label for="avaliarComentarioInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Comentário (opcional)</label>
-          <textarea id="avaliarComentarioInput" rows="3" placeholder="Como foi o atendimento com este cliente?" class="input-form text-sm font-medium"></textarea>
+          <textarea id="avaliarComentarioInput" rows="3" placeholder="Conte como foi o atendimento, comunicação e preparo do local..." class="input-form text-sm"></textarea>
         </div>
-        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
-          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalAvaliar()">Cancelar</button>
-          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Enviar Avaliação</button>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" class="btn2 px-4 py-2 rounded-full text-xs font-bold" onclick="fecharModalAvaliar()">Cancelar</button>
+          <button type="submit" id="btnEnviarAvaliacaoCliente" class="btn px-5 py-2 rounded-full text-xs font-extrabold text-perto-ink">Enviar Avaliação</button>
         </div>
       </form>
     </div>
@@ -1254,7 +1258,7 @@
           acoesContextuais.push(`<span class="dispute-badge">Em Disputa</span>`);
         }
         if (p.status === 'finalizado' && !p.ja_avaliado) {
-          acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink" onclick="abrirModalAvaliar(${orderIdNum})">Avaliar Cliente</button>`);
+          acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" onclick="abrirModalAvaliar(${orderIdNum})"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
         }
         const reviewIdNum = Number(p.cliente_review_id || p.review_id || 0);
         if (reviewIdNum > 0) {
@@ -1590,19 +1594,46 @@
       }
     };
 
-    // ET-15: Avaliar Cliente
+    // ET-15: Avaliar Cliente (mesma UX em estrelas/chips do cliente para prestador)
+    function atualizarEstrelasAvaliarCliente(notaSelecionada) {
+      const val = String(notaSelecionada || '5');
+      const input = document.getElementById('avaliarNotaInput');
+      if (input) input.value = val;
+      document.querySelectorAll('#avaliarClienteEstrelas [data-nota]').forEach(btn => {
+        const active = btn.dataset.nota === val;
+        btn.classList.toggle('on', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    document.querySelectorAll('#avaliarClienteEstrelas [data-nota]').forEach(btn => {
+      btn.addEventListener('click', () => atualizarEstrelasAvaliarCliente(btn.dataset.nota));
+    });
+
     function abrirModalAvaliar(orderId) {
       document.getElementById('formAvaliarCliente').reset();
       document.getElementById('avaliarOrderId').value = orderId;
-      abrirModalAcessivel('modalAvaliarCliente', 'avaliarNotaInput');
+      atualizarEstrelasAvaliarCliente('5');
+      const pedido = (listaPedidos || []).find(item => Number(item.order_id) === Number(orderId));
+      const sub = document.getElementById('modalAvaliarClienteSubtitulo');
+      if (sub) {
+        const tituloSvc = (pedido && pedido.servico_titulo) ? pedido.servico_titulo : 'atendimento';
+        const nomeCli = (pedido && pedido.cliente_nome) ? pedido.cliente_nome : 'o cliente';
+        sub.textContent = `Como foi o atendimento do serviço "${tituloSvc}" para ${nomeCli}?`;
+      }
+      abrirModalAcessivel('modalAvaliarCliente');
+      const firstChip = document.querySelector('#avaliarClienteEstrelas [data-nota="5"]');
+      if (firstChip) setTimeout(() => firstChip.focus(), 0);
     }
     function fecharModalAvaliar() { fecharModalAcessivel('modalAvaliarCliente'); }
 
     document.getElementById('formAvaliarCliente').onsubmit = async (e) => {
       e.preventDefault();
       const orderId = document.getElementById('avaliarOrderId').value;
-      const nota = parseInt(document.getElementById('avaliarNotaInput').value, 10);
+      const nota = parseInt(document.getElementById('avaliarNotaInput').value, 10) || 5;
       const comentario = (document.getElementById('avaliarComentarioInput').value || '').trim();
+      const btnSubmit = document.getElementById('btnEnviarAvaliacaoCliente');
+      if (btnSubmit) btnSubmit.disabled = true;
       try {
         const res = await fetch(`/api/orders/${orderId}/review`, {
           method: 'POST',
@@ -1610,15 +1641,17 @@
           body: JSON.stringify({ nota, comentario })
         });
         if (res.ok) {
-          toast('Avaliação enviada com sucesso!');
+          toast('Avaliação registrada com sucesso! Obrigado pelo feedback.');
           fecharModalAvaliar();
           await carregarPedidos();
         } else {
           const err = await res.json().catch(() => ({}));
-          toast(err.error || 'Erro ao enviar avaliação.');
+          toast(err.error || 'Não foi possível enviar a avaliação.');
         }
       } catch (e) {
-        toast('Erro de conexão.');
+        toast('Erro de comunicação ao enviar avaliação.');
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
       }
     };
 
