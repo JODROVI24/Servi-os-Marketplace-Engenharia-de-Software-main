@@ -2,7 +2,6 @@ import os
 import re
 import math
 import hashlib
-import sqlite3
 import requests
 import gzip
 import time
@@ -10,7 +9,11 @@ from collections import defaultdict
 from functools import wraps
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
-from database import get_db_connection, init_db, get_cached_geocode, save_cached_geocode
+import database
+from database import (
+    get_db_connection, init_db, get_cached_geocode, save_cached_geocode,
+    DBIntegrityError, get_active_engine
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
@@ -340,11 +343,12 @@ def health_check():
         'status': 'healthy',
         'timestamp': time.time(),
         'database': 'connected',
+        'engine': database.get_active_engine(),
         'version': '2.0.0',
         'environment': 'vercel' if os.environ.get('VERCEL') == '1' else 'standalone'
     }
     try:
-        conn = get_db_connection()
+        conn = database.get_db_connection()
         conn.execute('SELECT 1').fetchone()
         conn.close()
     except Exception as err:
@@ -966,8 +970,9 @@ def delete_service(service_id):
     try:
         conn.execute('DELETE FROM services WHERE id = ?', (service_id,))
         conn.commit()
-    except sqlite3.IntegrityError:
+    except DBIntegrityError:
         # Se houver pedidos vinculados a este serviço, desativa para manter integridade dos pedidos
+        conn.rollback()
         conn.execute('UPDATE services SET ativo = 0 WHERE id = ?', (service_id,))
         conn.commit()
     finally:

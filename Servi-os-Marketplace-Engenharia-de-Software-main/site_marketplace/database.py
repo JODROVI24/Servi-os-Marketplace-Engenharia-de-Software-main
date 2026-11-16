@@ -1,6 +1,108 @@
-import sqlite3
 import os
+import re
+import sqlite3
+import urllib.parse
 from werkzeug.security import generate_password_hash
+
+# Defensive import of psycopg2
+try:
+    import psycopg2
+    from psycopg2 import extras
+    from psycopg2 import IntegrityError as _Psycopg2IntegrityError
+    HAS_PSYCOPG2 = True
+except ImportError:
+    psycopg2 = None
+    extras = None
+    _Psycopg2IntegrityError = None
+    HAS_PSYCOPG2 = False
+
+
+# Unified DBIntegrityError catching both SQLite and PostgreSQL integrity errors
+class _FallbackPsycopg2IntegrityError(Exception):
+    """Fallback exception class when psycopg2 is not installed."""
+    pass
+
+
+if _Psycopg2IntegrityError is not None:
+    Psycopg2IntegrityError = _Psycopg2IntegrityError
+else:
+    Psycopg2IntegrityError = _FallbackPsycopg2IntegrityError
+
+DBIntegrityError = (sqlite3.IntegrityError, Psycopg2IntegrityError)
+
+
+def _load_dotenv_defensive():
+    """Carrega variáveis de ambiente de arquivos .env locais se presentes."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.abspath(os.path.join(base_dir, '..', '..'))
+    for candidate_dir in (root_dir, base_dir, os.path.join(root_dir, 'site_marketplace')):
+        env_file = os.path.join(candidate_dir, '.env')
+        if os.path.isfile(env_file):
+            try:
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            k, v = line.split('=', 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+
+
+_load_dotenv_defensive()
+
+
+def resolve_database_url():
+    """
+    Resolve e normaliza a URL de conexão com banco de dados a partir das variáveis de ambiente.
+    Ordem de prioridade:
+    1. DATABASE_URL
+    2. POSTGRES_URL (Vercel Postgres pooled)
+    3. POSTGRES_URL_NON_POOLING (Vercel Postgres direct)
+
+    Normaliza esquema: postgres:// -> postgresql://
+    Aplica sslmode=require para conexões remotas se não configurado.
+    Retorna tupla: (normalized_url, engine_name) onde engine_name é 'postgresql' ou 'sqlite'.
+    """
+    raw_url = (
+        os.environ.get('DATABASE_URL')
+        or os.environ.get('POSTGRES_URL')
+        or os.environ.get('POSTGRES_URL_NON_POOLING')
+    )
+    if not raw_url or not raw_url.strip():
+        return None, 'sqlite'
+
+    url = raw_url.strip()
+    if url.startswith('postgres://'):
+        url = 'postgresql://' + url[len('postgres://'):]
+
+    parsed = urllib.parse.urlsplit(url)
+    hostname = parsed.hostname or ''
+    is_local = hostname in ('localhost', '127.0.0.1', '')
+
+    query_params = dict(urllib.parse.parse_qsl(parsed.query))
+    if not is_local and 'sslmode' not in query_params:
+        query_params['sslmode'] = 'require'
+        new_query = urllib.parse.urlencode(query_params)
+        url = urllib.parse.urlunsplit((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            new_query,
+            parsed.fragment
+        ))
+
+    return url, 'postgresql'
+
+
+def get_active_engine():
+    """Retorna o nome do motor de banco ativo ('postgresql' ou 'sqlite')."""
+    _, engine = resolve_database_url()
+    return engine
+
 
 def _resolve_db_path():
     if 'MARKETPLACE_DB' in os.environ:
@@ -28,154 +130,584 @@ def _resolve_db_path():
     except (OSError, IOError, PermissionError):
         return '/tmp/marketplace.db'
 
+
 DB_PATH = _resolve_db_path()
 
+
+def translate_placeholders(sql):
+    """
+    Converte marcadores posicionais SQLite '?' para marcadores PostgreSQL '%s',
+    preservando caracteres '?' contidos dentro de literais de string ('...' ou "...").
+    """
+    if not sql or '?' not in sql:
+        return sql
+
+    result = []
+    in_single_quote = False
+    in_double_quote = False
+    escape = False
+    i = 0
+    n = len(sql)
+
+    while i < n:
+        char = sql[i]
+        if escape:
+            result.append(char)
+            escape = False
+            i += 1
+            continue
+
+        if char == '\\':
+            result.append(char)
+            escape = True
+            i += 1
+            continue
+
+        if char == "'" and not in_double_quote:
+            # Trata escape SQL de aspa simples duplicada ('')
+            if in_single_quote and i + 1 < n and sql[i + 1] == "'":
+                result.append("''")
+                i += 2
+                continue
+            in_single_quote = not in_single_quote
+            result.append(char)
+            i += 1
+            continue
+
+        if char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            result.append(char)
+            i += 1
+            continue
+
+        if char == '?' and not in_single_quote and not in_double_quote:
+            result.append('%s')
+            i += 1
+            continue
+
+        result.append(char)
+        i += 1
+
+    return ''.join(result)
+
+
+class HybridRow:
+    """
+    Representação híbrida de linha de banco compatível com sqlite3.Row e DictCursor.
+    Suporta:
+    - row['coluna']
+    - row[0] (indexação inteira)
+    - dict(row)
+    - 'coluna' in row
+    - row.get('coluna', default)
+    - iteração sobre chaves
+    """
+    def __init__(self, data_dict, data_tuple=None):
+        self._data_dict = dict(data_dict) if data_dict is not None else {}
+        if data_tuple is not None:
+            self._data_tuple = tuple(data_tuple)
+        else:
+            self._data_tuple = tuple(self._data_dict.values())
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._data_tuple[key]
+        return self._data_dict[key]
+
+    def __iter__(self):
+        return iter(self._data_dict)
+
+    def __len__(self):
+        return len(self._data_dict)
+
+    def __contains__(self, key):
+        return key in self._data_dict
+
+    def keys(self):
+        return self._data_dict.keys()
+
+    def values(self):
+        return self._data_dict.values()
+
+    def items(self):
+        return self._data_dict.items()
+
+    def get(self, key, default=None):
+        return self._data_dict.get(key, default)
+
+    def __repr__(self):
+        return f"<HybridRow {self._data_dict!r}>"
+
+    def __eq__(self, other):
+        if isinstance(other, HybridRow):
+            return self._data_dict == other._data_dict
+        if isinstance(other, dict):
+            return self._data_dict == other
+        if isinstance(other, (tuple, list)):
+            return self._data_tuple == tuple(other)
+        return False
+
+
+class PostgresCursorWrapper:
+    """
+    Cursor wrapper transparente para PostgreSQL:
+    - Traduz '?' para '%s'
+    - Anexa 'RETURNING id' em INSERTs para tabelas com chave primária id
+    - Popula cursor.lastrowid
+    - Retorna linhas encapsuladas em HybridRow (acesso por chave e por índice numérico)
+    """
+    def __init__(self, raw_cursor):
+        self._cursor = raw_cursor
+        self.lastrowid = None
+
+    @property
+    def description(self):
+        return getattr(self._cursor, 'description', None)
+
+    @property
+    def rowcount(self):
+        return getattr(self._cursor, 'rowcount', -1)
+
+    def _wrap_row(self, raw_row):
+        if raw_row is None:
+            return None
+        if isinstance(raw_row, HybridRow):
+            return raw_row
+        if isinstance(raw_row, dict):
+            return HybridRow(raw_row, tuple(raw_row.values()))
+        if hasattr(raw_row, '_asdict'):
+            return HybridRow(raw_row._asdict(), raw_row)
+        if hasattr(raw_row, 'keys'):
+            d = {k: raw_row[k] for k in raw_row.keys()}
+            return HybridRow(d, tuple(raw_row))
+        if self._cursor and getattr(self._cursor, 'description', None):
+            col_names = [desc[0] for desc in self._cursor.description]
+            d = dict(zip(col_names, raw_row))
+            return HybridRow(d, tuple(raw_row))
+        if isinstance(raw_row, (list, tuple)):
+            d = {f"col_{idx}": val for idx, val in enumerate(raw_row)}
+            return HybridRow(d, tuple(raw_row))
+        return raw_row
+
+    def execute(self, sql, params=None):
+        clean_sql = sql.strip()
+        upper_sql = clean_sql.upper()
+
+        needs_returning = False
+        is_insert = upper_sql.startswith('INSERT INTO') or upper_sql.startswith('INSERT')
+        has_returning = 'RETURNING' in upper_sql
+        is_geocode = 'GEOCODE_CACHE' in upper_sql
+
+        if is_insert and not has_returning and not is_geocode:
+            needs_returning = True
+            sql_to_run = clean_sql.rstrip().rstrip(';') + ' RETURNING id'
+        else:
+            sql_to_run = sql
+
+        translated_sql = translate_placeholders(sql_to_run)
+
+        if params is not None:
+            self._cursor.execute(translated_sql, params)
+        else:
+            self._cursor.execute(translated_sql)
+
+        if needs_returning:
+            try:
+                ret_row = self._cursor.fetchone()
+                if ret_row is not None:
+                    if isinstance(ret_row, dict) or hasattr(ret_row, '__getitem__'):
+                        try:
+                            self.lastrowid = ret_row['id']
+                        except (KeyError, TypeError, IndexError):
+                            self.lastrowid = ret_row[0]
+                    else:
+                        self.lastrowid = getattr(ret_row, 'id', None)
+            except Exception:
+                pass
+
+        return self
+
+    def executescript(self, script):
+        statements = [s.strip() for s in script.split(';') if s.strip()]
+        for stmt in statements:
+            self.execute(stmt)
+        return self
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        return self._wrap_row(row)
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        return [self._wrap_row(r) for r in rows]
+
+    def fetchmany(self, size=None):
+        if size is not None:
+            rows = self._cursor.fetchmany(size)
+        else:
+            rows = self._cursor.fetchmany()
+        return [self._wrap_row(r) for r in rows]
+
+    def close(self):
+        return self._cursor.close()
+
+    def __iter__(self):
+        for r in self._cursor:
+            yield self._wrap_row(r)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+class PostgresConnectionWrapper:
+    """
+    Connection wrapper transparente para PostgreSQL:
+    - Suporta conn.execute(sql, params) retornando cursor adaptado
+    - Suporta conn.cursor(), conn.commit(), conn.rollback(), conn.close()
+    - Suporta conn.executescript(script)
+    - Suporta context manager
+    """
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+
+    def cursor(self, *args, **kwargs):
+        raw_cur = self._conn.cursor(*args, **kwargs)
+        return PostgresCursorWrapper(raw_cur)
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def executescript(self, script):
+        cur = self.cursor()
+        cur.executescript(script)
+        return cur
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+
+
+def _connect_postgres(url):
+    if not HAS_PSYCOPG2:
+        raise ImportError(
+            "psycopg2 é necessário para conectar ao PostgreSQL. "
+            "Instale psycopg2-binary>=2.9.9 ou use o fallback SQLite local."
+        )
+    cursor_factory = extras.DictCursor if extras else None
+    conn = psycopg2.connect(url, cursor_factory=cursor_factory)
+    return PostgresConnectionWrapper(conn)
+
+
 def get_db_connection():
+    url, engine = resolve_database_url()
+    if engine == 'postgresql' and url:
+        return _connect_postgres(url)
+
+    # Fallback transparente para SQLite local
+    db_abs = os.path.abspath(DB_PATH)
+    parent_dir = os.path.dirname(db_abs)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
+
+POSTGRES_SCHEMA_SQL = '''
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    tipo TEXT CHECK(tipo IN ('cliente', 'prestador')) NOT NULL,
+    telefone TEXT,
+    bio TEXT,
+    foto_url TEXT,
+    cep TEXT,
+    endereco TEXT,
+    numero TEXT,
+    complemento TEXT,
+    bairro TEXT,
+    cidade TEXT,
+    estado TEXT,
+    lat DOUBLE PRECISION DEFAULT -23.5653,
+    lng DOUBLE PRECISION DEFAULT -46.6517,
+    avaliacao_media DOUBLE PRECISION DEFAULT 5.0,
+    total_avaliacoes INTEGER DEFAULT 0,
+    disponivel INTEGER DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS services (
+    id SERIAL PRIMARY KEY,
+    prestador_id INTEGER NOT NULL,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    categoria TEXT NOT NULL,
+    preco DOUBLE PRECISION NOT NULL,
+    cep TEXT,
+    endereco TEXT,
+    numero TEXT,
+    bairro TEXT,
+    cidade TEXT,
+    estado TEXT,
+    lat DOUBLE PRECISION,
+    lng DOUBLE PRECISION,
+    ativo INTEGER DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(prestador_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id SERIAL PRIMARY KEY,
+    cliente_id INTEGER NOT NULL,
+    prestador_id INTEGER NOT NULL,
+    servico_id INTEGER NOT NULL,
+    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
+    preco_total DOUBLE PRECISION NOT NULL,
+    observacoes TEXT,
+    cep_cliente TEXT,
+    endereco_cliente TEXT,
+    numero_cliente TEXT,
+    bairro_cliente TEXT,
+    cidade_cliente TEXT,
+    estado_cliente TEXT,
+    lat_cliente DOUBLE PRECISION,
+    lng_cliente DOUBLE PRECISION,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(cliente_id) REFERENCES users(id),
+    FOREIGN KEY(prestador_id) REFERENCES users(id),
+    FOREIGN KEY(servico_id) REFERENCES services(id)
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    cliente_id INTEGER NOT NULL,
+    prestador_id INTEGER NOT NULL,
+    nota DOUBLE PRECISION NOT NULL,
+    comentario TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id),
+    FOREIGN KEY(cliente_id) REFERENCES users(id),
+    FOREIGN KEY(prestador_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    query TEXT PRIMARY KEY,
+    lat DOUBLE PRECISION NOT NULL,
+    lng DOUBLE PRECISION NOT NULL,
+    origem TEXT DEFAULT 'nominatim',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
+CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
+CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
+CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
+'''
+
+POSTGRES_MIGRATIONS_SQL = '''
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cep TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS endereco TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS numero TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS complemento TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bairro TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cidade TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS estado TEXT;
+
+ALTER TABLE services ADD COLUMN IF NOT EXISTS cep TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS endereco TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS numero TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS bairro TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS cidade TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS estado TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cep_cliente TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS endereco_cliente TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS numero_cliente TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS bairro_cliente TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cidade_cliente TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS estado_cliente TEXT;
+'''
+
+SQLITE_SCHEMA_SQL = '''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    tipo TEXT CHECK(tipo IN ('cliente', 'prestador')) NOT NULL,
+    telefone TEXT,
+    bio TEXT,
+    foto_url TEXT,
+    cep TEXT,
+    endereco TEXT,
+    numero TEXT,
+    complemento TEXT,
+    bairro TEXT,
+    cidade TEXT,
+    estado TEXT,
+    lat REAL DEFAULT -23.5653,
+    lng REAL DEFAULT -46.6517,
+    avaliacao_media REAL DEFAULT 5.0,
+    total_avaliacoes INTEGER DEFAULT 0,
+    disponivel INTEGER DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prestador_id INTEGER NOT NULL,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    categoria TEXT NOT NULL,
+    preco REAL NOT NULL,
+    cep TEXT,
+    endereco TEXT,
+    numero TEXT,
+    bairro TEXT,
+    cidade TEXT,
+    estado TEXT,
+    lat REAL,
+    lng REAL,
+    ativo INTEGER DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(prestador_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER NOT NULL,
+    prestador_id INTEGER NOT NULL,
+    servico_id INTEGER NOT NULL,
+    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
+    preco_total REAL NOT NULL,
+    observacoes TEXT,
+    cep_cliente TEXT,
+    endereco_cliente TEXT,
+    numero_cliente TEXT,
+    bairro_cliente TEXT,
+    cidade_cliente TEXT,
+    estado_cliente TEXT,
+    lat_cliente REAL,
+    lng_cliente REAL,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(cliente_id) REFERENCES users(id),
+    FOREIGN KEY(prestador_id) REFERENCES users(id),
+    FOREIGN KEY(servico_id) REFERENCES services(id)
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    cliente_id INTEGER NOT NULL,
+    prestador_id INTEGER NOT NULL,
+    nota REAL NOT NULL,
+    comentario TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id),
+    FOREIGN KEY(cliente_id) REFERENCES users(id),
+    FOREIGN KEY(prestador_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    query TEXT PRIMARY KEY,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    origem TEXT DEFAULT 'nominatim',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
+CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
+CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
+CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
+'''
+
+
 def init_db():
+    engine = get_active_engine()
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Criação das tabelas base
-    cursor.executescript('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            senha_hash TEXT NOT NULL,
-            tipo TEXT CHECK(tipo IN ('cliente', 'prestador')) NOT NULL,
-            telefone TEXT,
-            bio TEXT,
-            foto_url TEXT,
-            cep TEXT,
-            endereco TEXT,
-            numero TEXT,
-            complemento TEXT,
-            bairro TEXT,
-            cidade TEXT,
-            estado TEXT,
-            lat REAL DEFAULT -23.5653,
-            lng REAL DEFAULT -46.6517,
-            avaliacao_media REAL DEFAULT 5.0,
-            total_avaliacoes INTEGER DEFAULT 0,
-            disponivel INTEGER DEFAULT 1,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+    if engine == 'postgresql':
+        cursor.executescript(POSTGRES_SCHEMA_SQL)
+        conn.commit()
+        cursor.executescript(POSTGRES_MIGRATIONS_SQL)
+        conn.commit()
+    else:
+        cursor.executescript(SQLITE_SCHEMA_SQL)
+        conn.commit()
 
-        CREATE TABLE IF NOT EXISTS services (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            prestador_id INTEGER NOT NULL,
-            titulo TEXT NOT NULL,
-            descricao TEXT,
-            categoria TEXT NOT NULL,
-            preco REAL NOT NULL,
-            cep TEXT,
-            endereco TEXT,
-            numero TEXT,
-            bairro TEXT,
-            cidade TEXT,
-            estado TEXT,
-            lat REAL,
-            lng REAL,
-            ativo INTEGER DEFAULT 1,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(prestador_id) REFERENCES users(id) ON DELETE CASCADE
-        );
+        # Migração defensiva para colunas de endereço caso já existisse o banco SQLite
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [c[1] for c in cursor.fetchall()]
+        for col_name, col_type in [
+            ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
+            ('complemento', 'TEXT'), ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT')
+        ]:
+            if col_name not in user_cols:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
 
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER NOT NULL,
-            prestador_id INTEGER NOT NULL,
-            servico_id INTEGER NOT NULL,
-            status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
-            preco_total REAL NOT NULL,
-            observacoes TEXT,
-            cep_cliente TEXT,
-            endereco_cliente TEXT,
-            numero_cliente TEXT,
-            bairro_cliente TEXT,
-            cidade_cliente TEXT,
-            estado_cliente TEXT,
-            lat_cliente REAL,
-            lng_cliente REAL,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(cliente_id) REFERENCES users(id),
-            FOREIGN KEY(prestador_id) REFERENCES users(id),
-            FOREIGN KEY(servico_id) REFERENCES services(id)
-        );
+        cursor.execute("PRAGMA table_info(services)")
+        serv_cols = [c[1] for c in cursor.fetchall()]
+        for col_name, col_type in [
+            ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
+            ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT'),
+            ('lat', 'REAL'), ('lng', 'REAL')
+        ]:
+            if col_name not in serv_cols:
+                cursor.execute(f"ALTER TABLE services ADD COLUMN {col_name} {col_type}")
 
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL,
-            cliente_id INTEGER NOT NULL,
-            prestador_id INTEGER NOT NULL,
-            nota REAL NOT NULL,
-            comentario TEXT,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(order_id) REFERENCES orders(id),
-            FOREIGN KEY(cliente_id) REFERENCES users(id),
-            FOREIGN KEY(prestador_id) REFERENCES users(id)
-        );
+        cursor.execute("PRAGMA table_info(orders)")
+        ord_cols = [c[1] for c in cursor.fetchall()]
+        for col_name, col_type in [
+            ('cep_cliente', 'TEXT'), ('endereco_cliente', 'TEXT'), ('numero_cliente', 'TEXT'),
+            ('bairro_cliente', 'TEXT'), ('cidade_cliente', 'TEXT'), ('estado_cliente', 'TEXT')
+        ]:
+            if col_name not in ord_cols:
+                cursor.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
 
-        CREATE TABLE IF NOT EXISTS geocode_cache (
-            query TEXT PRIMARY KEY,
-            lat REAL NOT NULL,
-            lng REAL NOT NULL,
-            origem TEXT DEFAULT 'nominatim',
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+        conn.commit()
 
-        -- Índices estratégicos para performance de busca e integridade
-        CREATE INDEX IF NOT EXISTS idx_services_cat ON services(categoria);
-        CREATE INDEX IF NOT EXISTS idx_services_prestador ON services(prestador_id);
-        CREATE INDEX IF NOT EXISTS idx_services_ativo ON services(ativo);
-        CREATE INDEX IF NOT EXISTS idx_services_coords ON services(lat, lng);
-        CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-        CREATE INDEX IF NOT EXISTS idx_users_tipo ON users(tipo);
-    ''')
-    conn.commit()
-
-    # Migração defensiva para colunas de endereço caso já existisse o banco
-    cursor.execute("PRAGMA table_info(users)")
-    user_cols = [c[1] for c in cursor.fetchall()]
-    for col_name, col_type in [
-        ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
-        ('complemento', 'TEXT'), ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT')
-    ]:
-        if col_name not in user_cols:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-
-    cursor.execute("PRAGMA table_info(services)")
-    serv_cols = [c[1] for c in cursor.fetchall()]
-    for col_name, col_type in [
-        ('cep', 'TEXT'), ('endereco', 'TEXT'), ('numero', 'TEXT'),
-        ('bairro', 'TEXT'), ('cidade', 'TEXT'), ('estado', 'TEXT'),
-        ('lat', 'REAL'), ('lng', 'REAL')
-    ]:
-        if col_name not in serv_cols:
-            cursor.execute(f"ALTER TABLE services ADD COLUMN {col_name} {col_type}")
-
-    cursor.execute("PRAGMA table_info(orders)")
-    ord_cols = [c[1] for c in cursor.fetchall()]
-    for col_name, col_type in [
-        ('cep_cliente', 'TEXT'), ('endereco_cliente', 'TEXT'), ('numero_cliente', 'TEXT'),
-        ('bairro_cliente', 'TEXT'), ('cidade_cliente', 'TEXT'), ('estado_cliente', 'TEXT')
-    ]:
-        if col_name not in ord_cols:
-            cursor.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
-
-    conn.commit()
-
-    # Seed inicial e sincronização completa dos 35 prestadores por regiões de SP e Guarulhos
-    cursor.execute("SELECT id FROM users WHERE email = 'cliente@pertoja.com'")
+    # Seed inicial e sincronização completa dos prestadores
+    cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
     if not cursor.fetchone():
         pwd_hash = generate_password_hash('123456')
         cursor.execute('''
@@ -191,6 +723,7 @@ def init_db():
 
     sincronizar_todos_prestadores(conn)
     conn.close()
+
 
 PRESTADORES_SEED_35 = [
     # --- CENTRO DE SÃO PAULO (5 prestadores) ---
@@ -241,8 +774,20 @@ PRESTADORES_SEED_35 = [
     ('Marcelo Pinturas Aeroporto', 'marcelo@pertoja.com', '(11) 97000-5678', 'Pinturas residenciais e comerciais com acabamento liso e sem sujeira.', 'Pintura', 'Pintura predial, residencial e verniz de madeira', 350.0, 4.7, '07143-000', 'Estrada dos Morros', '450', 'Jardim Santa Emília', 'Guarulhos', 'SP', -23.4280, -46.4950, 1)
 ]
 
+
 def sincronizar_todos_prestadores(conn):
     cursor = conn.cursor()
+
+    # Otimização para serverless cold-starts: se já existem 35 prestadores, pula batch redundante
+    count_row = cursor.execute("SELECT COUNT(*) FROM users WHERE tipo = 'prestador'").fetchone()
+    if count_row is not None:
+        try:
+            count = count_row[0]
+        except (IndexError, TypeError):
+            count = getattr(count_row, 'count', 0)
+        if count >= 35:
+            return
+
     pwd_hash = generate_password_hash('123456')
 
     for nome, email, tel, bio, cat, s_titulo, preco, rating, cep, end, num, bairro, cid, uf, lat, lng, disp in PRESTADORES_SEED_35:
@@ -272,6 +817,7 @@ def sincronizar_todos_prestadores(conn):
             ''', (s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng, p_id))
     conn.commit()
 
+
 def get_cached_geocode(query):
     """Recupera coordenadas em cache para uma consulta de endereço."""
     if not query or not query.strip():
@@ -287,22 +833,33 @@ def get_cached_geocode(query):
         pass
     return None
 
+
 def save_cached_geocode(query, lat, lng, origem='nominatim'):
-    """Salva coordenadas em cache para consultas futuras."""
+    """
+    Salva coordenadas em cache para consultas futuras utilizando SQL padrão upsert:
+    ON CONFLICT (query) DO UPDATE compatível tanto com SQLite (>=3.24) quanto com PostgreSQL (>=9.5).
+    """
     if not query or lat is None or lng is None:
         return
     normalized = query.strip().lower()
     try:
         conn = get_db_connection()
         conn.execute('''
-            INSERT OR REPLACE INTO geocode_cache (query, lat, lng, origem, criado_em)
+            INSERT INTO geocode_cache (query, lat, lng, origem, criado_em)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (query) DO UPDATE SET
+                lat = excluded.lat,
+                lng = excluded.lng,
+                origem = excluded.origem,
+                criado_em = CURRENT_TIMESTAMP
         ''', (normalized, float(lat), float(lng), origem))
         conn.commit()
         conn.close()
     except Exception:
         pass
 
+
 if __name__ == '__main__':
     init_db()
-    print("Banco de dados SQLite inicializado e atualizado com endereços reais!")
+    active_engine = get_active_engine()
+    print(f"Banco de dados inicializado com sucesso utilizando o motor: {active_engine}")

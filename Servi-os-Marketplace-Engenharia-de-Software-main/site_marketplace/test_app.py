@@ -497,6 +497,7 @@ class TestMarketplaceFull(unittest.TestCase):
         data = json.loads(res.data)
         self.assertEqual(data.get('status'), 'healthy')
         self.assertEqual(data.get('database'), 'connected')
+        self.assertEqual(data.get('engine'), 'sqlite')
         self.assertIn('timestamp', data)
         self.assertIn('version', data)
 
@@ -560,6 +561,182 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertIn('short_name', data)
         self.assertIn('icons', data)
         self.assertGreaterEqual(len(data['icons']), 2)
+
+    def test_17_dual_engine_placeholder_translation(self):
+        from database import translate_placeholders
+        # Basic translation
+        self.assertEqual(
+            translate_placeholders("SELECT * FROM users WHERE email = ?"),
+            "SELECT * FROM users WHERE email = %s"
+        )
+        # Multi-parameter translation
+        self.assertEqual(
+            translate_placeholders("INSERT INTO t (a, b, c) VALUES (?, ?, ?)"),
+            "INSERT INTO t (a, b, c) VALUES (%s, %s, %s)"
+        )
+        # Preservation of string literals containing question marks
+        self.assertEqual(
+            translate_placeholders("SELECT * FROM t WHERE query = 'Qual o preço?' AND id = ?"),
+            "SELECT * FROM t WHERE query = 'Qual o preço?' AND id = %s"
+        )
+        # Pass-through when no placeholders present
+        self.assertEqual(translate_placeholders("SELECT 1"), "SELECT 1")
+
+    def test_18_postgres_adapter_returning_id_and_lastrowid(self):
+        from unittest.mock import MagicMock
+        from database import PostgresConnectionWrapper, PostgresCursorWrapper
+
+        raw_cursor = MagicMock()
+        raw_cursor.fetchone.return_value = {'id': 105}
+        raw_conn = MagicMock()
+        raw_conn.cursor.return_value = raw_cursor
+
+        wrapped_conn = PostgresConnectionWrapper(raw_conn)
+        cursor = wrapped_conn.execute("INSERT INTO orders (cliente_id, servico_id) VALUES (?, ?)", (1, 2))
+
+        # Verify SQL sent to postgres includes RETURNING id
+        executed_sql, executed_params = raw_cursor.execute.call_args[0]
+        self.assertIn("RETURNING id", executed_sql)
+        self.assertIn("%s", executed_sql)
+        self.assertNotIn("?", executed_sql)
+        self.assertEqual(executed_params, (1, 2))
+        # Verify cursor.lastrowid populated from returned dict
+        self.assertEqual(cursor.lastrowid, 105)
+
+        # Verify non-INSERT does not append RETURNING id
+        raw_cursor.reset_mock()
+        wrapped_conn.execute("UPDATE services SET preco = ? WHERE id = ?", (150.0, 10))
+        up_sql, _ = raw_cursor.execute.call_args[0]
+        self.assertNotIn("RETURNING id", up_sql)
+
+    def test_19_unified_db_integrity_error_handling(self):
+        import sqlite3
+        from database import DBIntegrityError, Psycopg2IntegrityError
+
+        # 1. Catches sqlite3.IntegrityError
+        caught_sqlite = False
+        try:
+            raise sqlite3.IntegrityError("UNIQUE constraint failed: users.email")
+        except DBIntegrityError:
+            caught_sqlite = True
+        self.assertTrue(caught_sqlite)
+
+        # 2. Catches psycopg2.IntegrityError
+        caught_pg = False
+        try:
+            raise Psycopg2IntegrityError("duplicate key value violates unique constraint")
+        except DBIntegrityError:
+            caught_pg = True
+        self.assertTrue(caught_pg)
+
+        # 3. Soft-delete fallback in delete_service() on DBIntegrityError
+        # Login prestador
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        # Create service
+        res_svc = self.client.post('/api/services', json={
+            'titulo': 'Serviço para Teste Integridade',
+            'categoria': 'Limpeza',
+            'preco': 100.0
+        })
+        svc_id = json.loads(res_svc.data)['id']
+
+        # Login cliente and create order referencing service
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        self.client.post('/api/orders', json={'servico_id': svc_id, 'observacoes': 'Pedido teste integridade'})
+
+        # Login prestador back and delete service -> foreign key triggers DBIntegrityError -> soft delete (ativo = 0)
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res_del = self.client.delete(f'/api/services/{svc_id}')
+        self.assertEqual(res_del.status_code, 200)
+
+        # Service should no longer be active in public listings
+        res_list = self.client.get('/api/services')
+        ids = [s['id'] for s in json.loads(res_list.data)]
+        self.assertNotIn(svc_id, ids)
+
+    def test_20_sqlite_fallback_and_environment_url_resolution(self):
+        from database import resolve_database_url, get_active_engine
+        from unittest.mock import patch
+
+        # 1. Fallback to SQLite when no URL configured
+        with patch.dict(os.environ, {}, clear=True):
+            url, engine = resolve_database_url()
+            self.assertIsNone(url)
+            self.assertEqual(engine, 'sqlite')
+
+        # 2. Normalization of postgres:// to postgresql:// and sslmode enforcement
+        with patch.dict(os.environ, {'DATABASE_URL': 'postgres://user:pass@ep-cool.us-east-1.aws.neon.tech/neondb'}):
+            url, engine = resolve_database_url()
+            self.assertTrue(url.startswith('postgresql://'))
+            self.assertIn('sslmode=require', url)
+            self.assertEqual(engine, 'postgresql')
+
+        # 3. Fallback to POSTGRES_URL / POSTGRES_URL_NON_POOLING
+        with patch.dict(os.environ, {'POSTGRES_URL_NON_POOLING': 'postgres://user:pass@host/db'}, clear=True):
+            url, engine = resolve_database_url()
+            self.assertTrue(url.startswith('postgresql://'))
+            self.assertEqual(engine, 'postgresql')
+
+    def test_21_geocode_cache_upsert_on_conflict(self):
+        from database import save_cached_geocode, get_cached_geocode
+
+        query = "Praça da Sé, São Paulo"
+        save_cached_geocode(query, -23.5500, -46.6330, origem='test1')
+        self.assertEqual(get_cached_geocode(query), (-23.5500, -46.6330))
+
+        # Upsert with new coordinates must update existing row without raising error
+        save_cached_geocode(query, -23.5505, -46.6335, origem='test2')
+        self.assertEqual(get_cached_geocode(query), (-23.5505, -46.6335))
+
+    def test_22_healthcheck_dual_engine_structure(self):
+        from unittest.mock import patch, MagicMock
+
+        # 1. Under SQLite
+        res = self.client.get('/api/health')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data.get('status'), 'healthy')
+        self.assertEqual(data.get('database'), 'connected')
+        self.assertEqual(data.get('engine'), 'sqlite')
+
+        # 2. Under Mocked PostgreSQL
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (1,)
+        mock_conn.execute.return_value = mock_cur
+        with patch('database.get_active_engine', return_value='postgresql'), \
+             patch('database.get_db_connection', return_value=mock_conn):
+            res_pg = self.client.get('/api/health')
+            self.assertEqual(res_pg.status_code, 200)
+            data_pg = json.loads(res_pg.data)
+            self.assertEqual(data_pg.get('engine'), 'postgresql')
+            self.assertEqual(data_pg.get('status'), 'healthy')
+
+    def test_23_provider_seeding_optimization(self):
+        import database
+        from unittest.mock import MagicMock
+        conn = database.get_db_connection()
+
+        # Pre-condition: 35 providers exist in real DB
+        count = conn.execute("SELECT COUNT(*) FROM users WHERE tipo = 'prestador'").fetchone()[0]
+        self.assertGreaterEqual(count, 35)
+
+        # Verify real database execution skips batch updates cleanly
+        database.sincronizar_todos_prestadores(conn)
+        conn.close()
+
+        # Verify with mock that only 1 query (COUNT) runs when provider count >= 35
+        mock_cursor = MagicMock()
+        mock_cursor.execute.return_value.fetchone.return_value = (35,)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        database.sincronizar_todos_prestadores(mock_conn)
+
+        # Only the initial COUNT check query was executed; batch updates skipped
+        self.assertEqual(mock_cursor.execute.call_count, 1)
+        executed_sql = mock_cursor.execute.call_args[0][0]
+        self.assertIn("SELECT COUNT(*)", executed_sql)
 
 if __name__ == '__main__':
     unittest.main()
