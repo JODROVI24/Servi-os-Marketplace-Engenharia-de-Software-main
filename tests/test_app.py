@@ -1468,5 +1468,102 @@ class TestMarketplaceFull(unittest.TestCase):
             mw({'PATH_INFO': prefix, 'QUERY_STRING': ''}, lambda s, h: None)
             self.assertEqual(captured['path'], '/api' + prefix)
 
+    def test_46_postgres_init_db_advisory_lock_and_check_guard(self):
+        import database
+        executed_sql = []
+
+        class FakeCursor:
+            def __init__(self, check_def):
+                self._check_def = check_def
+                self._last = None
+
+            def execute(self, sql, params=None):
+                executed_sql.append(sql.strip())
+                up = sql.upper()
+                if 'PG_GET_CONSTRAINTDEF' in up:
+                    self._last = {'cdef': self._check_def}
+                elif 'TO_REGCLASS' in up:
+                    self._last = {'col_0': 'tbl'}
+                elif 'INFORMATION_SCHEMA.COLUMNS' in up:
+                    self._last = None
+                elif "EMAIL = ?" in up:
+                    self._last = {'id': 1}
+                elif 'SELECT 1 FROM USERS' in up:
+                    self._last = {'col_0': 1}
+                else:
+                    self._last = None
+                return self
+
+            def fetchone(self):
+                return self._last
+
+            def fetchall(self):
+                return []
+
+            def executescript(self, s):
+                executed_sql.append('EXECUTESCRIPT')
+                return self
+
+        class FakeConn:
+            def __init__(self, cur):
+                self._cur = cur
+                self.closed = False
+
+            def cursor(self):
+                return self._cur
+
+            def execute(self, sql, params=None):
+                return self._cur.execute(sql, params)
+
+            def commit(self):
+                pass
+
+            def rollback(self):
+                pass
+
+            def close(self):
+                self.closed = True
+
+        # Caso 1: constraint já inclui 'em_disputa' -> não executa ALTER TABLE
+        cur_ok = FakeCursor("CHECK ((status = ANY (ARRAY['solicitado'::text, 'em_disputa'::text])))")
+        conn_ok = FakeConn(cur_ok)
+        database._ensure_orders_status_check(conn_ok, cur_ok, 'postgresql')
+        self.assertFalse(any('DROP CONSTRAINT' in s for s in executed_sql))
+
+        # Caso 2: constraint antiga -> executa ALTER TABLE para adicionar 'em_disputa'
+        executed_sql.clear()
+        cur_old = FakeCursor("CHECK ((status = 'solicitado'::text))")
+        database._ensure_orders_status_check(FakeConn(cur_old), cur_old, 'postgresql')
+        self.assertTrue(any('DROP CONSTRAINT IF EXISTS orders_status_check' in s for s in executed_sql))
+        self.assertTrue(any('ADD CONSTRAINT orders_status_check' in s and 'em_disputa' in s for s in executed_sql))
+
+        # Caso 3: init_db() sob postgresql adquire e libera pg_advisory_lock
+        executed_sql.clear()
+        cur_lock = FakeCursor("CHECK ('em_disputa')")
+        fake_conn = FakeConn(cur_lock)
+        orig_engine = database.get_active_engine
+        orig_conn = database.get_db_connection
+        orig_ensure = database._ensure_columns
+        orig_mig = database.run_migrations
+        orig_sync = database.sincronizar_todos_prestadores
+        try:
+            database.get_active_engine = lambda: 'postgresql'
+            database.get_db_connection = lambda: fake_conn
+            database._ensure_columns = lambda c, cu, e: None
+            database.run_migrations = lambda conn=None, dry_run=False: None
+            database.sincronizar_todos_prestadores = lambda c: None
+            database.init_db()
+        finally:
+            database.get_active_engine = orig_engine
+            database.get_db_connection = orig_conn
+            database._ensure_columns = orig_ensure
+            database.run_migrations = orig_mig
+            database.sincronizar_todos_prestadores = orig_sync
+
+        self.assertTrue(fake_conn.closed)
+        lock_idx = next(i for i, s in enumerate(executed_sql) if 'pg_advisory_lock(7391042)' in s)
+        unlock_idx = next(i for i, s in enumerate(executed_sql) if 'pg_advisory_unlock(7391042)' in s)
+        self.assertLess(lock_idx, unlock_idx)
+
 if __name__ == '__main__':
     unittest.main()

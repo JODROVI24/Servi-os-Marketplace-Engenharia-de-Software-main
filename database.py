@@ -1012,6 +1012,13 @@ def _ensure_orders_status_check(conn, cursor, engine):
     """Garante que a constraint CHECK de orders.status aceite 'em_disputa' em bancos pré-ET."""
     if engine == 'postgresql':
         try:
+            row = cursor.execute(
+                "SELECT pg_get_constraintdef(oid) AS cdef FROM pg_constraint "
+                "WHERE conname = 'orders_status_check' AND conrelid = 'orders'::regclass"
+            ).fetchone()
+            cdef = row['cdef'] if row and hasattr(row, 'keys') and 'cdef' in row.keys() else (row[0] if row else '')
+            if cdef and "'em_disputa'" in str(cdef):
+                return
             cursor.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check")
             cursor.execute(
                 "ALTER TABLE orders ADD CONSTRAINT orders_status_check "
@@ -1105,48 +1112,65 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Verifica se as tabelas principais já existem antes de executar o schema inicial
-    core_tables = (
-        'users', 'services', 'orders', 'reviews', 'geocode_cache',
-        'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages'
-    )
-    missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
+    try:
+        # Serializa cold starts simultâneos no PostgreSQL evitando corrida em CREATE TABLE IF NOT EXISTS (pg_type_typname_nsp_index)
+        if engine == 'postgresql':
+            cursor.execute("SELECT pg_advisory_lock(7391042)")
+            conn.commit()
 
-    if missing_core:
-        schema_sql = POSTGRES_SCHEMA_SQL if engine == 'postgresql' else SQLITE_SCHEMA_SQL
-        cursor.executescript(schema_sql)
+        # Verifica se as tabelas principais já existem antes de executar o schema inicial
+        core_tables = (
+            'users', 'services', 'orders', 'reviews', 'geocode_cache',
+            'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages'
+        )
+        missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
+
+        if missing_core:
+            schema_sql = POSTGRES_SCHEMA_SQL if engine == 'postgresql' else SQLITE_SCHEMA_SQL
+            cursor.executescript(schema_sql)
+            conn.commit()
+
+        # Garantia defensiva de colunas novas em bancos já existentes
+        _ensure_columns(conn, cursor, engine)
+
+        # Garantia defensiva da constraint CHECK de orders.status ('em_disputa') em bancos pré-ET
+        _ensure_orders_status_check(conn, cursor, engine)
+
+        # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
+        run_migrations(conn=conn, dry_run=False)
+
+        # Seed inicial e sincronização completa dos prestadores
+        cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
+        if not cursor.fetchone():
+            pwd_hash = generate_password_hash('123456')
+            cursor.execute('''
+                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng)
+                VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                'Ana Paula Silva', 'cliente@pertoja.com', pwd_hash, '(11) 98765-4321',
+                'Cliente residencial em busca de serviços locais de alta qualidade.',
+                '01402-000', 'Alameda Santos', '800', 'Cerqueira César', 'São Paulo', 'SP',
+                -23.5680, -46.6530
+            ))
+            conn.commit()
+
+        # Remove cache legado (podia associar endereço completo ao centro da cidade/bairro)
+        cursor.execute("DELETE FROM geocode_cache WHERE origem IN ('nominatim', 'seed')")
         conn.commit()
 
-    # Garantia defensiva de colunas novas em bancos já existentes
-    _ensure_columns(conn, cursor, engine)
-
-    # Garantia defensiva da constraint CHECK de orders.status ('em_disputa') em bancos pré-ET
-    _ensure_orders_status_check(conn, cursor, engine)
-
-    # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
-    run_migrations(conn=conn, dry_run=False)
-
-    # Seed inicial e sincronização completa dos prestadores
-    cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
-    if not cursor.fetchone():
-        pwd_hash = generate_password_hash('123456')
-        cursor.execute('''
-            INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng)
-            VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            'Ana Paula Silva', 'cliente@pertoja.com', pwd_hash, '(11) 98765-4321',
-            'Cliente residencial em busca de serviços locais de alta qualidade.',
-            '01402-000', 'Alameda Santos', '800', 'Cerqueira César', 'São Paulo', 'SP',
-            -23.5680, -46.6530
-        ))
-        conn.commit()
-
-    # Remove cache legado (podia associar endereço completo ao centro da cidade/bairro)
-    cursor.execute("DELETE FROM geocode_cache WHERE origem IN ('nominatim', 'seed')")
-    conn.commit()
-
-    sincronizar_todos_prestadores(conn)
-    conn.close()
+        sincronizar_todos_prestadores(conn)
+    finally:
+        if engine == 'postgresql':
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                cursor.execute("SELECT pg_advisory_unlock(7391042)")
+                conn.commit()
+            except Exception:
+                pass
+        conn.close()
 
 
 PRESTADORES_SEED_35 = [
