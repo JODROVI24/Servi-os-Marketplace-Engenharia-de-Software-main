@@ -727,7 +727,10 @@ def run_migrations(conn=None, dry_run=False):
         if sql_script.strip():
             cursor.executescript(sql_script)
 
-        cursor.execute("INSERT INTO schema_migrations (version) VALUES (?)", (filename,))
+        cursor.execute(
+            "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT (version) DO NOTHING",
+            (filename,)
+        )
         conn.commit()
         report.append({'version': filename, 'status': 'applied'})
 
