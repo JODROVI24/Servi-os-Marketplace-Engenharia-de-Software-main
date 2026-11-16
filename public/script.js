@@ -61,7 +61,12 @@ const dist = p => {
   if (!mapInstance || p.lat == null || p.lng == null || isNaN(p.lat) || isNaN(p.lng)) return 9999;
   return mapInstance.distance([centerLat, centerLng], [p.lat, p.lng]) / 1000;
 };
-const score = p => 1000 * (1 - Math.min(dist(p) / 10, 1)) + p.r * 100 + (p.a ? 200 : 0);
+const notaBayesiana = p => {
+  const v = Number(p.total_avaliacoes || 0);
+  const r = Number(p.r != null ? p.r : 4.5);
+  return (v * r + 5 * 4.5) / (v + 5);
+};
+const score = p => 1000 * (1 - Math.min(dist(p) / 15, 1)) + notaBayesiana(p) * 100 + (p.a ? 200 : 0);
 const STEPS = ['Requisitado', 'Localizado', 'Confirmado', 'Em Trânsito', 'Em Execução', 'Finalizado'];
 
 let cat = 'Todos', radius = 8, busy = false, order = null, timer = null;
@@ -229,6 +234,10 @@ async function carregarPrestadoresAPI() {
           r: item.prestador ? item.prestador.avaliacao : 5.0,
           total_avaliacoes: item.prestador ? (item.prestador.total_avaliacoes || 0) : 0,
           super_profissional: Boolean(item.prestador && item.prestador.super_profissional),
+          kyc_tier: item.prestador && item.prestador.kyc_tier != null ? item.prestador.kyc_tier : 1,
+          kyc_status: item.prestador && item.prestador.kyc_status ? item.prestador.kyc_status : 'aprovado',
+          novo_no_pertoja: Boolean((item.score_detalhes && item.score_detalhes.novo_no_pertoja) || ((item.prestador ? (item.prestador.total_avaliacoes || 0) : 0) < 5)),
+          localizacao_aproximada: item.localizacao_aproximada !== undefined ? Boolean(item.localizacao_aproximada) : true,
           lat: (item.prestador && item.prestador.lat != null) ? item.prestador.lat : item.lat,
           lng: (item.prestador && item.prestador.lng != null) ? item.prestador.lng : item.lng,
           a: item.prestador ? item.prestador.disponivel : true,
@@ -298,6 +307,8 @@ function renderList() {
   listEl.innerHTML = v.length ? v.map(p => {
     const svcScore = Math.round(getServiceScore(p));
     const isSuper = p.super_profissional || (p.r >= 4.8 && (p.total_avaliacoes || 0) >= 5);
+    const isNovo = Boolean(p.novo_no_pertoja || ((p.total_avaliacoes || 0) < 5));
+    const kycTier = p.kyc_tier || 1;
     const iconName = getCategoryIcon(p.c);
     return `
    <div class="svc ${order && order.best && order.best.id === p.id ? 'best' : ''}">
@@ -318,7 +329,9 @@ function renderList() {
            <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
            <span>★ ${p.r.toFixed(1)}</span>
            <span>${dist(p).toFixed(1)} km</span>
-           <span class="score-badge" aria-label="Score ${svcScore}">Score ${svcScore}</span>
+           <span class="score-badge" title="Score: Proximidade (15 km) + Nota Bayesiana + Disponibilidade" aria-label="Score ${svcScore}. Score: Proximidade (15 km) + Nota Bayesiana + Disponibilidade">Score ${svcScore}</span>
+           <span class="kyc-badge aprovado" title="Identidade checada por nível de risco">Tier ${escapeHtml(String(kycTier))}</span>
+           ${isNovo ? '<span class="novo-badge">Novo no PertoJá</span>' : ''}
            ${isSuper ? '<span class="super-badge">★ Super Profissional</span>' : ''}
            <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
          </div>
@@ -382,6 +395,7 @@ function renderMap(posAtual) {
         <div style="color: var(--sea); font-weight: 800; font-size: 1rem; margin-bottom: 4px;">${brl(p.p)}</div>
         <div style="color: #444; margin-bottom: 3px;">👤 <b>${escapeHtml(p.n)}</b> · ★ ${p.r.toFixed(1)}</div>
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}</div>
+        <div style="color: #4b6073; font-size: 0.72rem; margin-bottom: 4px;">🔒 Localização aproximada na vitrine para proteção de privacidade</div>
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
         <button type="button" class="btn btn-requisitar" data-req-popup="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
@@ -394,7 +408,7 @@ function renderMap(posAtual) {
   if (order && posAtual) {
     L.polyline([[posAtual.lat, posAtual.lng], [centerLat, centerLng]], { color: '#ffc233', dashArray: '6, 6', weight: 3 }).addTo(layerMarkers);
     L.circleMarker([posAtual.lat, posAtual.lng], { radius: 12, color: '#10243e', fillColor: '#ffc233', fillOpacity: 1, weight: 3 })
-      .bindTooltip(order.best.n.split(' ')[0], { permanent: true, direction: 'right', className: 'map-label' }).addTo(layerMarkers);
+      .bindTooltip(escapeHtml(order.best.n.split(' ')[0]), { permanent: true, direction: 'right', className: 'map-label' }).addTo(layerMarkers);
   }
 }
 
@@ -727,6 +741,58 @@ function atualizarCodigoConfirmacao(codigo) {
   }
 }
 
+function atualizarPaineisSegurancaPedido(status, pedidoApi) {
+  const segBar = document.getElementById('pedidoSegurancaBar');
+  const chatSec = document.getElementById('pedidoChatSection');
+  const sharedBox = document.getElementById('sharedRouteBox');
+  const sharedLink = document.getElementById('sharedRouteLink');
+  const ativo = status === 'confirmado' || status === 'em_transito' || status === 'em_execucao';
+
+  if (segBar) segBar.hidden = !ativo;
+  if (chatSec) chatSec.hidden = !(ativo || status === 'em_disputa');
+
+  if (ativo && pedidoApi && pedidoApi.share_token && sharedBox && sharedLink) {
+    const url = `${window.location.origin}/api/shared-route/${encodeURIComponent(pedidoApi.share_token)}`;
+    sharedLink.href = url;
+    sharedLink.textContent = url;
+    sharedBox.hidden = false;
+  } else if (!ativo && sharedBox) {
+    sharedBox.hidden = true;
+  }
+}
+
+async function carregarMensagensPedido(orderDbId) {
+  const box = document.getElementById('pedidoChatMessages');
+  if (!box || !orderDbId) return;
+  try {
+    const res = await fetch(`/api/orders/${orderDbId}/messages`);
+    if (!res.ok) return;
+    const msgs = await res.json();
+    if (!Array.isArray(msgs) || !msgs.length) {
+      box.innerHTML = '<p class="text-perto-ink/60 text-xs m-0">Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.</p>';
+      return;
+    }
+    const myId = cachedLoggedUser && cachedLoggedUser.id;
+    box.innerHTML = msgs.map(m => {
+      const isMine = myId && String(m.sender_id) === String(myId);
+      const autor = escapeHtml(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
+      const texto = escapeHtml(m.mensagem || m.conteudo || '');
+      const rawTs = m.criado_em || m.created_at;
+      const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
+      return `
+        <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
+          <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/70 mb-0.5">
+            <span>${autor}</span>
+            ${hora ? `<span>${hora}</span>` : ''}
+          </div>
+          <div class="text-xs text-perto-ink break-words">${texto}</div>
+        </div>
+      `;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+}
+
 function atualizarUIStatusPedido(pedidoApi, best) {
   if (!pedidoApi || !order) return;
   currentOrderData = pedidoApi;
@@ -736,6 +802,10 @@ function atualizarUIStatusPedido(pedidoApi, best) {
   const status = (pedidoApi.status || 'solicitado').toLowerCase();
   const stepIdx = mapStatusToStep(status);
   renderSteps(stepIdx);
+  atualizarPaineisSegurancaPedido(status, pedidoApi);
+  if (order.db_id && (status === 'confirmado' || status === 'em_transito' || status === 'em_execucao' || status === 'em_disputa')) {
+    carregarMensagensPedido(order.db_id);
+  }
 
   if (status === 'solicitado') {
     info(`Aguardando confirmação de <b>${escapeHtml(best.n)}</b> para <b>${escapeHtml(best.s)}</b>…`);
@@ -904,6 +974,8 @@ function abrirModalConfirmarPedido(sel, user) {
   document.getElementById('confBairro').value = (user && user.bairro) ? user.bairro : '';
   document.getElementById('confObservacoes').value = '';
   document.getElementById('confMetodoPagamento').value = 'escrow';
+  const chkAceiteInit = document.getElementById('chkAceitePedido');
+  if (chkAceiteInit) chkAceiteInit.checked = false;
 
   const btnImediato = document.getElementById('btnModImediato');
   const btnAgendado = document.getElementById('btnModAgendado');
@@ -943,6 +1015,12 @@ function abrirModalConfirmarPedido(sel, user) {
 
   document.getElementById('formConfirmarPedido').onsubmit = async (e) => {
     e.preventDefault();
+    const chkAceite = document.getElementById('chkAceitePedido');
+    if (chkAceite && !chkAceite.checked) {
+      toast('É necessário aceitar as regras de Escrow, PIN presencial e Termos & Privacidade.');
+      chkAceite.focus();
+      return;
+    }
     const btnEnviar = document.getElementById('btnEnviarConfirmacao');
     btnEnviar.disabled = true;
 
@@ -963,7 +1041,8 @@ function abrirModalConfirmarPedido(sel, user) {
       observacoes: document.getElementById('confObservacoes').value.trim() || 'Solicitado via PertoJá',
       metodo_pagamento: metodoPagamento,
       modalidade,
-      agendado_para: agendadoPara || null
+      agendado_para: agendadoPara || null,
+      aceite_termos: true
     };
 
     try {
@@ -1380,6 +1459,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentOrderData = null;
       if ($('#pedidoBox')) $('#pedidoBox').hidden = true;
       if ($('#painel-lista')) $('#painel-lista').hidden = false;
+      atualizarPaineisSegurancaPedido('', null);
       await carregarPrestadoresAPI();
       renderAll();
     };
@@ -1454,6 +1534,143 @@ document.addEventListener('DOMContentLoaded', async () => {
         toast('Erro de comunicação ao enviar avaliação.');
       } finally {
         btnSubmit.disabled = false;
+      }
+    };
+  }
+
+  // Compartilhar Rota Segura (ET-14)
+  const btnCompRota = document.getElementById('btnCompartilharRota');
+  if (btnCompRota) {
+    btnCompRota.onclick = async () => {
+      if (!order || !order.db_id) return;
+      btnCompRota.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${order.db_id}/share-route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (res.ok && data.share_token) {
+          const url = `${window.location.origin}/api/shared-route/${encodeURIComponent(data.share_token)}`;
+          const sharedBox = document.getElementById('sharedRouteBox');
+          const sharedLink = document.getElementById('sharedRouteLink');
+          if (sharedLink) {
+            sharedLink.href = url;
+            sharedLink.textContent = url;
+          }
+          if (sharedBox) sharedBox.hidden = false;
+          toast('Link de rota segura gerado!');
+        } else {
+          toast(data.error || 'Não foi possível gerar o link de compartilhamento.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação ao compartilhar rota.');
+      } finally {
+        btnCompRota.disabled = false;
+      }
+    };
+  }
+
+  const btnCopiarRota = document.getElementById('btnCopiarRota');
+  if (btnCopiarRota) {
+    btnCopiarRota.onclick = async () => {
+      const sharedLink = document.getElementById('sharedRouteLink');
+      const txt = sharedLink ? sharedLink.textContent.trim() : '';
+      if (!txt) return;
+      try {
+        await navigator.clipboard.writeText(txt);
+        toast('Link copiado para a área de transferência.');
+      } catch (e) {
+        toast('Copie o link exibido acima.');
+      }
+    };
+  }
+
+  // Modal SOS Emergência (ET-14)
+  const btnSosPed = document.getElementById('btnSosPedido');
+  const modalSosPed = document.getElementById('modalSosPedido');
+  if (btnSosPed && modalSosPed) {
+    let sosTrigger = null;
+    const fecharSos = () => {
+      modalSosPed.style.display = 'none';
+      document.removeEventListener('keydown', onSosKeyDown);
+      if (sosTrigger && typeof sosTrigger.focus === 'function') sosTrigger.focus();
+    };
+    const onSosKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        fecharSos();
+      }
+    };
+    btnSosPed.onclick = () => {
+      sosTrigger = document.activeElement;
+      const desc = document.getElementById('sosDescricao');
+      const den = document.getElementById('sosDenunciarContraparte');
+      if (desc) desc.value = '';
+      if (den) den.checked = false;
+      modalSosPed.style.display = 'flex';
+      document.addEventListener('keydown', onSosKeyDown);
+      if (desc) setTimeout(() => desc.focus(), 0);
+    };
+    document.getElementById('btnFecharModalSos').onclick = fecharSos;
+    document.getElementById('btnCancelarSos').onclick = fecharSos;
+    modalSosPed.onclick = (e) => { if (e.target === modalSosPed) fecharSos(); };
+    document.getElementById('formSosPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!order || !order.db_id) return;
+      const btnConf = document.getElementById('btnConfirmarSos');
+      btnConf.disabled = true;
+      try {
+        const descricao = (document.getElementById('sosDescricao').value || '').trim();
+        const denunciar_contraparte = Boolean(document.getElementById('sosDenunciarContraparte').checked);
+        const res = await fetch(`/api/orders/${order.db_id}/sos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descricao, denunciar_contraparte })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(data.message || 'Alerta SOS registrado. Equipe de segurança notificada.');
+          fecharSos();
+        } else {
+          toast(data.error || 'Erro ao registrar alerta SOS.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao acionar SOS.');
+      } finally {
+        btnConf.disabled = false;
+      }
+    };
+  }
+
+  // Chat Protegido do Pedido (ET-15)
+  const formChatPed = document.getElementById('formPedidoChat');
+  if (formChatPed) {
+    formChatPed.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!order || !order.db_id) return;
+      const input = document.getElementById('inputPedidoChatMsg');
+      const btnSend = document.getElementById('btnEnviarPedidoChat');
+      const mensagem = input ? input.value.trim() : '';
+      if (!mensagem) return;
+      if (btnSend) btnSend.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${order.db_id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensagem })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (input) input.value = '';
+          await carregarMensagensPedido(order.db_id);
+        } else {
+          toast(data.error || 'Não foi possível enviar a mensagem.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação no chat do pedido.');
+      } finally {
+        if (btnSend) btnSend.disabled = false;
       }
     };
   }

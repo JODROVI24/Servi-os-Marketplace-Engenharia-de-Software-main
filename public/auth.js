@@ -82,6 +82,16 @@ function inicializarDrawerNavegacao() {
   if (!navDrawer || navDrawer.dataset.drawerInit) return;
   navDrawer.dataset.drawerInit = 'true';
 
+  if (!navDrawer.querySelector('.drawer-legal-links')) {
+    const legalWrap = document.createElement('div');
+    legalWrap.className = 'drawer-legal-links';
+    legalWrap.innerHTML = `
+      <a href="/termos.html">Termos &amp; Ética</a>
+      <a href="/privacidade.html">Privacidade LGPD</a>
+    `;
+    navDrawer.appendChild(legalWrap);
+  }
+
   // Garante que ícones decorativos dentro dos botões sejam ocultados para tecnologias assistivas
   if (btnHamburguer) {
     const icon = btnHamburguer.querySelector('.material-symbols-outlined');

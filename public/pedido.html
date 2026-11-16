@@ -265,13 +265,62 @@
             <!-- Injetado dinamicamente por script.js: renderSteps() -->
           </div>
 
-          <!-- Código de Confirmação de 4 Dígitos -->
-          <div id="codigoConfirmacaoBox" class="my-3 p-3 rounded-xl border border-perto-sun bg-[#fff7dd] flex items-center justify-between" hidden>
-            <div class="text-xs font-bold text-perto-ink">
-              Código de Confirmação com o Prestador:
+          <!-- Código de Confirmação de 4 Dígitos (PIN Presencial) -->
+          <div id="codigoConfirmacaoBox" class="my-3 p-3.5 rounded-xl border-2 border-perto-sun bg-[#fff7dd] flex flex-col sm:flex-row sm:items-center justify-between gap-2" hidden>
+            <div>
+              <div class="text-xs font-extrabold text-perto-ink uppercase tracking-wider">
+                PIN de Início Presencial (4 dígitos)
+              </div>
+              <p class="text-[11px] text-perto-ink/80 font-body m-0 mt-0.5">
+                Informe este PIN ao profissional somente na chegada presencial para iniciar o atendimento.
+              </p>
             </div>
-            <span id="codigoConfirmacaoValor" class="text-lg font-black tracking-widest text-perto-ink bg-white px-3 py-1 rounded-lg border border-perto-sun">----</span>
+            <span id="codigoConfirmacaoValor" class="text-xl font-black tracking-widest text-perto-ink bg-white px-3.5 py-1.5 rounded-lg border-2 border-perto-sun self-start sm:self-center">----</span>
           </div>
+
+          <!-- Barra de Segurança & Rota Segura (ET-14) -->
+          <div id="pedidoSegurancaBar" class="my-3 p-3 rounded-xl bg-perto-bg border border-perto-road flex flex-col gap-2" hidden>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" id="btnCompartilharRota" class="btn2 px-3.5 py-2 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">share_location</span>
+                Compartilhar Rota
+              </button>
+              <button type="button" id="btnSosPedido" class="sos-btn px-4 py-2 rounded-full text-xs font-extrabold inline-flex items-center gap-1.5 bg-perto-sun text-perto-ink border-2 border-perto-ink">
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">emergency_share</span>
+                SOS Emergência
+              </button>
+            </div>
+            <div id="sharedRouteBox" class="p-2.5 rounded-lg bg-white border border-perto-road flex flex-wrap items-center justify-between gap-2 text-xs" hidden>
+              <div class="min-w-0 flex-1">
+                <span class="font-bold text-perto-ink block">Link seguro para contato de confiança:</span>
+                <a id="sharedRouteLink" href="#" target="_blank" rel="noopener noreferrer" class="text-perto-sea font-mono text-[11px] break-all underline"></a>
+              </div>
+              <button type="button" id="btnCopiarRota" class="btn px-3 py-1.5 rounded-full text-[11px] font-bold text-perto-ink shrink-0">
+                Copiar Link
+              </button>
+            </div>
+          </div>
+
+          <!-- Painel Colapsável: Chat Protegido do Pedido (ET-15) -->
+          <details id="pedidoChatSection" class="my-3 rounded-xl border border-perto-road bg-white overflow-hidden" hidden>
+            <summary class="px-3.5 py-2.5 bg-perto-bg text-xs font-extrabold text-perto-ink cursor-pointer flex items-center justify-between select-none">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-base text-perto-sea" aria-hidden="true">chat</span>
+                Chat Protegido do Pedido
+              </span>
+              <span class="text-[11px] font-semibold text-perto-sea">Abrir / Recolher</span>
+            </summary>
+            <div class="chat-box p-3">
+              <div id="pedidoChatMessages" class="chat-messages max-h-48 overflow-y-auto space-y-2 mb-2.5 text-xs" aria-live="polite">
+                <p class="text-perto-ink/60 text-xs m-0">Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.</p>
+              </div>
+              <form id="formPedidoChat" class="chat-form flex gap-2">
+                <label for="inputPedidoChatMsg" class="sr-only">Mensagem no chat do pedido</label>
+                <input type="text" id="inputPedidoChatMsg" required maxlength="500" class="input-form text-xs flex-1" placeholder="Escreva uma mensagem segura...">
+                <button type="submit" id="btnEnviarPedidoChat" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
+              </form>
+            </div>
+          </details>
 
           <!-- Caixa de Informações Dinâmicas -->
           <div id="info" class="p-3.5 my-3 bg-perto-bg border border-perto-road rounded-xl text-sm font-medium text-perto-ink leading-relaxed">
@@ -408,6 +457,16 @@
           <textarea id="confObservacoes" rows="2" class="input-form text-xs font-medium" placeholder="Descreva o problema, ponto de referência ou instruções de acesso..."></textarea>
         </div>
 
+        <div class="consent-box p-3 rounded-xl bg-perto-bg border border-perto-road text-xs text-perto-ink">
+          <label for="chkAceitePedido" class="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" id="chkAceitePedido" required class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">
+            <span>
+              Li e concordo com as regras de <b>custódia em Escrow</b>, uso do <b>PIN presencial</b> na chegada do profissional e os
+              <a href="termos.html" target="_blank" rel="noopener noreferrer" class="underline font-bold text-perto-sea">Termos &amp; Privacidade</a>.
+            </span>
+          </label>
+        </div>
+
         <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
           <button type="button" id="btnCancelarConfirmacao" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
           <button type="submit" id="btnEnviarConfirmacao" class="btn px-5 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Confirmar Solicitação</button>
@@ -449,6 +508,48 @@
     </div>
   </div>
 
+  <!-- Modal Acessível SOS Emergência (ET-14) -->
+  <div id="modalSosPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalSosTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 460px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalSosTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-ink" aria-hidden="true">emergency_share</span>
+          Acionar SOS Emergência
+        </h3>
+        <button type="button" id="btnFecharModalSos" class="drawer-fechar" aria-label="Fechar modal SOS">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="p-3 rounded-xl bg-[#fff7dd] border border-perto-sun text-xs text-perto-ink mb-3 space-y-2">
+        <p class="font-bold m-0">Em risco físico imediato, ligue primeiro para os serviços públicos:</p>
+        <div class="flex flex-wrap gap-2">
+          <a href="tel:190" class="btn px-3.5 py-1.5 rounded-full text-xs font-extrabold text-perto-ink no-underline inline-flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">call</span>
+            Ligar Polícia (190)
+          </a>
+          <a href="tel:192" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-extrabold no-underline inline-flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">local_hospital</span>
+            Ligar SAMU (192)
+          </a>
+        </div>
+      </div>
+      <form id="formSosPedido" class="space-y-3">
+        <div class="campo-form">
+          <label for="sosDescricao" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva o ocorrido</label>
+          <textarea id="sosDescricao" rows="3" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança..."></textarea>
+        </div>
+        <label for="sosDenunciarContraparte" class="flex items-start gap-2 text-xs text-perto-ink cursor-pointer">
+          <input type="checkbox" id="sosDenunciarContraparte" class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">
+          <span>Solicitar denúncia formal e <b>suspensão cautelar</b> da contraparte para análise de segurança.</span>
+        </label>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
+          <button type="button" id="btnCancelarSos" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnConfirmarSos" class="sos-btn px-5 py-2 rounded-full text-xs font-extrabold bg-perto-sun text-perto-ink border-2 border-perto-ink">Confirmar SOS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
@@ -461,7 +562,7 @@
             <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
             <span>Perto<b>Já</b></span>
           </a>
-          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e pagamento protegido em Escrow.</p>
         </div>
         <div class="footer-col">
           <span class="footer-col-title">Cliente</span>
@@ -480,6 +581,8 @@
           <span class="footer-col-title">Institucional</span>
           <a href="index.html">Início</a>
           <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos &amp; Ética</a>
+          <a href="privacidade.html">Privacidade LGPD</a>
           <a href="login.html">Entrar</a>
         </div>
       </div>

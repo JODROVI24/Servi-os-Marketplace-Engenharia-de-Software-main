@@ -258,6 +258,30 @@
           </button>
         </form>
       </div>
+
+      <!-- Seção Dedicada: Privacidade & Seus Dados (LGPD Art. 18) -->
+      <div class="panel bg-white border border-perto-road rounded-2xl p-6 sm:p-8 max-w-xl mx-auto mt-6">
+        <div class="mb-4 pb-3 border-b border-perto-road">
+          <h2 class="text-lg sm:text-xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">shield_person</span>
+            Privacidade &amp; Seus Dados (LGPD Art. 18)
+          </h2>
+          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">
+            Exerça seus direitos de portabilidade e anonimização irreversível previstos na Lei Geral de Proteção de Dados.
+            Consulte nossa <a href="privacidade.html" class="underline font-bold text-perto-sea">Política de Privacidade</a>.
+          </p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button type="button" id="btnExportarDadosLgpd" class="btn2 flex-1 py-3 px-4 rounded-full text-xs font-extrabold inline-flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-base" aria-hidden="true">download</span>
+            Exportar Meus Dados (JSON)
+          </button>
+          <button type="button" id="btnAbrirExcluirContaLgpd" class="btn-lgpd-danger flex-1 py-3 px-4 rounded-full text-xs font-extrabold inline-flex items-center justify-center gap-1.5 bg-[#fff7dd] text-perto-ink border-2 border-perto-ink">
+            <span class="material-symbols-outlined text-base" aria-hidden="true">person_remove</span>
+            Excluir / Anonimizar Minha Conta
+          </button>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -297,6 +321,125 @@
     </div>
   </div>
 
+  <!-- Modal Acessível: Chat Protegido do Pedido (ET-15) -->
+  <div id="modalChatPedidoCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalChatClienteTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 480px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalChatClienteTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">chat</span>
+          Chat do Pedido
+        </h3>
+        <button type="button" id="btnFecharModalChatCliente" class="drawer-fechar" aria-label="Fechar chat do pedido">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="chat-box">
+        <div id="chatClienteMessages" class="chat-messages max-h-60 overflow-y-auto space-y-2 mb-3 text-xs" aria-live="polite"></div>
+        <form id="formChatCliente" class="chat-form flex gap-2">
+          <input type="hidden" id="chatClienteOrderId">
+          <label for="inputChatClienteMsg" class="sr-only">Mensagem para o profissional</label>
+          <input type="text" id="inputChatClienteMsg" required maxlength="500" class="input-form text-xs flex-1" placeholder="Escreva uma mensagem...">
+          <button type="submit" id="btnEnviarChatCliente" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Acessível: Abrir Mediação / Disputa (ET-08) -->
+  <div id="modalDisputaCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalDisputaTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 460px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalDisputaTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">gavel</span>
+          Abrir Mediação / Disputa
+        </h3>
+        <button type="button" id="btnFecharModalDisputa" class="drawer-fechar" aria-label="Fechar modal de disputa">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="text-xs text-perto-ink/75 font-body mb-3">
+        O valor em custódia (Escrow) permanece retido durante a análise pela equipe de mediação (prazo de até 72h).
+      </p>
+      <form id="formDisputaCliente" class="space-y-3">
+        <input type="hidden" id="disputaOrderId">
+        <div class="campo-form">
+          <label for="disputaMotivo" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Motivo da Disputa</label>
+          <textarea id="disputaMotivo" rows="3" required class="input-form text-xs" placeholder="Descreva o problema ocorrido no atendimento..."></textarea>
+        </div>
+        <div class="campo-form">
+          <label for="disputaEvidencias" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Evidências / Observações (opcional)</label>
+          <textarea id="disputaEvidencias" rows="2" class="input-form text-xs" placeholder="Links, horários ou detalhes adicionais..."></textarea>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
+          <button type="button" id="btnCancelarDisputa" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnEnviarDisputa" class="btn px-5 py-2 rounded-full text-xs font-extrabold text-perto-ink">Enviar para Mediação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Acessível: SOS Emergência (ET-14) -->
+  <div id="modalSosCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalSosClienteTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 460px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalSosClienteTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-ink" aria-hidden="true">emergency_share</span>
+          Acionar SOS Emergência
+        </h3>
+        <button type="button" id="btnFecharModalSosCliente" class="drawer-fechar" aria-label="Fechar modal SOS">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="p-3 rounded-xl bg-[#fff7dd] border border-perto-sun text-xs text-perto-ink mb-3 space-y-2">
+        <p class="font-bold m-0">Em risco físico imediato, ligue primeiro para os serviços públicos:</p>
+        <div class="flex flex-wrap gap-2">
+          <a href="tel:190" class="btn px-3.5 py-1.5 rounded-full text-xs font-extrabold text-perto-ink no-underline inline-flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">call</span>
+            Polícia (190)
+          </a>
+          <a href="tel:192" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-extrabold no-underline inline-flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">local_hospital</span>
+            SAMU (192)
+          </a>
+        </div>
+      </div>
+      <form id="formSosCliente" class="space-y-3">
+        <input type="hidden" id="sosClienteOrderId">
+        <div class="campo-form">
+          <label for="sosClienteDescricao" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva o ocorrido</label>
+          <textarea id="sosClienteDescricao" rows="3" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança..."></textarea>
+        </div>
+        <label for="sosClienteDenunciar" class="flex items-start gap-2 text-xs text-perto-ink cursor-pointer">
+          <input type="checkbox" id="sosClienteDenunciar" class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">
+          <span>Solicitar denúncia formal e <b>suspensão cautelar</b> da contraparte para análise de segurança.</span>
+        </label>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
+          <button type="button" id="btnCancelarSosCliente" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+          <button type="submit" id="btnConfirmarSosCliente" class="sos-btn px-5 py-2 rounded-full text-xs font-extrabold bg-perto-sun text-perto-ink border-2 border-perto-ink">Confirmar SOS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Acessível: Excluir / Anonimizar Conta LGPD (ET-10) -->
+  <div id="modalExcluirContaLgpd" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalExcluirContaTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 440px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalExcluirContaTitulo" class="text-lg font-black text-perto-ink m-0">Excluir / Anonimizar Conta</h3>
+        <button type="button" id="btnFecharModalExcluirLgpd" class="drawer-fechar" aria-label="Fechar modal de exclusão">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="text-xs text-perto-ink/80 font-body leading-relaxed mb-4">
+        Seus dados pessoais identificáveis serão anonimizados de forma irreversível (LGPD Art. 18), mantendo apenas registros fiscais e de disputas exigidos por lei (Art. 16). Esta ação encerra sua sessão imediatamente.
+      </p>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
+        <button type="button" id="btnCancelarExcluirLgpd" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
+        <button type="button" id="btnConfirmarExcluirLgpd" class="btn-lgpd-danger px-5 py-2 rounded-full text-xs font-extrabold bg-perto-sun text-perto-ink border-2 border-perto-ink">Confirmar Anonimização</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
@@ -309,7 +452,7 @@
             <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
             <span>Perto<b>Já</b></span>
           </a>
-          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e pagamento protegido em Escrow.</p>
         </div>
         <div class="footer-col">
           <span class="footer-col-title">Cliente</span>
@@ -328,6 +471,8 @@
           <span class="footer-col-title">Institucional</span>
           <a href="index.html">Início</a>
           <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos &amp; Ética</a>
+          <a href="privacidade.html">Privacidade LGPD</a>
           <a href="login.html">Entrar</a>
         </div>
       </div>
@@ -614,15 +759,24 @@
         }
 
         div.innerHTML = pedidos.map(p => {
-          const badgeClass = p.status === 'cancelado' ? 'tag off' : 'tag';
+          const st = String(p.status || '').toLowerCase();
+          const badgeClass = st === 'cancelado' ? 'tag off' : 'tag';
           const codigoHtml = p.codigo_confirmacao
-            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">Código: <b>${escapeHtml(p.codigo_confirmacao)}</b></span>`
+            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">PIN presencial: <b>${escapeHtml(p.codigo_confirmacao)}</b></span>`
             : '';
           const pagamentoHtml = `<span>💳 Pagamento: <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>`;
-          const podeAvaliar = p.status === 'finalizado' && !p.ja_avaliado;
-          const jaAvaliadoHtml = p.status === 'finalizado' && p.ja_avaliado
+          const emDisputa = Boolean(p.em_disputa || st === 'em_disputa');
+          const disputaBadgeHtml = emDisputa
+            ? `<span class="dispute-badge">⚖️ Em Mediação</span>`
+            : '';
+          const podeAvaliar = st === 'finalizado' && !p.ja_avaliado;
+          const jaAvaliadoHtml = st === 'finalizado' && p.ja_avaliado
             ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
             : '';
+          const podeChat = ['confirmado', 'em_transito', 'em_execucao', 'em_disputa'].includes(st);
+          const podeSos = ['em_transito', 'em_execucao'].includes(st);
+          const podeConcluir = st === 'em_execucao';
+          const podeDisputa = (st === 'em_execucao' || st === 'finalizado') && !emDisputa;
 
           return `
             <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
@@ -636,11 +790,36 @@
                 ${pagamentoHtml}
                 <span>Status: <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b></span>
                 ${codigoHtml}
+                ${disputaBadgeHtml}
                 ${jaAvaliadoHtml}
               </div>
               ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
               ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
               <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+                ${podeChat ? `
+                  <button type="button" class="btn2 btn-chat-pedido" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">chat</span>
+                    Chat do Pedido
+                  </button>
+                ` : ''}
+                ${podeConcluir ? `
+                  <button type="button" class="btn btn-confirmar-conclusao" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">check_circle</span>
+                    Confirmar Conclusão
+                  </button>
+                ` : ''}
+                ${podeDisputa ? `
+                  <button type="button" class="btn2 btn-abrir-disputa" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">gavel</span>
+                    Abrir Mediação / Disputa
+                  </button>
+                ` : ''}
+                ${podeSos ? `
+                  <button type="button" class="sos-btn btn-sos-pedido" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">emergency_share</span>
+                    SOS Emergência
+                  </button>
+                ` : ''}
                 ${podeAvaliar ? `
                   <button type="button" class="btn btn-avaliar-pedido" data-order-id="${p.order_id}" data-prestador="${escapeHtml(p.prestador_nome)}" data-servico="${escapeHtml(p.servico_titulo)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                     <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span>
@@ -660,6 +839,18 @@
           btn.onclick = () => {
             abrirModalAvaliacao(btn.dataset.orderId, btn.dataset.prestador, btn.dataset.servico);
           };
+        });
+        div.querySelectorAll('.btn-chat-pedido').forEach(btn => {
+          btn.onclick = () => abrirModalChatCliente(btn.dataset.orderId);
+        });
+        div.querySelectorAll('.btn-confirmar-conclusao').forEach(btn => {
+          btn.onclick = () => confirmarConclusaoPedido(btn.dataset.orderId, btn);
+        });
+        div.querySelectorAll('.btn-abrir-disputa').forEach(btn => {
+          btn.onclick = () => abrirModalDisputaCliente(btn.dataset.orderId);
+        });
+        div.querySelectorAll('.btn-sos-pedido').forEach(btn => {
+          btn.onclick = () => abrirModalSosCliente(btn.dataset.orderId);
         });
       } catch (e) {
         div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar histórico de pedidos.</p>';
@@ -703,6 +894,258 @@
         }
       } catch (e) {
         toast('Erro de comunicação.');
+      }
+    };
+
+    // --- Fluxos Éticos do Portal do Cliente (ET-08, ET-10, ET-14, ET-15) ---
+    async function confirmarConclusaoPedido(orderId, btnEl) {
+      if (!orderId) return;
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'finalizado' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast('Conclusão do serviço confirmada! Pagamento liberado conforme Escrow.');
+          await carregarHistoricoPedidos();
+        } else {
+          toast(data.error || 'Não foi possível confirmar a conclusão.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação ao confirmar conclusão.');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    function vincularModalAcessivel(modalId, closeBtnIds, onEscapeExtra) {
+      const modal = document.getElementById(modalId);
+      if (!modal) return { abrir: () => {}, fechar: () => {} };
+      let triggerEl = null;
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          fechar();
+        }
+      };
+      const fechar = () => {
+        modal.style.display = 'none';
+        document.removeEventListener('keydown', onKeyDown);
+        if (onEscapeExtra) onEscapeExtra();
+        if (triggerEl && typeof triggerEl.focus === 'function') triggerEl.focus();
+      };
+      const abrir = (focusSelector) => {
+        triggerEl = document.activeElement;
+        modal.style.display = 'flex';
+        document.addEventListener('keydown', onKeyDown);
+        if (focusSelector) {
+          const el = modal.querySelector(focusSelector);
+          if (el) setTimeout(() => el.focus(), 0);
+        }
+      };
+      closeBtnIds.forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.onclick = fechar;
+      });
+      modal.onclick = (e) => { if (e.target === modal) fechar(); };
+      return { abrir, fechar };
+    }
+
+    const ctrlChatCliente = vincularModalAcessivel('modalChatPedidoCliente', ['btnFecharModalChatCliente']);
+    async function carregarMensagensChatCliente(orderId) {
+      const box = document.getElementById('chatClienteMessages');
+      if (!box || !orderId) return;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/messages`);
+        if (!res.ok) {
+          box.innerHTML = '<p class="text-xs text-perto-ink/60">Não foi possível carregar as mensagens.</p>';
+          return;
+        }
+        const msgs = await res.json();
+        if (!Array.isArray(msgs) || !msgs.length) {
+          box.innerHTML = '<p class="text-xs text-perto-ink/60">Nenhuma mensagem ainda. Use este canal protegido para falar com o profissional.</p>';
+          return;
+        }
+        const myId = dadosCliente && dadosCliente.id;
+        box.innerHTML = msgs.map(m => {
+          const isMine = myId && String(m.sender_id) === String(myId);
+          const autor = escapeHtml(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
+          const texto = escapeHtml(m.mensagem || m.conteudo || '');
+          const rawTs = m.criado_em || m.created_at;
+          const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
+          return `
+            <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
+              <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/70 mb-0.5">
+                <span>${autor}</span>
+                ${hora ? `<span>${hora}</span>` : ''}
+              </div>
+              <div class="text-xs text-perto-ink break-words">${texto}</div>
+            </div>
+          `;
+        }).join('');
+        box.scrollTop = box.scrollHeight;
+      } catch (e) {
+        box.innerHTML = '<p class="text-xs text-perto-ink/60">Erro de comunicação ao carregar mensagens.</p>';
+      }
+    }
+
+    async function abrirModalChatCliente(orderId) {
+      document.getElementById('chatClienteOrderId').value = orderId;
+      document.getElementById('inputChatClienteMsg').value = '';
+      ctrlChatCliente.abrir('#inputChatClienteMsg');
+      await carregarMensagensChatCliente(orderId);
+    }
+
+    document.getElementById('formChatCliente').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('chatClienteOrderId').value;
+      const input = document.getElementById('inputChatClienteMsg');
+      const btn = document.getElementById('btnEnviarChatCliente');
+      const mensagem = input.value.trim();
+      if (!orderId || !mensagem) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensagem })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          input.value = '';
+          await carregarMensagensChatCliente(orderId);
+        } else {
+          toast(data.error || 'Erro ao enviar mensagem.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao enviar mensagem.');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    const ctrlDisputaCliente = vincularModalAcessivel('modalDisputaCliente', ['btnFecharModalDisputa', 'btnCancelarDisputa']);
+    function abrirModalDisputaCliente(orderId) {
+      document.getElementById('disputaOrderId').value = orderId;
+      document.getElementById('disputaMotivo').value = '';
+      document.getElementById('disputaEvidencias').value = '';
+      ctrlDisputaCliente.abrir('#disputaMotivo');
+    }
+
+    document.getElementById('formDisputaCliente').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('disputaOrderId').value;
+      const btn = document.getElementById('btnEnviarDisputa');
+      btn.disabled = true;
+      try {
+        const motivo = document.getElementById('disputaMotivo').value.trim();
+        const evidencias = document.getElementById('disputaEvidencias').value.trim();
+        const res = await fetch(`/api/orders/${orderId}/dispute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo, descricao: evidencias, evidencias })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(data.message || 'Mediação aberta com sucesso. Escrow retido para análise.');
+          ctrlDisputaCliente.fechar();
+          await carregarHistoricoPedidos();
+        } else {
+          toast(data.error || 'Não foi possível abrir a mediação.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao abrir mediação.');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    const ctrlSosCliente = vincularModalAcessivel('modalSosCliente', ['btnFecharModalSosCliente', 'btnCancelarSosCliente']);
+    function abrirModalSosCliente(orderId) {
+      document.getElementById('sosClienteOrderId').value = orderId;
+      document.getElementById('sosClienteDescricao').value = '';
+      document.getElementById('sosClienteDenunciar').checked = false;
+      ctrlSosCliente.abrir('#sosClienteDescricao');
+    }
+
+    document.getElementById('formSosCliente').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('sosClienteOrderId').value;
+      const btn = document.getElementById('btnConfirmarSosCliente');
+      btn.disabled = true;
+      try {
+        const descricao = document.getElementById('sosClienteDescricao').value.trim();
+        const denunciar_contraparte = Boolean(document.getElementById('sosClienteDenunciar').checked);
+        const res = await fetch(`/api/orders/${orderId}/sos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descricao, denunciar_contraparte })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(data.message || 'Alerta SOS registrado. Equipe de segurança notificada.');
+          ctrlSosCliente.fechar();
+        } else {
+          toast(data.error || 'Erro ao registrar alerta SOS.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao acionar SOS.');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    // LGPD Art. 18: Exportação JSON e Anonimização Irreversível
+    document.getElementById('btnExportarDadosLgpd').onclick = async () => {
+      try {
+        const res = await fetch('/api/profile/export');
+        if (!res.ok) {
+          toast('Não foi possível exportar seus dados.');
+          return;
+        }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'pertoja-meus-dados.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('Exportação JSON gerada com sucesso!');
+      } catch (err) {
+        toast('Erro de comunicação ao exportar dados.');
+      }
+    };
+
+    const ctrlExcluirLgpd = vincularModalAcessivel('modalExcluirContaLgpd', ['btnFecharModalExcluirLgpd', 'btnCancelarExcluirLgpd']);
+    document.getElementById('btnAbrirExcluirContaLgpd').onclick = () => {
+      ctrlExcluirLgpd.abrir('#btnCancelarExcluirLgpd');
+    };
+    document.getElementById('btnConfirmarExcluirLgpd').onclick = async () => {
+      const btn = document.getElementById('btnConfirmarExcluirLgpd');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/profile', { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) {
+          try {
+            localStorage.clear();
+            sessionStorage.clear();
+          } catch (e) {}
+          toast(data.message || 'Conta anonimizada com sucesso.');
+          setTimeout(() => { window.location.href = 'index.html'; }, 800);
+        } else {
+          toast(data.error || 'Não foi possível excluir/anonimizar a conta.');
+        }
+      } catch (err) {
+        toast('Erro de comunicação ao anonimizar conta.');
+      } finally {
+        btn.disabled = false;
       }
     };
 

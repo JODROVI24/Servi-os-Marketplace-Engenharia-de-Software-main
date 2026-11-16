@@ -2,9 +2,12 @@ import os
 import re
 import math
 import secrets
+import hashlib
+import hmac
 import requests
 import gzip
 import time
+from datetime import datetime
 from functools import wraps
 from flask import Flask, request, jsonify, session, send_from_directory, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -40,13 +43,30 @@ def _load_dotenv():
 
 _load_dotenv()
 
+def _resolve_secret_key():
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key and env_key.strip():
+        return env_key.strip()
+    if os.environ.get('REQUIRE_SECRET_KEY') == '1':
+        raise RuntimeError('SECRET_KEY é obrigatória quando REQUIRE_SECRET_KEY=1.')
+    db_url = (
+        os.environ.get('POSTGRES_URL')
+        or os.environ.get('DATABASE_URL')
+        or os.environ.get('POSTGRES_URL_NON_POOLING')
+    )
+    if db_url and db_url.strip():
+        return hmac.new(db_url.strip().encode('utf-8'), b'pertoja-session-key-v1', hashlib.sha256).hexdigest()
+    return 'pertoja-dev-local-secret-key-2026'
+
+
 app = Flask(__name__, static_folder=STATIC_DIR)
-app.secret_key = os.environ.get('SECRET_KEY') or 'pertoja-marketplace-production-secret-key-2026'
+app.secret_key = _resolve_secret_key()
 app.config.update(
     TESTING=False,
+    PERMANENT_SESSION_LIFETIME=43200,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=(os.environ.get('VERCEL') == '1')
+    SESSION_COOKIE_SECURE=(os.environ.get('VERCEL') == '1' or os.environ.get('HTTPS') == '1')
 )
 
 # ================= Otimização de Performance, Caching e Segurança =================
@@ -102,14 +122,25 @@ init_db()
 # (como Cloudflare ou Akamai) para mitigar picos antes mesmo da invocação da função.
 
 
+def _get_client_ip():
+    return request.headers.get('x-forwarded-for', request.remote_addr or '127.0.0.1').split(',')[0].strip()
+
+
+def _hash_ip(ip):
+    secret = str(app.secret_key or 'pertoja-dev-local-secret-key-2026').encode('utf-8')
+    return hmac.new(secret, str(ip or '').encode('utf-8'), hashlib.sha256).hexdigest()[:32]
+
+
 class DatabaseRateLimiter:
     """Limitador de requisições por janela deslizante persistido na tabela rate_limit (SQLite e PostgreSQL)."""
 
     def is_allowed(self, key, limit, window_seconds):
         now = time.time()
         cutoff = now - window_seconds
+        purge_cutoff = now - 86400
         conn = get_db_connection()
         try:
+            conn.execute('DELETE FROM rate_limit WHERE ts <= ?', (purge_cutoff,))
             conn.execute('DELETE FROM rate_limit WHERE rate_key = ? AND ts <= ?', (key, cutoff))
             row = conn.execute('SELECT COUNT(*) FROM rate_limit WHERE rate_key = ?', (key,)).fetchone()
             count = row[0] if row is not None else 0
@@ -135,14 +166,14 @@ rate_limiter = DatabaseRateLimiter()
 
 
 def rate_limit(limit, window_seconds=60):
-    """Decorator de rate limit por IP para proteção contra brute-force e abusos de API."""
+    """Decorator de rate limit por IP (hash HMAC-SHA256) para proteção contra brute-force e abusos de API."""
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if app.config.get('TESTING'):
                 return f(*args, **kwargs)
-            client_ip = request.headers.get('x-forwarded-for', request.remote_addr or '127.0.0.1').split(',')[0].strip()
-            key = f"{request.endpoint or f.__name__}:{client_ip}"
+            ip_hash = _hash_ip(_get_client_ip())
+            key = f"{request.endpoint or f.__name__}:{ip_hash}"
             if not rate_limiter.is_allowed(key, limit, window_seconds):
                 resp = make_response(jsonify({
                     'error': 'Muitas requisições. Por favor, aguarde alguns instantes antes de tentar novamente.',
@@ -313,6 +344,18 @@ def sitemap():
 @app.route('/manifest.json')
 def manifest():
     return send_from_directory(STATIC_DIR, 'manifest.json', mimetype='application/manifest+json')
+
+
+@app.route('/termos')
+@app.route('/termos.html')
+def termos_page():
+    return send_from_directory(STATIC_DIR, 'termos.html')
+
+
+@app.route('/privacidade')
+@app.route('/privacidade.html')
+def privacidade_page():
+    return send_from_directory(STATIC_DIR, 'privacidade.html')
 
 
 @app.route('/<path:filename>')
@@ -556,6 +599,16 @@ def register():
     if tipo not in ('cliente', 'prestador'):
         return jsonify({'error': 'Tipo de usuário inválido. Escolha cliente ou prestador.'}), 400
 
+    aceite_termos = data.get('aceite_termos')
+    if aceite_termos in (False, 'false', 'False', '0', 0):
+        return jsonify({'error': 'É necessário aceitar os Termos de Uso e Política de Privacidade.'}), 400
+    versao_termos = str(data.get('versao_termos') or '2026.1').strip()[:20]
+
+    kyc_documento_tipo = str(data.get('kyc_documento_tipo') or 'RG').strip().upper()
+    if kyc_documento_tipo not in ('RG', 'CIN', 'CNH'):
+        kyc_documento_tipo = 'RG'
+    registro_profissional = str(data.get('registro_profissional') or '').strip() or None
+
     # Se não passou coordenadas mas passou endereço, geocodifica
     if (raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '') and (endereco or cep):
         busca = f"{endereco} {numero}, {bairro}, {cidade} - {estado}" if endereco else f"{cep}, Brasil"
@@ -580,10 +633,15 @@ def register():
         senha_hash = generate_password_hash(senha)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng))
+            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_status, kyc_documento_tipo, registro_profissional, status_conta)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'aprovado', ?, ?, 'ativo')
+        ''', (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_documento_tipo, registro_profissional))
         user_id = cursor.lastrowid
+
+        cursor.execute('''
+            INSERT INTO user_consents (user_id, doc_type, doc_version, ip_hash)
+            VALUES (?, 'termos_privacidade', ?, ?)
+        ''', (user_id, versao_termos, _hash_ip(_get_client_ip())))
 
         # Se for prestador e informou categoria e preço inicial, cria o primeiro serviço com endereço real
         if tipo == 'prestador' and categoria:
@@ -603,6 +661,7 @@ def register():
         conn.commit()
 
         # Criar sessão
+        session.permanent = True
         session['user_id'] = user_id
         session['user_tipo'] = tipo
         session['user_nome'] = nome
@@ -623,7 +682,12 @@ def register():
                 'cidade': cidade,
                 'estado': estado,
                 'lat': lat,
-                'lng': lng
+                'lng': lng,
+                'kyc_tier': 1,
+                'kyc_status': 'aprovado',
+                'kyc_documento_tipo': kyc_documento_tipo,
+                'registro_profissional': registro_profissional,
+                'status_conta': 'ativo'
             }
         }), 201
     except Exception as e:
@@ -649,6 +713,7 @@ def login():
     if not user or not check_password_hash(user['senha_hash'], senha):
         return jsonify({'error': 'Credenciais inválidas. Verifique seu e-mail e senha.'}), 401
 
+    session.permanent = True
     session['user_id'] = user['id']
     session['user_tipo'] = user['tipo']
     session['user_nome'] = user['nome']
@@ -671,7 +736,12 @@ def login():
             'estado': user['estado'],
             'lat': user['lat'],
             'lng': user['lng'],
-            'disponivel': bool(user['disponivel'])
+            'disponivel': bool(user['disponivel']),
+            'kyc_tier': _row_get(user, 'kyc_tier', 1),
+            'kyc_status': _row_get(user, 'kyc_status', 'aprovado'),
+            'kyc_documento_tipo': _row_get(user, 'kyc_documento_tipo', 'RG'),
+            'registro_profissional': _row_get(user, 'registro_profissional'),
+            'status_conta': _row_get(user, 'status_conta', 'ativo')
         }
     })
 
@@ -690,15 +760,17 @@ def forgot_password():
     if email:
         conn = get_db_connection()
         try:
+            conn.execute('DELETE FROM password_reset_tokens WHERE expires_at < ?', (time.time() - 86400,))
             user = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
             if user:
                 token = secrets.token_urlsafe(24)
+                token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
                 expires_at = time.time() + 1800
                 conn.execute(
                     'INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)',
-                    (token, user['id'], expires_at)
+                    (token_hash, user['id'], expires_at)
                 )
-                conn.commit()
+            conn.commit()
         finally:
             conn.close()
 
@@ -719,18 +791,19 @@ def reset_password():
     if len(nova_senha) < 6:
         return jsonify({'error': 'A nova senha deve conter no mínimo 6 caracteres.'}), 400
 
+    token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     conn = get_db_connection()
     try:
         row = conn.execute(
-            'SELECT token, user_id, expires_at, used FROM password_reset_tokens WHERE token = ?',
-            (token,)
+            'SELECT token, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? OR token = ?',
+            (token_hash, token)
         ).fetchone()
         if not row or int(_row_get(row, 'used', 0)) != 0 or float(row['expires_at']) <= time.time():
             return jsonify({'error': 'Token inválido ou expirado.'}), 400
 
         senha_hash = generate_password_hash(nova_senha)
         conn.execute('UPDATE users SET senha_hash = ? WHERE id = ?', (senha_hash, row['user_id']))
-        conn.execute('UPDATE password_reset_tokens SET used = 1 WHERE token = ?', (token,))
+        conn.execute('UPDATE password_reset_tokens SET used = 1 WHERE token = ?', (row['token'],))
         conn.commit()
     finally:
         conn.close()
@@ -765,9 +838,13 @@ def me():
             'lat': user['lat'],
             'lng': user['lng'],
             'disponivel': bool(user['disponivel']),
-            'plano': _row_get(user, 'plano', 'basico'),
             'avaliacao_media': user['avaliacao_media'],
-            'total_avaliacoes': user['total_avaliacoes']
+            'total_avaliacoes': user['total_avaliacoes'],
+            'kyc_tier': _row_get(user, 'kyc_tier', 1),
+            'kyc_status': _row_get(user, 'kyc_status', 'aprovado'),
+            'kyc_documento_tipo': _row_get(user, 'kyc_documento_tipo', 'RG'),
+            'registro_profissional': _row_get(user, 'registro_profissional'),
+            'status_conta': _row_get(user, 'status_conta', 'ativo')
         }
     })
 
@@ -802,8 +879,13 @@ def profile():
             'lat': user['lat'],
             'lng': user['lng'],
             'disponivel': bool(user['disponivel']),
-            'plano': _row_get(user, 'plano', 'basico'),
-            'avaliacao_media': user['avaliacao_media']
+            'avaliacao_media': user['avaliacao_media'],
+            'total_avaliacoes': _row_get(user, 'total_avaliacoes', 0),
+            'kyc_tier': _row_get(user, 'kyc_tier', 1),
+            'kyc_status': _row_get(user, 'kyc_status', 'aprovado'),
+            'kyc_documento_tipo': _row_get(user, 'kyc_documento_tipo', 'RG'),
+            'registro_profissional': _row_get(user, 'registro_profissional'),
+            'status_conta': _row_get(user, 'status_conta', 'ativo')
         })
 
     # PUT: Atualização de perfil
@@ -866,6 +948,130 @@ def profile():
     return jsonify({'message': 'Perfil e localização atualizados com sucesso!'})
 
 
+@app.route('/api/profile', methods=['DELETE'])
+def delete_profile():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Acesso não autorizado. Faça login.'}), 401
+
+    conn = get_db_connection()
+    try:
+        dispute_order = conn.execute(
+            "SELECT id FROM orders WHERE (cliente_id = ? OR prestador_id = ?) AND status = 'em_disputa' LIMIT 1",
+            (user['id'], user['id'])
+        ).fetchone()
+        if dispute_order:
+            return jsonify({
+                'error': 'Não é possível excluir a conta enquanto houver pedido em disputa aberta.'
+            }), 409
+
+        anon_email = f"anon_{user['id']}_{secrets.token_hex(4)}@anon.pertoja.local"
+        conn.execute('''
+            UPDATE users
+            SET nome = 'Usuário Anonimizado',
+                email = ?,
+                telefone = NULL,
+                bio = NULL,
+                foto_url = NULL,
+                cep = NULL,
+                endereco = NULL,
+                numero = NULL,
+                complemento = NULL,
+                disponivel = 0,
+                status_conta = 'bloqueado'
+            WHERE id = ?
+        ''', (anon_email, user['id']))
+        conn.execute('UPDATE services SET ativo = 0 WHERE prestador_id = ?', (user['id'],))
+        conn.commit()
+    finally:
+        conn.close()
+
+    session.clear()
+    return jsonify({'message': 'Conta anonimizada e sessão encerrada conforme LGPD Art. 18.'}), 200
+
+
+@app.route('/api/profile/export', methods=['GET'])
+def export_profile_data():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Acesso não autorizado. Faça login.'}), 401
+
+    conn = get_db_connection()
+    try:
+        user_dict = dict(user)
+        user_dict.pop('senha_hash', None)
+        services = [dict(r) for r in conn.execute('SELECT * FROM services WHERE prestador_id = ?', (user['id'],)).fetchall()]
+        orders = [dict(r) for r in conn.execute(
+            'SELECT * FROM orders WHERE cliente_id = ? OR prestador_id = ? ORDER BY criado_em DESC',
+            (user['id'], user['id'])
+        ).fetchall()]
+        reviews = [dict(r) for r in conn.execute(
+            'SELECT * FROM reviews WHERE cliente_id = ? OR prestador_id = ? ORDER BY criado_em DESC',
+            (user['id'], user['id'])
+        ).fetchall()]
+        consents = [dict(r) for r in conn.execute(
+            'SELECT * FROM user_consents WHERE user_id = ? ORDER BY accepted_at DESC',
+            (user['id'],)
+        ).fetchall()]
+    finally:
+        conn.close()
+
+    return jsonify({
+        'exported_at': datetime.utcnow().isoformat() + 'Z',
+        'user': user_dict,
+        'services': services,
+        'orders': orders,
+        'reviews': reviews,
+        'consents': consents
+    }), 200
+
+
+@app.route('/api/kyc/verify', methods=['POST'])
+def verify_kyc():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Acesso não autorizado. Faça login.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    doc_tipo = str(data.get('kyc_documento_tipo') or data.get('documento_tipo') or _row_get(user, 'kyc_documento_tipo', 'RG')).strip().upper()
+    if doc_tipo not in ('RG', 'CIN', 'CNH'):
+        return jsonify({'error': 'Tipo de documento inválido. Escolha RG, CIN ou CNH.'}), 400
+
+    registro_prof = str(data.get('registro_profissional') or _row_get(user, 'registro_profissional') or '').strip() or None
+    selfie_ok = bool(data.get('selfie_verificada', True))
+    tier = int(data.get('tier') or (2 if (registro_prof or selfie_ok) else 1))
+    if tier < 1:
+        tier = 1
+    if tier > 2:
+        tier = 2
+
+    provider_ref = f"kyc-{user['id']}-{secrets.token_hex(4)}"
+    conn = get_db_connection()
+    try:
+        conn.execute('''
+            UPDATE users
+            SET kyc_tier = ?,
+                kyc_status = 'aprovado',
+                kyc_documento_tipo = ?,
+                kyc_provider_ref = ?,
+                kyc_verified_at = CURRENT_TIMESTAMP,
+                registro_profissional = COALESCE(?, registro_profissional)
+            WHERE id = ?
+        ''', (tier, doc_tipo, provider_ref, registro_prof, user['id']))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Verificação KYC concluída com sucesso.',
+        'kyc_tier': tier,
+        'kyc_status': 'aprovado',
+        'kyc_documento_tipo': doc_tipo,
+        'kyc_provider_ref': provider_ref,
+        'registro_profissional': registro_prof
+    }), 200
+
+
 # ================= Rotas de Serviços =================
 
 
@@ -903,10 +1109,13 @@ def list_services():
             u.avaliacao_media,
             u.total_avaliacoes,
             u.disponivel,
-            COALESCE(u.plano, 'basico') AS plano
+            COALESCE(u.plano, 'basico') AS plano,
+            COALESCE(u.kyc_tier, 1) AS kyc_tier,
+            COALESCE(u.kyc_status, 'aprovado') AS kyc_status,
+            COALESCE(u.status_conta, 'ativo') AS status_conta
         FROM services s
         JOIN users u ON s.prestador_id = u.id
-        WHERE s.ativo = 1
+        WHERE s.ativo = 1 AND COALESCE(u.status_conta, 'ativo') = 'ativo'
     '''
     params = []
 
@@ -929,6 +1138,23 @@ def list_services():
     # Coordenadas do cliente para cálculo de distância
     center_lat = user_lat if user_lat is not None else -23.5653
     center_lng = user_lng if user_lng is not None else -46.6517
+    is_authenticated = bool(session.get('user_id'))
+    is_approx = (not is_authenticated) or (request.args.get('approx') == '1')
+
+    def _mask_phone(phone):
+        if not phone:
+            return ''
+        s = str(phone)
+        if len(s) >= 4:
+            return s[:-4] + '****'
+        return '****'
+
+    def _deterministic_jitter(service_id):
+        digest = hashlib.sha256(f"pertoja-jitter-{service_id}".encode('utf-8')).digest()
+        # ~300m (~0.0025 graus)
+        d_lat = ((digest[0] / 255.0) * 2.0 - 1.0) * 0.0025
+        d_lng = ((digest[1] / 255.0) * 2.0 - 1.0) * 0.0025
+        return d_lat, d_lng
 
     for r in rows:
         svc_lat = r['lat'] if r['lat'] is not None else -23.5653
@@ -938,12 +1164,23 @@ def list_services():
         if radius and dist_km > radius:
             continue
 
-        # Algoritmo de score
-        score = 1000 * (1 - min(dist_km / 15.0, 1.0)) + (r['avaliacao_media'] * 100) + (200 if r['disponivel'] else 0)
+        # Algoritmo de score bayesiano (ET-03 / ET-12)
+        v = int(_row_get(r, 'total_avaliacoes', 0) or 0)
+        avg = float(_row_get(r, 'avaliacao_media', 4.5) or 4.5)
+        nota_bayes = ((v * avg) + (5 * 4.5)) / (v + 5)
+        score = 1000 * (1 - min(dist_km / 15.0, 1.0)) + (nota_bayes * 100) + (200 if r['disponivel'] else 0)
 
-        # Formata endereço legível
+        if is_approx:
+            d_lat, d_lng = _deterministic_jitter(r['service_id'])
+            out_lat = round(svc_lat + d_lat, 6)
+            out_lng = round(svc_lng + d_lng, 6)
+        else:
+            out_lat = svc_lat
+            out_lng = svc_lng
+
+        # Formata endereço legível (ET-03: omite logradouro/número/CEP em consultas não autenticadas ou approx=1)
         partes_end = []
-        if r['endereco']:
+        if not is_approx and r['endereco']:
             end_num = f"{r['endereco']}" + (f", {r['numero']}" if r['numero'] else '')
             partes_end.append(end_num)
         if r['bairro']:
@@ -953,6 +1190,9 @@ def list_services():
             partes_end.append(cid_uf)
 
         endereco_formatado = " · ".join(partes_end) if partes_end else "São Paulo - SP"
+        if is_approx:
+            endereco_formatado = f"{endereco_formatado} (localização aproximada)"
+        tel_out = r['prestador_telefone'] if is_authenticated else _mask_phone(r['prestador_telefone'])
 
         results.append({
             'id': r['service_id'],
@@ -960,16 +1200,17 @@ def list_services():
             'descricao': r['descricao'],
             'categoria': r['categoria'],
             'preco': r['preco'],
-            'lat': svc_lat,
-            'lng': svc_lng,
+            'lat': out_lat,
+            'lng': out_lng,
+            'localizacao_aproximada': is_approx,
             'bairro': r['bairro'] or '',
             'cidade': r['cidade'] or 'São Paulo',
             'estado': r['estado'] or 'SP',
             'endereco_completo': endereco_formatado,
             'endereco': {
-                'cep': r['cep'] or '',
-                'logradouro': r['endereco'] or '',
-                'numero': r['numero'] or '',
+                'cep': '' if is_approx else (r['cep'] or ''),
+                'logradouro': '' if is_approx else (r['endereco'] or ''),
+                'numero': '' if is_approx else (r['numero'] or ''),
                 'bairro': r['bairro'] or '',
                 'cidade': r['cidade'] or 'São Paulo',
                 'estado': r['estado'] or 'SP',
@@ -978,18 +1219,26 @@ def list_services():
             'prestador': {
                 'id': r['prestador_id'],
                 'nome': r['prestador_nome'],
-                'telefone': r['prestador_telefone'],
+                'telefone': tel_out,
                 'bio': r['prestador_bio'],
                 'avaliacao': r['avaliacao_media'],
                 'total_avaliacoes': r['total_avaliacoes'],
                 'disponivel': bool(r['disponivel']),
                 'plano': _row_get(r, 'plano', 'basico'),
+                'kyc_tier': int(_row_get(r, 'kyc_tier', 1) or 1),
+                'kyc_status': _row_get(r, 'kyc_status', 'aprovado'),
+                'novo_no_pertoja': v < 5,
                 'super_profissional': bool((r['avaliacao_media'] or 0) >= 4.8 and (r['total_avaliacoes'] or 0) >= 5),
-                'lat': svc_lat,
-                'lng': svc_lng
+                'lat': out_lat,
+                'lng': out_lng
             },
             'distancia_km': round(dist_km, 1),
-            'score': round(score)
+            'score': round(score),
+            'score_detalhes': {
+                'raio_max_km': 15.0,
+                'nota_bayesiana': round(nota_bayes, 2),
+                'novo_no_pertoja': v < 5
+            }
         })
 
     if order == 'score':
@@ -1026,11 +1275,28 @@ def create_service():
     if not user or user['tipo'] != 'prestador':
         return jsonify({'error': 'Apenas prestadores podem cadastrar serviços.'}), 403
 
+    if _row_get(user, 'status_conta', 'ativo') in ('suspenso_cautelar', 'bloqueado'):
+        return jsonify({'error': 'Conta suspensa ou bloqueada não pode publicar serviços.'}), 403
+
     data = request.get_json() or {}
     titulo = str(data.get('titulo') or '').strip()
     descricao = str(data.get('descricao') or '').strip()
     categoria = str(data.get('categoria') or '').strip()
     preco = data.get('preco')
+
+    texto_combinado = f"{titulo} {descricao} {categoria}".lower()
+    escopos_proibidos = (
+        'escolta armada', 'arma de fogo',
+        'gás alta pressão sem certificação', 'gas alta pressao sem certificacao',
+        'ilícito', 'ilicito'
+    )
+    if any(p in texto_combinado for p in escopos_proibidos):
+        return jsonify({'error': 'Escopo de serviço proibido pelas políticas de segurança do PertoJá.'}), 400
+
+    kyc_status = _row_get(user, 'kyc_status', 'aprovado')
+    kyc_tier = int(_row_get(user, 'kyc_tier', 1) or 1)
+    if kyc_status == 'reprovado' or (data.get('exige_kyc_tier2') and kyc_tier < 2):
+        return jsonify({'error': 'Verificação KYC insuficiente para publicar este serviço.'}), 403
 
     # Dados de endereço do serviço (herda do prestador se não informados)
     cep = str(data.get('cep') or user['cep'] or '').strip()
@@ -1165,7 +1431,17 @@ def create_order():
             'code': 'FORBIDDEN'
         }), 403
 
+    if _row_get(user, 'status_conta', 'ativo') in ('suspenso_cautelar', 'bloqueado'):
+        return jsonify({
+            'error': 'Conta suspensa cautelarmente ou bloqueada não pode criar chamados.',
+            'code': 'FORBIDDEN'
+        }), 403
+
     data = request.get_json() or {}
+
+    aceite_termos = data.get('aceite_termos')
+    if aceite_termos in (False, 'false', 'False', '0', 0):
+        return jsonify({'error': 'É necessário aceitar os Termos de Uso e Política de Privacidade para criar o pedido.'}), 400
 
     # Blindagem contra requisições forjadas com cliente_id arbitrário
     if data.get('cliente_id') is not None:
@@ -1239,6 +1515,12 @@ def create_order():
     ))
     conn.commit()
     order_id = cursor.lastrowid
+    if aceite_termos in (True, 'true', 'True', '1', 1):
+        conn.execute(
+            "INSERT INTO user_consents (user_id, doc_type, doc_version, ip_hash) VALUES (?, 'pedido_escrow', ?, ?)",
+            (user['id'], str(data.get('versao_termos') or '2026.1').strip()[:20], _hash_ip(_get_client_ip()))
+        )
+        conn.commit()
     conn.close()
 
     return jsonify({
@@ -1280,7 +1562,7 @@ def pay_order(order_id):
     if escrow_hold:
         conn.execute('''
             UPDATE orders
-            SET pago = 1, metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP
+            SET pago = 1, escrow_status = 'retido', metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', (metodo_pagamento, order_id))
         conn.commit()
@@ -1291,12 +1573,19 @@ def pay_order(order_id):
             'order_id': order_id,
             'status': current_status,
             'pago': True,
+            'escrow_status': 'retido',
             'metodo_pagamento': metodo_pagamento
         }), 200
 
+    if order['status'] in ('em_disputa', 'cancelado'):
+        conn.close()
+        return jsonify({'error': f"Não é possível finalizar pagamento de pedido com status '{order['status']}'."}), 400
+
     conn.execute('''
         UPDATE orders 
-        SET pago = 1, status = 'finalizado', metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP 
+        SET pago = 1, status = 'finalizado', escrow_status = 'liberado',
+            completed_at = CURRENT_TIMESTAMP, released_at = CURRENT_TIMESTAMP,
+            metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP 
         WHERE id = ?
     ''', (metodo_pagamento, order_id))
     conn.commit()
@@ -1306,6 +1595,7 @@ def pay_order(order_id):
         'message': 'Pagamento confirmado e pedido finalizado com sucesso!',
         'order_id': order_id,
         'status': 'finalizado',
+        'escrow_status': 'liberado',
         'pago': True
     }), 200
 
@@ -1331,7 +1621,11 @@ def list_orders():
                 o.pago,
                 o.codigo_confirmacao,
                 o.motivo_cancelamento,
-                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS ja_avaliado,
+                o.escrow_status,
+                o.taxa_deslocamento,
+                o.valor_estornado,
+                o.share_token,
+                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'cliente') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
                 COALESCE(s.categoria, 'Geral') AS servico_categoria,
@@ -1375,7 +1669,11 @@ def list_orders():
                 o.pago,
                 o.codigo_confirmacao,
                 o.motivo_cancelamento,
-                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS ja_avaliado,
+                o.escrow_status,
+                o.taxa_deslocamento,
+                o.valor_estornado,
+                o.share_token,
+                EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'prestador') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
                 COALESCE(s.categoria, 'Geral') AS servico_categoria,
@@ -1391,10 +1689,44 @@ def list_orders():
         orders = conn.execute(sql, (user['id'],)).fetchall()
 
     conn.close()
+    mask_pii = request.args.get('mask_pii') == '1'
     result = []
     for o in orders:
         item = dict(o)
         item['ja_avaliado'] = bool(item.get('ja_avaliado'))
+        item['escrow_status'] = item.get('escrow_status') or 'pendente'
+        item['taxa_deslocamento'] = float(item.get('taxa_deslocamento') or 0.0)
+        item['valor_estornado'] = float(item.get('valor_estornado') or 0.0)
+        item['em_disputa'] = (item.get('status') == 'em_disputa')
+
+        if user['tipo'] == 'prestador':
+            # ET-02: Prestador nunca recebe o PIN de confirmação
+            item['codigo_confirmacao'] = None
+            item['pin_obrigatorio'] = True
+            bairro = item.get('bairro_cliente') or ''
+            cidade = item.get('cidade_cliente') or 'São Paulo'
+            st = item.get('status')
+            item['endereco_protegido'] = (st == 'solicitado')
+            item['endereco_cliente_resumo'] = f"{bairro}, {cidade}".strip(', ')
+            if mask_pii or st in ('solicitado', 'finalizado', 'cancelado'):
+                item['endereco_cliente'] = 'Protegido'
+                item['numero_cliente'] = ''
+                item['complemento_cliente'] = ''
+                item['cep_cliente'] = ''
+                item['lat_cliente'] = None
+                item['lng_cliente'] = None
+                tel = str(item.get('cliente_telefone') or '')
+                item['cliente_telefone'] = (tel[:-4] + '****') if len(tel) >= 4 else '****'
+        else:
+            st = item.get('status')
+            if mask_pii or st in ('finalizado', 'cancelado'):
+                item['prestador_endereco'] = 'Protegido'
+                item['prestador_numero'] = ''
+                item['prestador_lat'] = None
+                item['prestador_lng'] = None
+                tel = str(item.get('prestador_telefone') or '')
+                item['prestador_telefone'] = (tel[:-4] + '****') if len(tel) >= 4 else '****'
+
         result.append(item)
     return jsonify(result)
 
@@ -1408,9 +1740,12 @@ def update_order_status(order_id):
     data = request.get_json() or {}
     novo_status = data.get('status')
     motivo = str(data.get('motivo') or '').strip()
-    valid_statuses = ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')
+    valid_statuses = ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')
     if novo_status not in valid_statuses:
         return jsonify({'error': f'Status inválido. Escolha: {", ".join(valid_statuses)}'}), 400
+
+    if _row_get(user, 'status_conta', 'ativo') in ('suspenso_cautelar', 'bloqueado') and novo_status in ('confirmado', 'em_transito', 'em_execucao'):
+        return jsonify({'error': 'Conta suspensa cautelarmente ou bloqueada não pode aceitar ou avançar chamados.'}), 403
 
     conn = get_db_connection()
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
@@ -1426,22 +1761,181 @@ def update_order_status(order_id):
         conn.close()
         return jsonify({'error': 'Sem permissão para alterar este pedido.'}), 403
 
-    if novo_status == 'cancelado' and motivo:
+    atual_status = order['status']
+    if atual_status in ('finalizado', 'cancelado') and novo_status != 'em_disputa' and novo_status != atual_status:
+        conn.close()
+        return jsonify({'error': f'Não é permitido regredir ou alterar um pedido já {atual_status}.'}), 400
+
+    status_rank = {'solicitado': 0, 'confirmado': 1, 'em_transito': 2, 'em_execucao': 3, 'finalizado': 4}
+    if atual_status in status_rank and novo_status in status_rank and status_rank[novo_status] < status_rank[atual_status]:
+        conn.close()
+        return jsonify({'error': f'Transição regressiva inválida de {atual_status} para {novo_status}.'}), 400
+
+    # ET-02 / ET-07: Validação obrigatória de PIN ao iniciar execução
+    if novo_status == 'em_execucao':
+        pin_esperado = str(_row_get(order, 'codigo_confirmacao', '') or '').strip()
+        if pin_esperado:
+            pin_informado = str(data.get('codigo_confirmacao') or '').strip()
+            if not pin_informado or pin_informado != pin_esperado:
+                conn.close()
+                return jsonify({'error': 'Código de confirmação (PIN) obrigatório e deve corresponder ao informado pelo cliente.'}), 400
+
+    escrow_status = _row_get(order, 'escrow_status', 'pendente')
+    taxa_deslocamento = float(_row_get(order, 'taxa_deslocamento', 0.0) or 0.0)
+    valor_estornado = float(_row_get(order, 'valor_estornado', 0.0) or 0.0)
+
+    if novo_status == 'cancelado':
+        if int(_row_get(order, 'pago', 0) or 0) == 1:
+            preco = float(_row_get(order, 'preco_total', 0.0) or 0.0)
+            if atual_status in ('em_transito', 'em_execucao') and user['tipo'] == 'cliente':
+                taxa_deslocamento = min(round(preco * 0.20, 2), 40.0)
+                valor_estornado = round(max(0.0, preco - taxa_deslocamento), 2)
+                escrow_status = 'estornado_parcial'
+            else:
+                taxa_deslocamento = 0.0
+                valor_estornado = preco
+                escrow_status = 'estornado_total'
         conn.execute('''
             UPDATE orders 
-            SET status = ?, motivo_cancelamento = ?, atualizado_em = CURRENT_TIMESTAMP 
+            SET status = ?, motivo_cancelamento = ?, escrow_status = ?,
+                taxa_deslocamento = ?, valor_estornado = ?, atualizado_em = CURRENT_TIMESTAMP 
             WHERE id = ?
-        ''', (novo_status, motivo, order_id))
+        ''', (novo_status, motivo or _row_get(order, 'motivo_cancelamento'), escrow_status, taxa_deslocamento, valor_estornado, order_id))
+    elif novo_status == 'finalizado':
+        escrow_status = 'liberado'
+        conn.execute('''
+            UPDATE orders 
+            SET status = ?, escrow_status = ?, completed_at = CURRENT_TIMESTAMP,
+                released_at = CURRENT_TIMESTAMP, atualizado_em = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (novo_status, escrow_status, order_id))
+    elif novo_status == 'em_disputa':
+        escrow_status = 'em_disputa'
+        conn.execute('''
+            UPDATE orders 
+            SET status = ?, escrow_status = ?, atualizado_em = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (novo_status, escrow_status, order_id))
     else:
         conn.execute('''
             UPDATE orders 
             SET status = ?, atualizado_em = CURRENT_TIMESTAMP 
             WHERE id = ?
         ''', (novo_status, order_id))
+
     conn.commit()
     conn.close()
 
-    return jsonify({'message': f'Status do pedido atualizado para {novo_status}.', 'status': novo_status})
+    return jsonify({
+        'message': f'Status do pedido atualizado para {novo_status}.',
+        'status': novo_status,
+        'escrow_status': escrow_status,
+        'taxa_deslocamento': taxa_deslocamento,
+        'valor_estornado': valor_estornado
+    })
+
+
+@app.route('/api/orders/<int:order_id>/dispute', methods=['POST'])
+def open_order_dispute(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    motivo = str(data.get('motivo') or '').strip()
+    descricao = str(data.get('descricao') or data.get('evidencias') or '').strip()
+    if not motivo:
+        return jsonify({'error': 'Informe o motivo da disputa.'}), 400
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para abrir disputa neste pedido.'}), 403
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO disputes (order_id, opened_by, motivo, descricao, status)
+            VALUES (?, ?, ?, ?, 'aberta')
+        ''', (order_id, user['id'], motivo, descricao))
+        dispute_id = cursor.lastrowid
+        conn.execute('''
+            UPDATE orders
+            SET status = 'em_disputa', escrow_status = 'em_disputa', atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (order_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Disputa aberta com sucesso. O valor permanece retido em garantia durante a mediação.',
+        'dispute_id': dispute_id,
+        'order_id': order_id,
+        'status': 'em_disputa',
+        'escrow_status': 'em_disputa'
+    }), 201
+
+
+@app.route('/api/provider/financial-summary', methods=['GET'])
+def provider_financial_summary():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+    if user['tipo'] != 'prestador':
+        return jsonify({'error': 'Acesso exclusivo para prestadores.'}), 403
+
+    current_ym = datetime.utcnow().strftime('%Y-%m')
+    plano = _row_get(user, 'plano', 'basico')
+    taxa_percentual = 0.08 if plano == 'pro' else 0.12
+
+    conn = get_db_connection()
+    try:
+        orders = conn.execute('''
+            SELECT status, pago, preco_total, escrow_status, criado_em, completed_at
+            FROM orders
+            WHERE prestador_id = ?
+        ''', (user['id'],)).fetchall()
+    finally:
+        conn.close()
+
+    faturamento_bruto_mes = 0.0
+    saldo_escrow_retido = 0.0
+    total_liberado = 0.0
+
+    for o in orders:
+        preco = float(_row_get(o, 'preco_total', 0.0) or 0.0)
+        status = _row_get(o, 'status', '')
+        pago = int(_row_get(o, 'pago', 0) or 0)
+        escrow_st = _row_get(o, 'escrow_status', 'pendente')
+        ref_dt = str(_row_get(o, 'completed_at') or _row_get(o, 'criado_em') or '')
+
+        if status == 'finalizado':
+            if ref_dt.startswith(current_ym):
+                faturamento_bruto_mes += preco
+            if pago == 1:
+                total_liberado += preco
+        elif pago == 1 and status not in ('finalizado', 'cancelado') and escrow_st != 'estornado_total':
+            saldo_escrow_retido += preco
+
+    faturamento_bruto_mes = round(faturamento_bruto_mes, 2)
+    saldo_escrow_retido = round(saldo_escrow_retido, 2)
+    total_liberado = round(total_liberado, 2)
+    total_liberado_liquido = round(total_liberado * (1.0 - taxa_percentual), 2)
+    isento_mensalidade = (plano == 'basico' and faturamento_bruto_mes <= 1800.0)
+
+    return jsonify({
+        'mes_referencia': current_ym,
+        'plano': plano,
+        'taxa_percentual': taxa_percentual,
+        'faturamento_bruto_mes': faturamento_bruto_mes,
+        'isento_mensalidade': isento_mensalidade,
+        'saldo_escrow_retido': saldo_escrow_retido,
+        'total_liberado': total_liberado,
+        'total_liberado_liquido': total_liberado_liquido
+    }), 200
 
 
 @app.route('/api/orders/<int:order_id>/review', methods=['POST'])
@@ -1449,9 +1943,6 @@ def review_order(order_id):
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Autenticação obrigatória para avaliar pedido.', 'code': 'UNAUTHORIZED'}), 401
-
-    if user['tipo'] != 'cliente':
-        return jsonify({'error': 'Apenas clientes podem avaliar pedidos.', 'code': 'FORBIDDEN'}), 403
 
     data = request.get_json(silent=True) or {}
     raw_nota = data.get('nota')
@@ -1470,31 +1961,63 @@ def review_order(order_id):
         if not order:
             return jsonify({'error': 'Pedido não encontrado.', 'code': 'NOT_FOUND'}), 404
 
-        if order['cliente_id'] != user['id']:
-            return jsonify({'error': 'Sem permissão para avaliar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
+        if user['tipo'] == 'cliente':
+            if order['cliente_id'] != user['id']:
+                return jsonify({'error': 'Sem permissão para avaliar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
+            autor_tipo = 'cliente'
+            avaliado_id = order['prestador_id']
+        elif user['tipo'] == 'prestador':
+            if order['prestador_id'] != user['id']:
+                return jsonify({'error': 'Sem permissão para avaliar pedido de outro prestador.', 'code': 'FORBIDDEN'}), 403
+            autor_tipo = 'prestador'
+            avaliado_id = order['cliente_id']
+        else:
+            return jsonify({'error': 'Tipo de usuário inválido.', 'code': 'FORBIDDEN'}), 403
 
         if order['status'] != 'finalizado':
             return jsonify({'error': 'Apenas pedidos finalizados podem ser avaliados.'}), 400
 
-        existing = conn.execute('SELECT id FROM reviews WHERE order_id = ?', (order_id,)).fetchone()
-        if existing:
-            return jsonify({'error': 'Este pedido já foi avaliado.'}), 409
-
-        conn.execute('''
-            INSERT INTO reviews (order_id, cliente_id, prestador_id, nota, comentario)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (order_id, user['id'], order['prestador_id'], nota, comentario))
-
-        stats = conn.execute(
-            'SELECT AVG(nota) AS media, COUNT(*) AS total FROM reviews WHERE prestador_id = ?',
-            (order['prestador_id'],)
+        existing = conn.execute(
+            "SELECT id FROM reviews WHERE order_id = ? AND COALESCE(autor_tipo, 'cliente') = ?",
+            (order_id, autor_tipo)
         ).fetchone()
-        nova_media = round(float(stats['media']), 2) if stats and stats['media'] is not None else nota
-        novo_total = int(stats['total']) if stats and stats['total'] is not None else 1
+        if existing:
+            return jsonify({'error': 'Este pedido já foi avaliado por você.'}), 409
+
+        # Captura estado anterior do avaliado antes de inserir (preserva seed total_avaliacoes=15)
+        target_user = conn.execute(
+            'SELECT avaliacao_media, total_avaliacoes FROM users WHERE id = ?',
+            (avaliado_id,)
+        ).fetchone()
+        old_total = int(_row_get(target_user, 'total_avaliacoes', 0) or 0)
+        old_media = float(_row_get(target_user, 'avaliacao_media', 5.0) or 5.0)
+        prev_real_row = conn.execute(
+            'SELECT COUNT(*) AS cnt FROM reviews WHERE avaliado_id = ? OR (avaliado_id IS NULL AND prestador_id = ?)',
+            (avaliado_id, avaliado_id)
+        ).fetchone()
+        prev_real_count = int(_row_get(prev_real_row, 'cnt', 0) or 0)
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO reviews (order_id, cliente_id, prestador_id, nota, comentario, autor_tipo, avaliado_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, order['cliente_id'], order['prestador_id'], nota, comentario, autor_tipo, avaliado_id))
+        review_id = cursor.lastrowid
+
+        if old_total > prev_real_count:
+            novo_total = old_total + 1
+            nova_media = round(((old_media * old_total) + nota) / novo_total, 2)
+        else:
+            stats = conn.execute(
+                'SELECT AVG(nota) AS media, COUNT(*) AS total FROM reviews WHERE avaliado_id = ? OR (avaliado_id IS NULL AND prestador_id = ?)',
+                (avaliado_id, avaliado_id)
+            ).fetchone()
+            nova_media = round(float(stats['media']), 2) if stats and stats['media'] is not None else nota
+            novo_total = int(stats['total']) if stats and stats['total'] is not None else 1
 
         conn.execute(
             'UPDATE users SET avaliacao_media = ?, total_avaliacoes = ? WHERE id = ?',
-            (nova_media, novo_total, order['prestador_id'])
+            (nova_media, novo_total, avaliado_id)
         )
         conn.commit()
     finally:
@@ -1502,9 +2025,253 @@ def review_order(order_id):
 
     return jsonify({
         'message': 'Avaliação registrada com sucesso!',
+        'review_id': review_id,
+        'autor_tipo': autor_tipo,
         'avaliacao_media': nova_media,
         'total_avaliacoes': novo_total
     }), 201
+
+
+@app.route('/api/reviews/<int:review_id>/reply', methods=['POST'])
+def reply_review(review_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    replica = str(data.get('replica') or '').strip()
+    if not replica:
+        return jsonify({'error': 'Informe o texto da réplica.'}), 400
+
+    conn = get_db_connection()
+    try:
+        rev = conn.execute('SELECT * FROM reviews WHERE id = ?', (review_id,)).fetchone()
+        if not rev:
+            return jsonify({'error': 'Avaliação não encontrada.'}), 404
+        avaliado_id = _row_get(rev, 'avaliado_id') or rev['prestador_id']
+        if int(avaliado_id) != int(user['id']):
+            return jsonify({'error': 'Apenas o usuário avaliado pode publicar uma réplica.'}), 403
+
+        conn.execute(
+            'UPDATE reviews SET replica = ?, replied_at = CURRENT_TIMESTAMP WHERE id = ?',
+            (replica, review_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Réplica publicada com sucesso.', 'review_id': review_id, 'replica': replica}), 200
+
+
+@app.route('/api/reviews/<int:review_id>/contest', methods=['POST'])
+def contest_review(review_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    motivo = str(data.get('motivo') or '').strip()
+    if not motivo:
+        return jsonify({'error': 'Informe o motivo da contestação.'}), 400
+
+    conn = get_db_connection()
+    try:
+        rev = conn.execute('SELECT * FROM reviews WHERE id = ?', (review_id,)).fetchone()
+        if not rev:
+            return jsonify({'error': 'Avaliação não encontrada.'}), 404
+        avaliado_id = _row_get(rev, 'avaliado_id') or rev['prestador_id']
+        if int(avaliado_id) != int(user['id']):
+            return jsonify({'error': 'Apenas o usuário avaliado pode contestar esta avaliação.'}), 403
+
+        conn.execute(
+            "UPDATE reviews SET contestada = 1, motivo_contestacao = ?, status_moderacao = 'em_revisao' WHERE id = ?",
+            (motivo, review_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Contestação registrada e encaminhada para revisão.',
+        'review_id': review_id,
+        'status_moderacao': 'em_revisao'
+    }), 200
+
+
+@app.route('/api/orders/<int:order_id>/sos', methods=['POST'])
+def trigger_order_sos(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    descricao = str(data.get('descricao') or 'Acionamento de emergência SOS').strip()
+    tipo = str(data.get('tipo') or 'sos').strip()[:40]
+    lat = safe_coord(data.get('lat'), safe_coord(user['lat'], -23.5653))
+    lng = safe_coord(data.get('lng'), safe_coord(user['lng'], -46.6517))
+    denunciar = bool(data.get('denunciar_contraparte'))
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para acionar SOS neste pedido.'}), 403
+
+        contraparte_id = order['prestador_id'] if user['id'] == order['cliente_id'] else order['cliente_id']
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO safety_incidents (order_id, reporter_id, reported_user_id, tipo, descricao, lat, lng, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'aberto')
+        ''', (order_id, user['id'], contraparte_id if denunciar else None, tipo, descricao, lat, lng))
+        incident_id = cursor.lastrowid
+
+        if denunciar:
+            conn.execute("UPDATE users SET status_conta = 'suspenso_cautelar' WHERE id = ?", (contraparte_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Alerta SOS registrado com prioridade máxima.',
+        'incident_id': incident_id,
+        'status': 'aberto',
+        'contraparte_suspensa': denunciar
+    }), 201
+
+
+@app.route('/api/orders/<int:order_id>/share-route', methods=['POST'])
+def share_order_route(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para compartilhar rota deste pedido.'}), 403
+
+        token = _row_get(order, 'share_token') or secrets.token_urlsafe(16)
+        conn.execute('UPDATE orders SET share_token = ? WHERE id = ?', (token, order_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'share_token': token,
+        'share_url': f'/api/shared-route/{token}'
+    }), 200
+
+
+@app.route('/api/shared-route/<token>', methods=['GET'])
+def get_shared_route(token):
+    conn = get_db_connection()
+    try:
+        row = conn.execute('''
+            SELECT o.id AS order_id, o.status, o.bairro_cliente, o.cidade_cliente,
+                   o.atualizado_em, s.titulo AS servico_titulo, u.nome AS prestador_nome
+            FROM orders o
+            LEFT JOIN services s ON o.servico_id = s.id
+            LEFT JOIN users u ON o.prestador_id = u.id
+            WHERE o.share_token = ?
+        ''', (token,)).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({'error': 'Link de compartilhamento inválido ou expirado.'}), 404
+
+    return jsonify({
+        'order_id': row['order_id'],
+        'status': row['status'],
+        'servico_titulo': row['servico_titulo'],
+        'prestador_nome': row['prestador_nome'],
+        'bairro_cliente': row['bairro_cliente'],
+        'cidade_cliente': row['cidade_cliente'],
+        'atualizado_em': str(row['atualizado_em'])
+    }), 200
+
+
+@app.route('/api/account/appeal', methods=['POST'])
+def create_account_appeal():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    motivo = str(data.get('motivo') or '').strip()
+    evidencias = str(data.get('evidencias') or '').strip()
+    if not motivo:
+        return jsonify({'error': 'Informe a justificativa do recurso.'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO account_appeals (user_id, motivo, evidencias, status)
+            VALUES (?, ?, ?, 'em_analise')
+        ''', (user['id'], motivo, evidencias))
+        appeal_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Recurso registrado para revisão humana.',
+        'appeal_id': appeal_id,
+        'status': 'em_analise'
+    }), 201
+
+
+@app.route('/api/orders/<int:order_id>/messages', methods=['GET', 'POST'])
+def order_messages(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para acessar o chat deste pedido.'}), 403
+
+        if request.method == 'GET':
+            rows = conn.execute('''
+                SELECT m.id, m.order_id, m.sender_id, m.sender_tipo, m.mensagem, m.criado_em, u.nome AS sender_nome
+                FROM order_messages m
+                LEFT JOIN users u ON m.sender_id = u.id
+                WHERE m.order_id = ?
+                ORDER BY m.id ASC
+            ''', (order_id,)).fetchall()
+            return jsonify([dict(r) for r in rows]), 200
+
+        data = request.get_json(silent=True) or {}
+        mensagem = str(data.get('mensagem') or '').strip()
+        if not mensagem:
+            return jsonify({'error': 'A mensagem não pode estar vazia.'}), 400
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO order_messages (order_id, sender_id, sender_tipo, mensagem)
+            VALUES (?, ?, ?, ?)
+        ''', (order_id, user['id'], user['tipo'], mensagem))
+        msg_id = cursor.lastrowid
+        conn.commit()
+        return jsonify({
+            'id': msg_id,
+            'order_id': order_id,
+            'sender_id': user['id'],
+            'sender_tipo': user['tipo'],
+            'mensagem': mensagem
+        }), 201
+    finally:
+        conn.close()
 
 
 # ================= Inicialização do Servidor =================

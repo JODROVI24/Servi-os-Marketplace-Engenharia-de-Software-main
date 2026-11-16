@@ -295,7 +295,7 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(res_order.status_code, 201)
         order_id = json.loads(res_order.data)['order_id']
 
-        # 4. Login com o prestador do serviço para checar o pedido recebido com endereço
+        # 4. Login com o prestador do serviço para checar proteção pré-aceite e endereço após confirmação
         self.client.post('/api/auth/login', json={
             'email': servico['prestador']['email'] if 'email' in servico['prestador'] else 'carlos@pertoja.com',
             'senha': '123456'
@@ -305,8 +305,17 @@ class TestMarketplaceFull(unittest.TestCase):
         pedidos_recebidos = json.loads(res_prest_orders.data)
         pedido = next((p for p in pedidos_recebidos if p['order_id'] == order_id), None)
         if pedido:
-            self.assertEqual(pedido['endereco_cliente'], 'Rua Haddock Lobo')
+            self.assertTrue(pedido['endereco_protegido'])
+            self.assertEqual(pedido['endereco_cliente'], 'Protegido')
             self.assertEqual(pedido['bairro_cliente'], 'Cerqueira César')
+
+            # Após confirmar o chamado, o endereço completo é liberado para o atendimento
+            self.client.patch(f'/api/orders/{order_id}/status', json={'status': 'confirmado'})
+            res_prest_orders2 = self.client.get('/api/orders')
+            pedidos_confirmados = json.loads(res_prest_orders2.data)
+            pedido_conf = next(p for p in pedidos_confirmados if p['order_id'] == order_id)
+            self.assertEqual(pedido_conf['endereco_cliente'], 'Rua Haddock Lobo')
+            self.assertEqual(pedido_conf['bairro_cliente'], 'Cerqueira César')
 
     def test_08_order_edge_cases_coordinates_fallback(self):
         # 1. Login com cliente
@@ -1071,6 +1080,393 @@ class TestMarketplaceFull(unittest.TestCase):
         created = next((o for o in orders if o['order_id'] == order_id), None)
         self.assertIsNotNone(created)
         self.assertEqual(created['metodo_pagamento'], 'escrow')
+
+    def test_33_et02_et04_pin_protection_and_order_address_summary(self):
+        # Cliente cria pedido
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_order = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'bairro': 'Bela Vista',
+            'cidade': 'São Paulo'
+        })
+        self.assertEqual(res_order.status_code, 201)
+        order_data = json.loads(res_order.data)
+        order_id = order_data['order_id']
+        pin_real = order_data['codigo_confirmacao']
+
+        # Prestador consulta pedidos: PIN nunca é enviado e resumo de endereço está presente
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        orders_prest = json.loads(self.client.get('/api/orders').data)
+        alvo = next(o for o in orders_prest if o['order_id'] == order_id)
+        self.assertIsNone(alvo['codigo_confirmacao'])
+        self.assertTrue(alvo['pin_obrigatorio'])
+        self.assertTrue(alvo['endereco_protegido'])
+        self.assertIn('Bela Vista', alvo['endereco_cliente_resumo'])
+
+        # PIN errado ao iniciar execução -> 400
+        self.client.patch(f'/api/orders/{order_id}/status', json={'status': 'confirmado'})
+        self.client.patch(f'/api/orders/{order_id}/status', json={'status': 'em_transito'})
+        res_bad_pin = self.client.patch(f'/api/orders/{order_id}/status', json={
+            'status': 'em_execucao',
+            'codigo_confirmacao': '0000' if pin_real != '0000' else '9999'
+        })
+        self.assertEqual(res_bad_pin.status_code, 400)
+
+        # PIN correto -> 200
+        res_ok_pin = self.client.patch(f'/api/orders/{order_id}/status', json={
+            'status': 'em_execucao',
+            'codigo_confirmacao': pin_real
+        })
+        self.assertEqual(res_ok_pin.status_code, 200)
+
+    def test_34_et03_et12_bayesian_score_and_anonymous_jitter(self):
+        self.client.post('/api/auth/logout')
+        res = self.client.get('/api/services?order=score')
+        self.assertEqual(res.status_code, 200)
+        svcs = json.loads(res.data)
+        self.assertGreater(len(svcs), 0)
+        first = svcs[0]
+        self.assertTrue(first['localizacao_aproximada'])
+        self.assertIn('score_detalhes', first)
+        self.assertEqual(first['score_detalhes']['raio_max_km'], 15.0)
+        self.assertIn('kyc_tier', first['prestador'])
+        self.assertIn('kyc_status', first['prestador'])
+        self.assertIn('novo_no_pertoja', first['prestador'])
+        if first['prestador']['telefone']:
+            self.assertTrue(first['prestador']['telefone'].endswith('****'))
+
+    def test_35_et06_terms_consent_and_kyc_fields_on_register(self):
+        import database
+        # Bloqueia aceite_termos=False
+        res_no = self.client.post('/api/auth/register', json={
+            'nome': 'Sem Termos',
+            'email': 'sem_termos@pertoja.com',
+            'senha': 'password123',
+            'aceite_termos': False
+        })
+        self.assertEqual(res_no.status_code, 400)
+
+        # Aceita com CIN e registro profissional
+        res_ok = self.client.post('/api/auth/register', json={
+            'nome': 'Com Termos',
+            'email': 'com_termos@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'aceite_termos': True,
+            'versao_termos': '2026.1',
+            'kyc_documento_tipo': 'CIN',
+            'registro_profissional': 'CFT-998877'
+        })
+        self.assertEqual(res_ok.status_code, 201)
+        u = json.loads(res_ok.data)['user']
+        self.assertEqual(u['kyc_documento_tipo'], 'CIN')
+        self.assertEqual(u['registro_profissional'], 'CFT-998877')
+
+        conn = database.get_db_connection()
+        consent = conn.execute('SELECT * FROM user_consents WHERE user_id = ?', (u['id'],)).fetchone()
+        conn.close()
+        self.assertIsNotNone(consent)
+        self.assertEqual(consent['doc_version'], '2026.1')
+
+    def test_36_et07_et08_status_regression_cancel_refund_and_dispute(self):
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_o1 = self.client.post('/api/orders', json={'servico_id': 1})
+        o1_id = json.loads(res_o1.data)['order_id']
+        self.client.post(f'/api/orders/{o1_id}/pay', json={'escrow_hold': True})
+        self.client.patch(f'/api/orders/{o1_id}/status', json={'status': 'confirmado'})
+        self.client.patch(f'/api/orders/{o1_id}/status', json={'status': 'em_transito'})
+
+        # Cancelamento pelo cliente em trânsito aplica taxa de deslocamento
+        res_cancel = self.client.patch(f'/api/orders/{o1_id}/status', json={
+            'status': 'cancelado',
+            'motivo': 'Imprevisto'
+        })
+        self.assertEqual(res_cancel.status_code, 200)
+        cancel_data = json.loads(res_cancel.data)
+        self.assertEqual(cancel_data['escrow_status'], 'estornado_parcial')
+        self.assertGreater(cancel_data['taxa_deslocamento'], 0.0)
+
+        # Regressão de cancelado -> solicitado retorna 400
+        res_reg = self.client.patch(f'/api/orders/{o1_id}/status', json={'status': 'solicitado'})
+        self.assertEqual(res_reg.status_code, 400)
+
+        # Abertura de disputa
+        res_o2 = self.client.post('/api/orders', json={'servico_id': 1})
+        o2_id = json.loads(res_o2.data)['order_id']
+        res_disp = self.client.post(f'/api/orders/{o2_id}/dispute', json={
+            'motivo': 'Serviço incompleto',
+            'descricao': 'Faltou finalizar a instalação.'
+        })
+        self.assertEqual(res_disp.status_code, 201)
+        disp_data = json.loads(res_disp.data)
+        self.assertEqual(disp_data['status'], 'em_disputa')
+        self.assertEqual(disp_data['escrow_status'], 'em_disputa')
+
+    def test_37_et09_kyc_verify_and_forbidden_scopes(self):
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res_kyc = self.client.post('/api/kyc/verify', json={
+            'kyc_documento_tipo': 'RG',
+            'registro_profissional': 'CREA-SP-12345',
+            'selfie_verificada': True
+        })
+        self.assertEqual(res_kyc.status_code, 200)
+        self.assertEqual(json.loads(res_kyc.data)['kyc_tier'], 2)
+
+        res_forb = self.client.post('/api/services', json={
+            'titulo': 'Serviço de escolta armada privada',
+            'categoria': 'Segurança',
+            'preco': 500.0
+        })
+        self.assertEqual(res_forb.status_code, 400)
+
+    def test_38_et10_lgpd_export_and_anonymize_delete(self):
+        self.client.post('/api/auth/register', json={
+            'nome': 'LGPD User',
+            'email': 'lgpd_user@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'cliente'
+        })
+        res_exp = self.client.get('/api/profile/export')
+        self.assertEqual(res_exp.status_code, 200)
+        exp_data = json.loads(res_exp.data)
+        self.assertNotIn('senha_hash', exp_data['user'])
+        self.assertIn('consents', exp_data)
+
+        # Cria pedido e abre disputa -> DELETE /api/profile deve retornar 409
+        o_id = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)['order_id']
+        self.client.post(f'/api/orders/{o_id}/dispute', json={'motivo': 'Teste bloqueio LGPD'})
+        res_del_block = self.client.delete('/api/profile')
+        self.assertEqual(res_del_block.status_code, 409)
+
+        # Novo usuário sem disputa consegue anonimizar
+        self.client.post('/api/auth/register', json={
+            'nome': 'LGPD Clean',
+            'email': 'lgpd_clean@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'cliente'
+        })
+        res_del_ok = self.client.delete('/api/profile')
+        self.assertEqual(res_del_ok.status_code, 200)
+        self.assertFalse(json.loads(self.client.get('/api/auth/me').data)['authenticated'])
+
+    def test_39_et11_provider_financial_summary(self):
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res = self.client.get('/api/provider/financial-summary')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertIn('taxa_percentual', data)
+        self.assertIn('faturamento_bruto_mes', data)
+        self.assertIn('isento_mensalidade', data)
+        self.assertIn('saldo_escrow_retido', data)
+        self.assertIn('total_liberado', data)
+
+    def test_40_et13_mutual_review_reply_contest_and_seed_preservation(self):
+        # Usa prestador de seed (rafa@pertoja.com) que começa com total_avaliacoes=15
+        self.client.post('/api/auth/login', json={'email': 'rafa@pertoja.com', 'senha': '123456'})
+        rafa_svcs = json.loads(self.client.get('/api/my-services').data)
+        rafa_svc_id = rafa_svcs[0]['id']
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        o_id = json.loads(self.client.post('/api/orders', json={'servico_id': rafa_svc_id}).data)['order_id']
+        self.client.post(f'/api/orders/{o_id}/pay', json={})
+
+        # Cliente avalia prestador: total_avaliacoes deve ir de 15 para 16 (não cair para 1)
+        res_rev_cli = self.client.post(f'/api/orders/{o_id}/review', json={'nota': 5, 'comentario': 'Ótimo!'})
+        self.assertEqual(res_rev_cli.status_code, 201)
+        rev_cli_data = json.loads(res_rev_cli.data)
+        self.assertEqual(rev_cli_data['total_avaliacoes'], 16)
+        review_id = rev_cli_data['review_id']
+
+        # Prestador avalia cliente + replica + contesta
+        self.client.post('/api/auth/login', json={'email': 'rafa@pertoja.com', 'senha': '123456'})
+        res_rev_prest = self.client.post(f'/api/orders/{o_id}/review', json={'nota': 5, 'comentario': 'Cliente pontual'})
+        self.assertEqual(res_rev_prest.status_code, 201)
+
+        res_rep = self.client.post(f'/api/reviews/{review_id}/reply', json={'replica': 'Obrigado pela confiança!'})
+        self.assertEqual(res_rep.status_code, 200)
+
+        res_cont = self.client.post(f'/api/reviews/{review_id}/contest', json={'motivo': 'Comentário fora de contexto'})
+        self.assertEqual(res_cont.status_code, 200)
+        self.assertEqual(json.loads(res_cont.data)['status_moderacao'], 'em_revisao')
+
+    def test_41_et14_et15_sos_cautionary_suspension_share_route_appeal_and_chat(self):
+        # Cria cliente dedicado para testar suspensão cautelar sem afetar cliente padrão
+        self.client.post('/api/auth/register', json={
+            'nome': 'Cliente SOS',
+            'email': 'cliente_sos@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'cliente'
+        })
+        o_id = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)['order_id']
+
+        # Chat interno
+        res_msg = self.client.post(f'/api/orders/{o_id}/messages', json={'mensagem': 'Olá, estou aguardando.'})
+        self.assertEqual(res_msg.status_code, 201)
+        res_msgs = self.client.get(f'/api/orders/{o_id}/messages')
+        self.assertEqual(res_msgs.status_code, 200)
+        self.assertEqual(len(json.loads(res_msgs.data)), 1)
+
+        # Share route
+        res_share = self.client.post(f'/api/orders/{o_id}/share-route')
+        self.assertEqual(res_share.status_code, 200)
+        token = json.loads(res_share.data)['share_token']
+        self.client.post('/api/auth/logout')
+        res_pub_route = self.client.get(f'/api/shared-route/{token}')
+        self.assertEqual(res_pub_route.status_code, 200)
+        self.assertNotIn('codigo_confirmacao', json.loads(res_pub_route.data))
+
+        # Prestador aciona SOS denunciando cliente -> cliente fica suspenso_cautelar
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        res_sos = self.client.post(f'/api/orders/{o_id}/sos', json={
+            'descricao': 'Comportamento inadequado no local',
+            'denunciar_contraparte': True
+        })
+        self.assertEqual(res_sos.status_code, 201)
+        self.assertTrue(json.loads(res_sos.data)['contraparte_suspensa'])
+
+        # Cliente suspenso é bloqueado ao criar chamado (403) e pode enviar recurso (201)
+        self.client.post('/api/auth/login', json={'email': 'cliente_sos@pertoja.com', 'senha': 'password123'})
+        res_blk = self.client.post('/api/orders', json={'servico_id': 1})
+        self.assertEqual(res_blk.status_code, 403)
+        res_app = self.client.post('/api/account/appeal', json={
+            'motivo': 'Solicito revisão humana do ocorrido.',
+            'evidencias': 'Histórico do chat'
+        })
+        self.assertEqual(res_app.status_code, 201)
+
+    def test_42_sqlite_pre_et_upgrade_orders_status_check_and_dispute(self):
+        import sqlite3
+        import tempfile
+        import database
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        tmp.close()
+        old_db_path = database.DB_PATH
+        old_env = os.environ.get('MARKETPLACE_DB')
+        try:
+            conn = sqlite3.connect(tmp.name)
+            conn.executescript('''
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, senha_hash TEXT NOT NULL,
+                    tipo TEXT NOT NULL, telefone TEXT, bio TEXT, foto_url TEXT,
+                    cep TEXT, endereco TEXT, numero TEXT, complemento TEXT,
+                    bairro TEXT, cidade TEXT, estado TEXT,
+                    lat REAL DEFAULT -23.5653, lng REAL DEFAULT -46.6517,
+                    avaliacao_media REAL DEFAULT 5.0, total_avaliacoes INTEGER DEFAULT 0,
+                    disponivel INTEGER DEFAULT 1, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE services (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prestador_id INTEGER NOT NULL, titulo TEXT NOT NULL, descricao TEXT,
+                    categoria TEXT NOT NULL, preco REAL NOT NULL,
+                    cep TEXT, endereco TEXT, numero TEXT, bairro TEXT, cidade TEXT, estado TEXT,
+                    lat REAL, lng REAL, ativo INTEGER DEFAULT 1, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cliente_id INTEGER NOT NULL, prestador_id INTEGER NOT NULL, servico_id INTEGER NOT NULL,
+                    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
+                    preco_total REAL NOT NULL
+                );
+                CREATE TABLE reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL, cliente_id INTEGER NOT NULL, prestador_id INTEGER NOT NULL,
+                    nota REAL NOT NULL, comentario TEXT
+                );
+                CREATE TABLE geocode_cache (query TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, origem TEXT, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                INSERT INTO users (nome, email, senha_hash, tipo) VALUES ('Cli', 'cli@old.com', 'h', 'cliente');
+                INSERT INTO users (nome, email, senha_hash, tipo) VALUES ('Prest', 'prest@old.com', 'h', 'prestador');
+                INSERT INTO services (prestador_id, titulo, categoria, preco) VALUES (2, 'Svc', 'Limpeza', 100.0);
+                INSERT INTO orders (cliente_id, prestador_id, servico_id, status, preco_total) VALUES (1, 2, 1, 'solicitado', 100.0);
+            ''')
+            conn.commit()
+            conn.close()
+
+            os.environ['MARKETPLACE_DB'] = tmp.name
+            database.DB_PATH = tmp.name
+            database.init_db()
+
+            up_conn = database.get_db_connection()
+            up_conn.execute("UPDATE orders SET status = 'em_disputa' WHERE id = 1")
+            cur = up_conn.cursor()
+            cur.execute("INSERT INTO disputes (order_id, opened_by, motivo) VALUES (1, 1, 'Teste upgrade')")
+            up_conn.commit()
+            disp_id = cur.lastrowid
+            self.assertIsNotNone(disp_id)
+            row = up_conn.execute("SELECT status FROM orders WHERE id = 1").fetchone()
+            self.assertEqual(row['status'], 'em_disputa')
+            up_conn.close()
+        finally:
+            database.DB_PATH = old_db_path
+            if old_env is not None:
+                os.environ['MARKETPLACE_DB'] = old_env
+            else:
+                os.environ.pop('MARKETPLACE_DB', None)
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
+    def test_43_et02_et04_mandatory_pin_and_pii_masking_in_solicitado(self):
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_o = self.client.post('/api/orders', json={
+            'servico_id': 1,
+            'endereco': 'Rua Secreta',
+            'numero': '999',
+            'bairro': 'Pinheiros',
+            'cidade': 'São Paulo',
+            'lat': -23.5601,
+            'lng': -46.6850
+        })
+        o_id = json.loads(res_o.data)['order_id']
+
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        orders_sol = json.loads(self.client.get('/api/orders').data)
+        alvo = next(o for o in orders_sol if o['order_id'] == o_id)
+        self.assertEqual(alvo['endereco_cliente'], 'Protegido')
+        self.assertIsNone(alvo['lat_cliente'])
+        self.assertIsNone(alvo['lng_cliente'])
+        self.assertTrue(alvo['cliente_telefone'].endswith('****'))
+
+        # Omitir PIN ao tentar ir para em_execucao deve retornar 400
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_transito'})
+        res_no_pin = self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_execucao'})
+        self.assertEqual(res_no_pin.status_code, 400)
+
+    def test_44_et06_order_aceite_termos_and_pay_block_on_dispute(self):
+        import database
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+
+        res_no = self.client.post('/api/orders', json={'servico_id': 1, 'aceite_termos': False})
+        self.assertEqual(res_no.status_code, 400)
+
+        res_ok = self.client.post('/api/orders', json={'servico_id': 1, 'aceite_termos': True})
+        self.assertEqual(res_ok.status_code, 201)
+        o_id = json.loads(res_ok.data)['order_id']
+
+        conn = database.get_db_connection()
+        consent = conn.execute("SELECT doc_type FROM user_consents WHERE doc_type = 'pedido_escrow'").fetchone()
+        conn.close()
+        self.assertIsNotNone(consent)
+
+        self.client.post(f'/api/orders/{o_id}/dispute', json={'motivo': 'Divergência'})
+        res_pay_disp = self.client.post(f'/api/orders/{o_id}/pay', json={})
+        self.assertEqual(res_pay_disp.status_code, 400)
+
+    def test_45_vercel_wsgi_new_api_prefixes(self):
+        from api.index import VercelPathNormalizerWSGI
+        captured = {}
+        def dummy_app(env, start_response):
+            captured['path'] = env['PATH_INFO']
+            start_response('200 OK', [])
+            return [b'ok']
+
+        mw = VercelPathNormalizerWSGI(dummy_app)
+        for prefix in ('/kyc/verify', '/account/appeal', '/provider/financial-summary', '/shared-route/tok123'):
+            mw({'PATH_INFO': prefix, 'QUERY_STRING': ''}, lambda s, h: None)
+            self.assertEqual(captured['path'], '/api' + prefix)
 
 if __name__ == '__main__':
     unittest.main()

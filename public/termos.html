@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Termos de Uso &amp; Código de Ética | PertoJá</title>
+  <meta name="description" content="Termos de Uso, Código de Ética, Matriz de Responsabilidade Tripartite, Regras de Escrow Híbrido, Verificação em Camadas Tier 0/1/2 e Neutralidade Algorítmica da PertoJá.">
+  <link rel="canonical" href="https://pertoja.com.br/termos.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" type="image/png" href="/img/icone-192.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/termos.html">
+  <meta property="og:title" content="Termos de Uso &amp; Código de Ética | PertoJá">
+  <meta property="og:description" content="Governança transparente, Escrow Híbrido, verificação em camadas e neutralidade algorítmica na PertoJá.">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Hero Institucional -->
+  <section class="hero py-10 sm:py-12 text-center">
+    <div class="max-w-3xl mx-auto px-4">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
+        <span class="material-symbols-outlined text-sm" aria-hidden="true">gavel</span>
+        Governança &amp; Ética · Versão 2026.1
+      </div>
+      <h1 class="text-white font-extrabold text-3xl sm:text-4xl tracking-tight leading-tight mb-3">
+        Termos de Uso &amp; Código de Ética
+      </h1>
+      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto">
+        Regras claras de intermediação, custódia em Escrow, verificação proporcional ao risco e compromisso com neutralidade algorítmica.
+      </p>
+    </div>
+  </section>
+
+  <main id="main-content" class="w-full max-w-[1040px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-8 flex-1">
+
+    <!-- Navegação Rápida -->
+    <nav aria-label="Índice dos Termos de Uso" class="bg-white border border-perto-road rounded-2xl p-5 shadow-sm">
+      <p class="text-xs font-extrabold text-perto-sea uppercase tracking-wider mb-3">Nesta página</p>
+      <div class="flex flex-wrap gap-2">
+        <a href="#codigo-etica" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">1. Código de Ética</a>
+        <a href="#matriz-responsabilidade" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">2. Responsabilidade Tripartite</a>
+        <a href="#escrow-hibrido" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">3. Escrow Híbrido</a>
+        <a href="#verificacao-camadas" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">4. Camadas Tier 0/1/2 &amp; Catálogo Proibido</a>
+        <a href="#suspensao-defesa" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">5. Suspensão Cautelar &amp; Defesa</a>
+        <a href="#neutralidade-algoritmica" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">6. Neutralidade Algorítmica</a>
+      </div>
+    </nav>
+
+    <!-- 1. Código de Ética -->
+    <section id="codigo-etica" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">balance</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">1. Termos de Uso &amp; Código de Ética</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        A <strong>PertoJá</strong> atua como plataforma de intermediação tecnológica hiperlocal, conectando clientes que precisam de serviços presenciais rápidos a profissionais independentes. Ao criar uma conta ou contratar um chamado, todas as partes concordam com estes Termos (versão <strong>2026.1</strong>) e com a <a href="privacidade.html" class="text-perto-sea font-bold underline">Política de Privacidade LGPD</a>.
+      </p>
+      <ul class="list-disc pl-5 text-sm text-perto-ink/85 font-body space-y-2">
+        <li><strong>Respeito e não discriminação:</strong> É vedada qualquer conduta discriminatória, assédio, intimidação ou violência verbal/física entre clientes, prestadores e equipe de suporte.</li>
+        <li><strong>Transparência de preços:</strong> Os valores exibidos antes da confirmação refletem o orçamento base combinado; alterações de escopo devem ser registradas no chat interno antes da execução.</li>
+        <li><strong>Comunicação protegida:</strong> Utilize preferencialmente o chat interno da plataforma para manter histórico auditável em caso de mediação.</li>
+      </ul>
+    </section>
+
+    <!-- 2. Matriz de Responsabilidade Tripartite -->
+    <section id="matriz-responsabilidade" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sun/20 text-perto-ink flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">hub</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">2. Matriz de Responsabilidade Tripartite</h2>
+      </div>
+      <p class="text-sm text-perto-ink/80 font-body">
+        Cada participante possui deveres objetivos e proporcionais ao seu papel na relação de serviço:
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm font-body">
+          <thead>
+            <tr class="bg-perto-bg border-b border-perto-road text-perto-ink">
+              <th scope="col" class="p-3 font-extrabold">Parte</th>
+              <th scope="col" class="p-3 font-extrabold">Deveres Principais</th>
+              <th scope="col" class="p-3 font-extrabold">Limites de Responsabilidade</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-perto-road">
+            <tr>
+              <td class="p-3 font-bold text-perto-ink align-top">Plataforma (PertoJá)</td>
+              <td class="p-3 text-perto-ink/85 align-top">Operar a busca geolocalizada, aplicar checagem de identidade por risco (Tier 0/1/2), custodiar pagamentos em Escrow, manter chat protegido, canal SOS e mediação humana em até 72h.</td>
+              <td class="p-3 text-perto-ink/85 align-top">A checagem atesta identidade e registro apresentado, sem assumir vínculo empregatício nem garantia absoluta de resultado técnico fora do escopo mediado.</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink align-top">Prestador</td>
+              <td class="p-3 text-perto-ink/85 align-top">Prestar informações e documentos verdadeiros (incluindo CREA/CFT/CRT/NR-10 no Tier 2), cumprir o horário aceito, solicitar o PIN presencial de 4 dígitos ao chegar e executar o serviço com diligência técnica.</td>
+              <td class="p-3 text-perto-ink/85 align-top">Responde pela execução técnica, ferramentas próprias e cumprimento das normas de segurança e do Catálogo Proibido.</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink align-top">Cliente</td>
+              <td class="p-3 text-perto-ink/85 align-top">Informar endereço e escopo verídicos, garantir acesso seguro ao local, fornecer o PIN de 4 dígitos apenas presencialmente no início da execução e abrir disputa em até 48h caso haja divergência.</td>
+              <td class="p-3 text-perto-ink/85 align-top">Sujeito à retenção compensatória de deslocamento caso cancele após o prestador já estar em trânsito.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 3. Regras de Escrow Híbrido -->
+    <section id="escrow-hibrido" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">3. Regras de Escrow Híbrido</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        O pagamento do chamado fica retido em conta de custódia (<strong>Escrow</strong>) e segue regras objetivas de liberação e estorno:
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-ok uppercase tracking-wider block mb-1">Liberação Padrão</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">D+0 / D+1 ou 48h</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Liberação em <strong>D+0/D+1</strong> após confirmação presencial (PIN de 4 dígitos na porta + aceite de conclusão), ou automaticamente após <strong>48 horas</strong> da conclusão sem disputa aberta.
+          </p>
+        </div>
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Cancelamento em Trânsito</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">20% até R$ 40,00</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Se o cliente cancelar após o prestador iniciar deslocamento (<code>em_transito</code>), há retenção de <strong>20% do valor limitado a R$ 40,00</strong> para compensar o deslocamento, estornando o saldo restante.
+          </p>
+        </div>
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-ink uppercase tracking-wider block mb-1">Falha do Prestador</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">Estorno 100%</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Em caso de cancelamento ou ausência (<em>no-show</em>) do prestador, o cliente recebe <strong>estorno integral (100%)</strong>. Disputas abertas congelam o repasse para mediação humana em até 72h.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Verificação em Camadas Tier 0/1/2 e Catálogo Proibido -->
+    <section id="verificacao-camadas" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">verified_user</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">4. Verificação em Camadas (Tier 0/1/2) &amp; Catálogo Proibido</h2>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="border border-perto-road rounded-xl p-4">
+          <span class="kyc-badge mb-2">Tier 0 · Cadastro</span>
+          <p class="text-xs text-perto-ink/85 font-body leading-relaxed">
+            Verificação básica de conta, e-mail e telefone. Permite navegação e configuração inicial de perfil.
+          </p>
+        </div>
+        <div class="border border-perto-road rounded-xl p-4">
+          <span class="kyc-badge aprovado mb-2">Tier 1 · Identidade Checada</span>
+          <p class="text-xs text-perto-ink/85 font-body leading-relaxed">
+            Validação tokenizada via operador terceiro aceitando <strong>RG, CIN ou CNH</strong> (CNH não é obrigatória). Casos de homonímia seguem para revisão humana (<code>em_revisao</code>), sem bloqueio discriminatório.
+          </p>
+        </div>
+        <div class="border border-perto-road rounded-xl p-4">
+          <span class="kyc-badge em-revisao mb-2">Tier 2 · Habilitação Técnica</span>
+          <p class="text-xs text-perto-ink/85 font-body leading-relaxed">
+            Obrigatório para categorias de maior risco (<strong>Elétrica</strong> e <strong>Encanamento</strong>), exigindo informação de registro profissional aplicável (<strong>CREA, CFT, CRT ou NR-10</strong>).
+          </p>
+        </div>
+      </div>
+      <div class="ethical-alert-banner">
+        <span class="material-symbols-outlined" aria-hidden="true">block</span>
+        <div>
+          <strong>Catálogo Proibido:</strong> É estritamente proibido anunciar ou executar serviços ilícitos, intervenções em tubulação de gás sem certificação específica, alta tensão acima de baixa tensão residencial, trabalho em altura sem certificação NR-35 ou atividades fora das categorias habilitadas na plataforma.
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Suspensão Cautelar vs. Defesa -->
+    <section id="suspensao-defesa" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sun/20 text-perto-ink flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">policy</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">5. Suspensão Cautelar (24h–48h) vs. Defesa em 5 Dias Úteis</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        Medidas restritivas seguem o princípio da proporcionalidade e do contraditório:
+      </p>
+      <ul class="list-disc pl-5 text-sm text-perto-ink/85 font-body space-y-2">
+        <li><strong>Suspensão cautelar imediata (24h–48h):</strong> Aplicada exclusivamente diante de gatilhos objetivos graves — como acionamento do botão <strong>SOS</strong>, suspeita fundamentada de fraude de KYC/PIN ou risco físico iminente — enquanto a equipe humana apura os fatos.</li>
+        <li><strong>Direito de defesa em 5 dias úteis:</strong> Todo usuário notificado por suspensão ou restrição possui prazo de <strong>5 dias úteis</strong> para apresentar defesa e evidências pelo formulário de recurso no portal, com análise humana obrigatória antes de qualquer sanção definitiva (Art. 20 da LGPD).</li>
+        <li><strong>Sem punição por recusa justificada:</strong> Prestadores não são bloqueados automaticamente por recusarem chamados ou por denúncias unilaterais sem evidência.</li>
+      </ul>
+    </section>
+
+    <!-- 6. Neutralidade Algorítmica -->
+    <section id="neutralidade-algoritmica" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">6. Neutralidade Algorítmica &amp; Transparência de Ranking</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        O algoritmo de busca e ordenação do PertoJá prioriza utilidade real para o cliente e equidade para o profissional:
+      </p>
+      <ul class="list-disc pl-5 text-sm text-perto-ink/85 font-body space-y-2">
+        <li><strong>Sem venda de prioridade orgânica:</strong> Planos pagos (como o Plano Pro) oferecem ferramentas de gestão financeira/MEI e elegibilidade a vitrine <em>Patrocinada</em> claramente sinalizada como anúncio, nunca manipulação oculta do ranking orgânico.</li>
+        <li><strong>Explicabilidade do score:</strong> A pontuação exibida na busca combina distância até o endereço aproximado, avaliação média dos atendimentos concluídos e disponibilidade, com explicação acessível na interface.</li>
+        <li><strong>Proteção a novos profissionais:</strong> Prestadores recém-cadastrados exibem o selo <em>Novo na plataforma</em> para evitar desvantagem injusta por ainda não acumularem histórico de avaliações.</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional Unificado -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e custódia em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos &amp; Ética</a>
+          <a href="privacidade.html">Privacidade LGPD</a>
+          <a href="login.html">Entrar</a>
+        </div>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="auth.js" defer></script>
+</body>
+
+</html>

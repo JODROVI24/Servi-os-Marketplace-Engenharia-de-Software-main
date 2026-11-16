@@ -3,6 +3,7 @@ import re
 import sqlite3
 import unicodedata
 import urllib.parse
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
 # Defensive import of psycopg2
@@ -467,6 +468,13 @@ CREATE TABLE IF NOT EXISTS users (
     total_avaliacoes INTEGER DEFAULT 0,
     disponivel INTEGER DEFAULT 1,
     plano TEXT DEFAULT 'basico',
+    kyc_tier INTEGER DEFAULT 1,
+    kyc_status TEXT DEFAULT 'aprovado',
+    kyc_documento_tipo TEXT DEFAULT 'RG',
+    kyc_provider_ref TEXT,
+    kyc_verified_at TIMESTAMP,
+    registro_profissional TEXT,
+    status_conta TEXT DEFAULT 'ativo',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -495,7 +503,7 @@ CREATE TABLE IF NOT EXISTS orders (
     cliente_id INTEGER NOT NULL,
     prestador_id INTEGER NOT NULL,
     servico_id INTEGER NOT NULL,
-    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
+    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')) DEFAULT 'solicitado',
     preco_total DOUBLE PRECISION NOT NULL,
     observacoes TEXT,
     cep_cliente TEXT,
@@ -513,6 +521,12 @@ CREATE TABLE IF NOT EXISTS orders (
     pago INTEGER DEFAULT 0,
     codigo_confirmacao TEXT,
     motivo_cancelamento TEXT,
+    escrow_status TEXT DEFAULT 'pendente',
+    taxa_deslocamento DOUBLE PRECISION DEFAULT 0,
+    valor_estornado DOUBLE PRECISION DEFAULT 0,
+    share_token TEXT,
+    completed_at TIMESTAMP,
+    released_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -527,10 +541,81 @@ CREATE TABLE IF NOT EXISTS reviews (
     prestador_id INTEGER NOT NULL,
     nota DOUBLE PRECISION NOT NULL,
     comentario TEXT,
+    autor_tipo TEXT DEFAULT 'cliente',
+    avaliado_id INTEGER,
+    replica TEXT,
+    replied_at TIMESTAMP,
+    contestada INTEGER DEFAULT 0,
+    motivo_contestacao TEXT,
+    status_moderacao TEXT DEFAULT 'visivel',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id),
     FOREIGN KEY(cliente_id) REFERENCES users(id),
     FOREIGN KEY(prestador_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_consents (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    doc_type TEXT NOT NULL,
+    doc_version TEXT NOT NULL,
+    ip_hash TEXT,
+    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS disputes (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    opened_by INTEGER NOT NULL,
+    motivo TEXT NOT NULL,
+    descricao TEXT,
+    status TEXT DEFAULT 'aberta',
+    resolucao TEXT,
+    valor_estornado DOUBLE PRECISION DEFAULT 0,
+    taxa_deslocamento DOUBLE PRECISION DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolvido_em TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(opened_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS safety_incidents (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER,
+    reporter_id INTEGER NOT NULL,
+    reported_user_id INTEGER,
+    tipo TEXT DEFAULT 'sos',
+    descricao TEXT,
+    lat DOUBLE PRECISION,
+    lng DOUBLE PRECISION,
+    status TEXT DEFAULT 'aberto',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    FOREIGN KEY(reporter_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS account_appeals (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    motivo TEXT NOT NULL,
+    evidencias TEXT,
+    status TEXT DEFAULT 'em_analise',
+    resposta TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    analisado_em TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS order_messages (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    sender_tipo TEXT NOT NULL,
+    mensagem TEXT NOT NULL,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -584,6 +669,13 @@ CREATE TABLE IF NOT EXISTS users (
     total_avaliacoes INTEGER DEFAULT 0,
     disponivel INTEGER DEFAULT 1,
     plano TEXT DEFAULT 'basico',
+    kyc_tier INTEGER DEFAULT 1,
+    kyc_status TEXT DEFAULT 'aprovado',
+    kyc_documento_tipo TEXT DEFAULT 'RG',
+    kyc_provider_ref TEXT,
+    kyc_verified_at TIMESTAMP,
+    registro_profissional TEXT,
+    status_conta TEXT DEFAULT 'ativo',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -612,7 +704,7 @@ CREATE TABLE IF NOT EXISTS orders (
     cliente_id INTEGER NOT NULL,
     prestador_id INTEGER NOT NULL,
     servico_id INTEGER NOT NULL,
-    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado')) DEFAULT 'solicitado',
+    status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')) DEFAULT 'solicitado',
     preco_total REAL NOT NULL,
     observacoes TEXT,
     cep_cliente TEXT,
@@ -630,6 +722,12 @@ CREATE TABLE IF NOT EXISTS orders (
     pago INTEGER DEFAULT 0,
     codigo_confirmacao TEXT,
     motivo_cancelamento TEXT,
+    escrow_status TEXT DEFAULT 'pendente',
+    taxa_deslocamento REAL DEFAULT 0,
+    valor_estornado REAL DEFAULT 0,
+    share_token TEXT,
+    completed_at TIMESTAMP,
+    released_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -644,10 +742,81 @@ CREATE TABLE IF NOT EXISTS reviews (
     prestador_id INTEGER NOT NULL,
     nota REAL NOT NULL,
     comentario TEXT,
+    autor_tipo TEXT DEFAULT 'cliente',
+    avaliado_id INTEGER,
+    replica TEXT,
+    replied_at TIMESTAMP,
+    contestada INTEGER DEFAULT 0,
+    motivo_contestacao TEXT,
+    status_moderacao TEXT DEFAULT 'visivel',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id),
     FOREIGN KEY(cliente_id) REFERENCES users(id),
     FOREIGN KEY(prestador_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_consents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    doc_type TEXT NOT NULL,
+    doc_version TEXT NOT NULL,
+    ip_hash TEXT,
+    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS disputes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    opened_by INTEGER NOT NULL,
+    motivo TEXT NOT NULL,
+    descricao TEXT,
+    status TEXT DEFAULT 'aberta',
+    resolucao TEXT,
+    valor_estornado REAL DEFAULT 0,
+    taxa_deslocamento REAL DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolvido_em TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(opened_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS safety_incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER,
+    reporter_id INTEGER NOT NULL,
+    reported_user_id INTEGER,
+    tipo TEXT DEFAULT 'sos',
+    descricao TEXT,
+    lat REAL,
+    lng REAL,
+    status TEXT DEFAULT 'aberto',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    FOREIGN KEY(reporter_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS account_appeals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    motivo TEXT NOT NULL,
+    evidencias TEXT,
+    status TEXT DEFAULT 'em_analise',
+    resposta TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    analisado_em TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS order_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    sender_tipo TEXT NOT NULL,
+    mensagem TEXT NOT NULL,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -759,6 +928,13 @@ def run_migrations(conn=None, dry_run=False):
             sql_script = f.read()
 
         if sql_script.strip():
+            if engine == 'sqlite':
+                sql_script = re.sub(
+                    r'\bSERIAL\s+PRIMARY\s+KEY\b',
+                    'INTEGER PRIMARY KEY AUTOINCREMENT',
+                    sql_script,
+                    flags=re.IGNORECASE
+                )
             cursor.executescript(sql_script)
 
         cursor.execute(
@@ -775,9 +951,17 @@ def run_migrations(conn=None, dry_run=False):
 
 def _ensure_columns(conn, cursor, engine):
     """Garante defensivamente que colunas novas existam em bancos SQLite e PostgreSQL já existentes."""
+    real_type = 'DOUBLE PRECISION' if engine == 'postgresql' else 'REAL'
     expected_columns = {
         'users': [
             ('plano', "TEXT DEFAULT 'basico'"),
+            ('kyc_tier', 'INTEGER DEFAULT 1'),
+            ('kyc_status', "TEXT DEFAULT 'aprovado'"),
+            ('kyc_documento_tipo', "TEXT DEFAULT 'RG'"),
+            ('kyc_provider_ref', 'TEXT'),
+            ('kyc_verified_at', 'TIMESTAMP'),
+            ('registro_profissional', 'TEXT'),
+            ('status_conta', "TEXT DEFAULT 'ativo'"),
         ],
         'orders': [
             ('complemento_cliente', 'TEXT'),
@@ -787,6 +971,21 @@ def _ensure_columns(conn, cursor, engine):
             ('pago', 'INTEGER DEFAULT 0'),
             ('codigo_confirmacao', 'TEXT'),
             ('motivo_cancelamento', 'TEXT'),
+            ('escrow_status', "TEXT DEFAULT 'pendente'"),
+            ('taxa_deslocamento', f'{real_type} DEFAULT 0'),
+            ('valor_estornado', f'{real_type} DEFAULT 0'),
+            ('share_token', 'TEXT'),
+            ('completed_at', 'TIMESTAMP'),
+            ('released_at', 'TIMESTAMP'),
+        ],
+        'reviews': [
+            ('autor_tipo', "TEXT DEFAULT 'cliente'"),
+            ('avaliado_id', 'INTEGER'),
+            ('replica', 'TEXT'),
+            ('replied_at', 'TIMESTAMP'),
+            ('contestada', 'INTEGER DEFAULT 0'),
+            ('motivo_contestacao', 'TEXT'),
+            ('status_moderacao', "TEXT DEFAULT 'visivel'"),
         ],
     }
 
@@ -809,13 +1008,108 @@ def _ensure_columns(conn, cursor, engine):
             conn.commit()
 
 
+def _ensure_orders_status_check(conn, cursor, engine):
+    """Garante que a constraint CHECK de orders.status aceite 'em_disputa' em bancos pré-ET."""
+    if engine == 'postgresql':
+        try:
+            cursor.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check")
+            cursor.execute(
+                "ALTER TABLE orders ADD CONSTRAINT orders_status_check "
+                "CHECK (status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'))"
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return
+
+    row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'"
+    ).fetchone()
+    if not row:
+        return
+    table_sql = row['sql'] if hasattr(row, 'keys') and 'sql' in row.keys() else row[0]
+    if not table_sql or "'em_disputa'" in table_sql:
+        return
+
+    info_rows = cursor.execute("PRAGMA table_info(orders)").fetchall()
+    existing_cols = []
+    for r in info_rows:
+        try:
+            existing_cols.append(r['name'])
+        except (KeyError, TypeError, IndexError):
+            existing_cols.append(r[1])
+
+    new_orders_cols = [
+        'id', 'cliente_id', 'prestador_id', 'servico_id', 'status', 'preco_total',
+        'observacoes', 'cep_cliente', 'endereco_cliente', 'numero_cliente',
+        'bairro_cliente', 'cidade_cliente', 'estado_cliente', 'lat_cliente',
+        'lng_cliente', 'complemento_cliente', 'modalidade', 'agendado_para',
+        'metodo_pagamento', 'pago', 'codigo_confirmacao', 'motivo_cancelamento',
+        'escrow_status', 'taxa_deslocamento', 'valor_estornado', 'share_token',
+        'completed_at', 'released_at', 'criado_em', 'atualizado_em'
+    ]
+    copy_cols = [c for c in new_orders_cols if c in existing_cols]
+    cols_csv = ', '.join(copy_cols)
+
+    cursor.execute("PRAGMA foreign_keys = OFF;")
+    cursor.execute('''
+        CREATE TABLE orders__new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER NOT NULL,
+            prestador_id INTEGER NOT NULL,
+            servico_id INTEGER NOT NULL,
+            status TEXT CHECK(status IN ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')) DEFAULT 'solicitado',
+            preco_total REAL NOT NULL,
+            observacoes TEXT,
+            cep_cliente TEXT,
+            endereco_cliente TEXT,
+            numero_cliente TEXT,
+            bairro_cliente TEXT,
+            cidade_cliente TEXT,
+            estado_cliente TEXT,
+            lat_cliente REAL,
+            lng_cliente REAL,
+            complemento_cliente TEXT,
+            modalidade TEXT DEFAULT 'imediato',
+            agendado_para TEXT,
+            metodo_pagamento TEXT DEFAULT 'escrow',
+            pago INTEGER DEFAULT 0,
+            codigo_confirmacao TEXT,
+            motivo_cancelamento TEXT,
+            escrow_status TEXT DEFAULT 'pendente',
+            taxa_deslocamento REAL DEFAULT 0,
+            valor_estornado REAL DEFAULT 0,
+            share_token TEXT,
+            completed_at TIMESTAMP,
+            released_at TIMESTAMP,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(cliente_id) REFERENCES users(id),
+            FOREIGN KEY(prestador_id) REFERENCES users(id),
+            FOREIGN KEY(servico_id) REFERENCES services(id)
+        )
+    ''')
+    if copy_cols:
+        cursor.execute(f"INSERT INTO orders__new ({cols_csv}) SELECT {cols_csv} FROM orders")
+    cursor.execute("DROP TABLE orders")
+    cursor.execute("ALTER TABLE orders__new RENAME TO orders")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_cliente ON orders(cliente_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_prestador ON orders(prestador_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    conn.commit()
+
+
 def init_db():
     engine = get_active_engine()
     conn = get_db_connection()
     cursor = conn.cursor()
 
     # Verifica se as tabelas principais já existem antes de executar o schema inicial
-    core_tables = ('users', 'services', 'orders', 'reviews', 'geocode_cache')
+    core_tables = (
+        'users', 'services', 'orders', 'reviews', 'geocode_cache',
+        'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages'
+    )
     missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
 
     if missing_core:
@@ -825,6 +1119,9 @@ def init_db():
 
     # Garantia defensiva de colunas novas em bancos já existentes
     _ensure_columns(conn, cursor, engine)
+
+    # Garantia defensiva da constraint CHECK de orders.status ('em_disputa') em bancos pré-ET
+    _ensure_orders_status_check(conn, cursor, engine)
 
     # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
     run_migrations(conn=conn, dry_run=False)
@@ -922,8 +1219,8 @@ def sincronizar_todos_prestadores(conn):
         row = cursor.fetchone()
         if not row:
             cursor.execute('''
-                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel)
-                VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 15, ?)
+                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel, kyc_tier, kyc_status, status_conta)
+                VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 15, ?, 1, 'aprovado', 'ativo')
             ''', (nome, email, pwd_hash, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp))
             p_id = cursor.lastrowid
             cursor.execute('''
@@ -945,7 +1242,8 @@ def sincronizar_todos_prestadores(conn):
 
 def get_cached_geocode(query):
     """
-    Recupera coordenadas em cache para uma consulta de endereço normalizada.
+    Recupera coordenadas em cache para uma consulta de endereço normalizada,
+    respeitando TTL de 30 dias.
 
     Nota serverless (T-004): Quando VERCEL ou AWS_LAMBDA_FUNCTION_NAME estiver ativo,
     NÃO se deve usar um cache SQLite local separado se o motor ativo for 'postgresql'.
@@ -958,9 +1256,22 @@ def get_cached_geocode(query):
         return None
     try:
         conn = get_db_connection()
-        row = conn.execute('SELECT lat, lng FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
+        row = conn.execute('SELECT lat, lng, criado_em FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
         conn.close()
         if row:
+            criado_em = row['criado_em'] if 'criado_em' in row else None
+            if criado_em is not None:
+                if isinstance(criado_em, str):
+                    try:
+                        dt = datetime.fromisoformat(criado_em.replace('Z', '+00:00')).replace(tzinfo=None)
+                    except ValueError:
+                        dt = datetime.utcnow()
+                elif isinstance(criado_em, datetime):
+                    dt = criado_em.replace(tzinfo=None)
+                else:
+                    dt = datetime.utcnow()
+                if datetime.utcnow() - dt > timedelta(days=30):
+                    return None
             return float(row['lat']), float(row['lng'])
     except Exception:
         pass

@@ -280,7 +280,7 @@
             <label for="plano" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Plano de Parceiro</label>
             <select id="plano" class="input-form text-sm font-bold" onchange="atualizarBadgePlano()">
               <option value="basico">Plano Básico (Taxa 12% · Isento até R$ 1.800/mês)</option>
-              <option value="pro">Plano Pro (Taxa 8% · Destaque no Radar · 1º mês grátis)</option>
+              <option value="pro">Plano Pro (Taxa 8% · Gestão Avançada · 1º mês grátis)</option>
             </select>
           </div>
 
@@ -310,12 +310,39 @@
             <textarea id="bio" rows="3" placeholder="Fale sobre suas qualificações, anos de experiência e diferenciais..." class="input-form text-sm font-medium"></textarea>
           </div>
 
+          <div class="campo-form">
+            <label for="kycDocumentoTipo" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Documento para Verificação de Identidade (KYC)</label>
+            <select id="kycDocumentoTipo" class="input-form text-sm font-medium" aria-describedby="kycDocAjuda">
+              <option value="RG">RG (Carteira de Identidade)</option>
+              <option value="CIN">CIN (Carteira de Identidade Nacional)</option>
+              <option value="CNH">CNH (Carteira Nacional de Habilitação)</option>
+            </select>
+            <p id="kycDocAjuda" class="text-[11px] text-perto-ink/75 font-body mt-1">
+              CNH <strong>não é obrigatória</strong>: você pode utilizar RG ou CIN. A checagem ocorre por nível de risco via operador autorizado (LGPD).
+            </p>
+          </div>
+
+          <div class="campo-form">
+            <label for="registroProfissional" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Registro profissional (CREA/CFT/CRT/NR-10)</label>
+            <input type="text" id="registroProfissional" placeholder="Ex: CREA-SP 123456, CFT, CRT ou NR-10 (opcional)" class="input-form text-sm font-medium" aria-describedby="regProfAjuda">
+            <p id="regProfAjuda" class="text-[11px] text-perto-ink/75 font-body mt-1">
+              Registro profissional (CREA/CFT/CRT/NR-10) — exigido para Elétrica e Encanamento.
+            </p>
+          </div>
+
           <div id="step3Actions" class="pt-1 flex items-center justify-start">
             <button type="button" id="btnStep3Back" onclick="irParaEtapa(2)" class="btn-neutral px-5 py-2.5 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
               <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
               Voltar
             </button>
           </div>
+        </div>
+
+        <div class="consent-box flex items-start gap-2.5 p-3.5 rounded-xl bg-perto-bg border border-perto-road text-xs text-perto-ink/85 font-body">
+          <input type="checkbox" id="aceiteTermos" required class="mt-0.5 w-4 h-4 rounded text-perto-sea focus:ring-perto-sea shrink-0">
+          <label for="aceiteTermos" class="cursor-pointer leading-relaxed">
+            Li e concordo com os <a href="termos.html" target="_blank" rel="noopener noreferrer" class="text-perto-sea font-bold underline">Termos de Uso</a> e a <a href="privacidade.html" target="_blank" rel="noopener noreferrer" class="text-perto-sea font-bold underline">Política de Privacidade</a> (versão 2026.1), incluindo o tratamento de dados conforme a LGPD.
+          </label>
         </div>
 
         <button type="submit" id="btnSubmitCadastro" class="btn w-full text-perto-ink font-extrabold py-3.5 rounded-full text-sm mt-6 shadow-sm hover:scale-[1.02] active:scale-95 transition-all">
@@ -344,7 +371,7 @@
             <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
             <span>Perto<b>Já</b></span>
           </a>
-          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e pagamento protegido em Escrow.</p>
         </div>
         <div class="footer-col">
           <span class="footer-col-title">Cliente</span>
@@ -363,6 +390,8 @@
           <span class="footer-col-title">Institucional</span>
           <a href="index.html">Início</a>
           <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos de Uso</a>
+          <a href="privacidade.html">Política de Privacidade</a>
           <a href="login.html">Entrar</a>
         </div>
       </div>
@@ -556,6 +585,14 @@
       const erroDiv = document.getElementById('mensagem-erro');
       erroDiv.style.display = 'none';
 
+      const aceiteEl = document.getElementById('aceiteTermos');
+      if (!aceiteEl || !aceiteEl.checked) {
+        erroDiv.textContent = 'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar sua conta.';
+        erroDiv.style.display = 'block';
+        if (aceiteEl) aceiteEl.focus();
+        return;
+      }
+
       const tipo = document.querySelector('input[name="tipo"]:checked').value;
       const payload = {
         nome: document.getElementById('nome').value,
@@ -570,7 +607,9 @@
         cidade: document.getElementById('cidade').value,
         estado: document.getElementById('estado').value,
         lat: document.getElementById('lat').value ? parseFloat(document.getElementById('lat').value) : null,
-        lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null
+        lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null,
+        aceite_termos: true,
+        versao_termos: '2026.1'
       };
 
       if (!payload.nome || !payload.email || !payload.telefone) {
@@ -599,6 +638,9 @@
         payload.preco_inicial = (!isNaN(precoVal) && precoVal > 0) ? precoVal : 100.0;
         payload.bio = document.getElementById('bio').value;
         payload.plano = document.getElementById('plano')?.value || 'basico';
+        payload.kyc_documento_tipo = document.getElementById('kycDocumentoTipo')?.value || 'RG';
+        const regProf = (document.getElementById('registroProfissional')?.value || '').trim();
+        if (regProf) payload.registro_profissional = regProf;
       }
 
       try {

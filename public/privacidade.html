@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de Privacidade LGPD | PertoJá</title>
+  <meta name="description" content="Política de Privacidade LGPD (Lei 13.709/2018) da PertoJá: KYC tokenizado sem biometria armazenada, jitter espacial de localização, tabela de retenção/TTL e direitos do titular.">
+  <link rel="canonical" href="https://pertoja.com.br/privacidade.html">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10243e">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" type="image/png" href="/img/icone-192.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pertoja.com.br/privacidade.html">
+  <meta property="og:title" content="Política de Privacidade LGPD | PertoJá">
+  <meta property="og:description" content="Privacidade por Design na PertoJá: KYC tokenizado, proteção de endereço residencial, retenção mínima de dados e direitos Art. 18 LGPD.">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="PertoJá Marketplace">
+
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            'perto-ink': '#10243e',
+            'perto-sea': '#1f6f8b',
+            'perto-sun': '#ffc233',
+            'perto-bg': '#f1f5f7',
+            'perto-road': '#dce5ea',
+            'perto-ok': '#1a8f5a',
+            'perto-card': '#ffffff'
+          },
+          fontFamily: {
+            headline: ['Plus Jakarta Sans', 'sans-serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- CSS Global do Projeto -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="bg-perto-bg text-perto-ink min-h-screen flex flex-col font-headline antialiased">
+  <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+
+  <!-- Header Principal com Contrato DOM .menu-principal -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <div class="logo-badge">
+        <span class="material-symbols-outlined text-perto-sun text-2xl font-bold">bolt</span>
+      </div>
+      <span>Perto<b>Já</b></span>
+    </a>
+
+    <button type="button" class="menu-hamburguer" id="btnHamburguer" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="menuPrincipal">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+    <nav class="menu-principal" id="menuPrincipal" aria-label="Navegação principal">
+      <div class="drawer-header">
+        <div class="drawer-brand">
+          <div class="logo-badge" style="width: 28px; height: 28px; border-radius: 8px;">
+            <span class="material-symbols-outlined text-perto-sun text-lg font-bold">bolt</span>
+          </div>
+          <span>Perto<b>Já</b></span>
+        </div>
+        <button type="button" class="drawer-fechar" id="btnFecharDrawer" aria-label="Fechar menu de navegação">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <a href="index.html">Início</a>
+      <a href="pedido.html">Buscar Serviços</a>
+      <a href="como-funciona.html">Como Funciona</a>
+      <a href="sobre-nos.html">Sobre Nós</a>
+    </nav>
+  </header>
+
+  <!-- Hero Institucional -->
+  <section class="hero py-10 sm:py-12 text-center">
+    <div class="max-w-3xl mx-auto px-4">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-perto-sun/20 border border-perto-sun/40 text-perto-sun text-xs font-extrabold uppercase tracking-wider mb-4">
+        <span class="material-symbols-outlined text-sm" aria-hidden="true">lock</span>
+        LGPD · Lei nº 13.709/2018 · Versão 2026.1
+      </div>
+      <h1 class="text-white font-extrabold text-3xl sm:text-4xl tracking-tight leading-tight mb-3">
+        Política de Privacidade LGPD
+      </h1>
+      <p class="text-white/80 text-base sm:text-lg font-body max-w-2xl mx-auto">
+        Privacidade por Design: KYC tokenizado sem custódia de biometria, proteção espacial de endereço e prazos objetivos de retenção e expurgo.
+      </p>
+    </div>
+  </section>
+
+  <main id="main-content" class="w-full max-w-[1040px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-8 flex-1">
+
+    <!-- Navegação Rápida -->
+    <nav aria-label="Índice da Política de Privacidade" class="bg-white border border-perto-road rounded-2xl p-5 shadow-sm">
+      <p class="text-xs font-extrabold text-perto-sea uppercase tracking-wider mb-3">Nesta página</p>
+      <div class="flex flex-wrap gap-2">
+        <a href="#kyc-tokenizado" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">1. KYC Tokenizado</a>
+        <a href="#jitter-localizacao" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">2. Jitter Espacial &amp; Pós-Atendimento</a>
+        <a href="#tabela-retencao" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">3. Tabela de Retenção &amp; TTL</a>
+        <a href="#direitos-titular" class="px-3 py-1.5 rounded-full bg-perto-bg text-perto-ink text-xs font-bold hover:bg-perto-sea hover:text-white transition-colors">4. Direitos do Titular (Art. 18)</a>
+      </div>
+    </nav>
+
+    <!-- 1. KYC Tokenizado -->
+    <section id="kyc-tokenizado" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">fingerprint</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">1. KYC Tokenizado (Zero Armazenamento de Biometria ou Documentos)</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        Em conformidade com os princípios de necessidade e minimização da <strong>LGPD (Lei nº 13.709/2018, Art. 5º II e Art. 11)</strong>, o banco de dados do PertoJá <strong>não armazena fotos de RG, CIN, CNH, selfies ou templates biométricos</strong>.
+      </p>
+      <ul class="list-disc pl-5 text-sm text-perto-ink/85 font-body space-y-2">
+        <li><strong>Validação via operador terceiro:</strong> A checagem de identidade é realizada por provedor especializado sob base legal de prevenção à fraude e garantia da segurança (Art. 7º II e Art. 11 II <em>a</em> e <em>g</em> da LGPD).</li>
+        <li><strong>Persistência mínima:</strong> Armazenamos apenas metadados opacos de status (<code>kyc_tier</code>, <code>kyc_status</code>, referência opaca <code>kyc_provider_ref</code> e data de verificação).</li>
+        <li><strong>Sigilo:</strong> Detalhes de eventuais pendências ou revisões humanas (<code>em_revisao</code>) nunca são exibidos a outros usuários.</li>
+      </ul>
+    </section>
+
+    <!-- 2. Jitter Espacial e Proteção Pós-Atendimento -->
+    <section id="jitter-localizacao" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sea/10 text-perto-sea flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">location_searching</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">2. Jitter Espacial de Localização Pública &amp; Proteção Pós-Atendimento</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        A exposição de endereço e coordenadas segue exposição progressiva baseada na necessidade estrita de cada etapa do chamado:
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-sea uppercase tracking-wider block mb-1">Vitrine Pública</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">Jitter 300–500 m</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Na busca pública de serviços, o mapa exibe coordenadas com <strong>jitter espacial determinístico (300 a 500 metros)</strong> ou centroide de bairro, suprimindo logradouro, número, CEP completo e telefone.
+          </p>
+        </div>
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-ink uppercase tracking-wider block mb-1">Pré-Aceite vs. Execução</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">Liberação Progressiva</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Enquanto o pedido está <code>solicitado</code>, o prestador vê apenas bairro, cidade e distância aproximada. O endereço completo é liberado somente após confirmação (<code>confirmado</code> / <code>em_transito</code> / <code>em_execucao</code>).
+          </p>
+        </div>
+        <div class="bg-perto-bg border border-perto-road rounded-xl p-4">
+          <span class="text-xs font-extrabold text-perto-ok uppercase tracking-wider block mb-1">Pós-Atendimento</span>
+          <h3 class="font-extrabold text-perto-ink text-base mb-1">Supressão Após 48h</h3>
+          <p class="text-xs text-perto-ink/80 font-body leading-relaxed">
+            Após a conclusão ou cancelamento (decorrida a janela de 48h sem disputa aberta), endereço exato, coordenadas precisas e contatos são suprimidos das respostas da API, restando apenas bairro e cidade no histórico.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Tabela de Retenção e TTL -->
+    <section id="tabela-retencao" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-sun/20 text-perto-ink flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">3. Tabela de Retenção &amp; TTL (Expurgo Programado)</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm font-body">
+          <thead>
+            <tr class="bg-perto-bg border-b border-perto-road text-perto-ink">
+              <th scope="col" class="p-3 font-extrabold">Categoria de Dado / Registro</th>
+              <th scope="col" class="p-3 font-extrabold">Técnica de Proteção</th>
+              <th scope="col" class="p-3 font-extrabold">Prazo de Retenção (TTL)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-perto-road">
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Tokens de recuperação de senha</td>
+              <td class="p-3 text-perto-ink/85">Armazenamento exclusivo como hash <strong>SHA-256</strong></td>
+              <td class="p-3 font-bold text-perto-sea">24 horas</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Chaves de rate limit (proteção contra abuso)</td>
+              <td class="p-3 text-perto-ink/85"><strong>HMAC-SHA256 do IP</strong> (nunca IP em texto claro)</td>
+              <td class="p-3 font-bold text-perto-sea">24 horas</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Cache de geocodificação (<code>geocode_cache</code>)</td>
+              <td class="p-3 text-perto-ink/85">Normalizado até logradouro/bairro (sem número residencial)</td>
+              <td class="p-3 font-bold text-perto-sea">30 dias</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Dados rotineiros de GPS / deslocamento</td>
+              <td class="p-3 text-perto-ink/85">Exposição restrita à janela ativa do chamado</td>
+              <td class="p-3 font-bold text-perto-sea">72 horas</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Logs de acesso e conexão (Marco Civil — Art. 15)</td>
+              <td class="p-3 text-perto-ink/85">Registro auditável com acesso restrito</td>
+              <td class="p-3 font-bold text-perto-ink">6 meses</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-bold text-perto-ink">Registros fiscais, Escrow, disputas e SOS</td>
+              <td class="p-3 text-perto-ink/85">Cofre restrito para obrigação legal e exercício de direitos</td>
+              <td class="p-3 font-bold text-perto-ink">5 anos</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. Direitos do Titular (Art. 18 LGPD) -->
+    <section id="direitos-titular" class="bg-white border border-perto-road rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-perto-ok/10 text-perto-ok flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined" aria-hidden="true">person_check</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-perto-ink">4. Direitos do Titular (Art. 18 e Art. 20 da LGPD)</h2>
+      </div>
+      <p class="text-sm text-perto-ink/85 font-body leading-relaxed">
+        Você possui controle direto sobre seus dados pessoais através do seu Portal (<a href="portal-cliente.html" class="text-perto-sea font-bold underline">Portal do Cliente</a> ou <a href="portal-prestador.html" class="text-perto-sea font-bold underline">Painel do Prestador</a>):
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="border border-perto-road rounded-xl p-5 bg-perto-bg">
+          <h3 class="font-extrabold text-perto-ink text-base mb-2 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">download</span>
+            Portabilidade &amp; Exportação JSON
+          </h3>
+          <p class="text-xs text-perto-ink/85 font-body leading-relaxed">
+            Exporte uma cópia estruturada em formato <strong>JSON</strong> com seus dados cadastrais, histórico de chamados e registros de consentimento a qualquer momento (<code>GET /api/profile/export</code>).
+          </p>
+        </div>
+        <div class="border border-perto-road rounded-xl p-5 bg-perto-bg">
+          <h3 class="font-extrabold text-perto-ink text-base mb-2 flex items-center gap-2">
+            <span class="material-symbols-outlined text-perto-ink" aria-hidden="true">person_off</span>
+            Anonimização Irreversível (Art. 18 VI)
+          </h3>
+          <p class="text-xs text-perto-ink/85 font-body leading-relaxed">
+            Solicite a exclusão e <strong>anonimização irreversível</strong> dos seus dados identificáveis (<code>DELETE /api/profile</code>), preservando apenas registros anonimizados exigidos por obrigação fiscal ou disputas em andamento (Art. 16 I LGPD).
+          </p>
+        </div>
+      </div>
+      <div class="ethical-alert-banner">
+        <span class="material-symbols-outlined" aria-hidden="true">support_agent</span>
+        <div>
+          <strong>Canal do Encarregado (DPO) &amp; Revisão Humana (Art. 20):</strong> Para dúvidas, correções ou solicitação de revisão humana de qualquer decisão automatizada, entre em contato pelo portal ou pelo canal <strong>privacidade@pertoja.com.br</strong>.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- Footer Institucional Unificado -->
+  <footer>
+    <div class="footer-conteudo">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a href="index.html" class="logo">
+            <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
+            <span>Perto<b>Já</b></span>
+          </a>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e custódia em Escrow.</p>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Cliente</span>
+          <a href="pedido.html">Buscar Serviços</a>
+          <a href="como-funciona.html">Como Funciona</a>
+          <a href="cadastro.html">Criar Conta</a>
+          <a href="portal-cliente.html">Meu Portal</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Prestador</span>
+          <a href="como-funciona.html">Seja Prestador</a>
+          <a href="cadastro.html?tipo=prestador">Cadastrar Profissional</a>
+          <a href="portal-prestador.html">Painel do Prestador</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Institucional</span>
+          <a href="index.html">Início</a>
+          <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos &amp; Ética</a>
+          <a href="privacidade.html">Privacidade LGPD</a>
+          <a href="login.html">Entrar</a>
+        </div>
+      </div>
+      <div class="footer-direitos">
+        <p>© 2026 PertoJá · Conectando você aos melhores profissionais locais · Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="auth.js" defer></script>
+</body>
+
+</html>

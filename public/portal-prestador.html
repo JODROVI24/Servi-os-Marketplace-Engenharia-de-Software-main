@@ -102,12 +102,13 @@
           <div>
             <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-perto-ok/10 text-perto-ok text-xs font-extrabold uppercase tracking-wider mb-1">
               <span class="material-symbols-outlined text-sm">verified</span>
-              Conta Profissional Homologada
+              Conta Profissional · Verificação por Camadas
             </div>
             <h1 id="prestadorNome" class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">
               Carregando cockpit...
             </h1>
             <p id="prestadorEmail" class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body"></p>
+            <div id="alertaStatusConta" class="mt-2 p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-xs font-semibold text-perto-ink" style="display: none;"></div>
           </div>
         </div>
 
@@ -319,6 +320,76 @@
             Salvar Alterações de Perfil
           </button>
         </form>
+
+        <!-- ET-09: Verificação KYC por Camadas (Tier 0/1/2) -->
+        <div class="mt-8 pt-6 border-t border-perto-road space-y-4" id="blocoKycPrestador">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-perto-sea text-lg">verified_user</span>
+                Verificação KYC por Camadas (Tier 0/1/2)
+              </h3>
+              <p class="text-xs text-perto-ink/70 font-body mt-0.5">CNH não é obrigatória (aceitamos RG, CIN ou CNH). Nenhuma imagem é armazenada no PertoJá.</p>
+            </div>
+            <span id="kycStatusBadge" class="tag">Tier 0 · Pendente</span>
+          </div>
+
+          <form id="formKycVerify" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="campo-form">
+              <label for="kycDocTipoPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Documento</label>
+              <select id="kycDocTipoPerfil" class="input-form text-sm font-medium">
+                <option value="RG">RG</option>
+                <option value="CIN">CIN</option>
+                <option value="CNH">CNH</option>
+              </select>
+            </div>
+            <div class="campo-form">
+              <label for="kycRegProfPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Registro Profissional (opcional)</label>
+              <input type="text" id="kycRegProfPerfil" placeholder="CREA / CFT / CRT / NR-10" class="input-form text-sm font-medium">
+            </div>
+            <div class="sm:col-span-2 flex justify-end">
+              <button type="submit" class="btn2 px-5 py-2.5 rounded-full text-xs font-extrabold inline-flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-sm">shield</span>
+                Enviar / Atualizar KYC
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- ET-10: Recurso / Revisão Humana -->
+        <div class="mt-6 pt-6 border-t border-perto-road space-y-3" id="blocoRecursoConta" style="display: none;">
+          <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-perto-sea text-lg">gavel</span>
+            Recurso / Revisão Humana da Conta
+          </h3>
+          <p class="text-xs text-perto-ink/75 font-body">Sua conta encontra-se com restrição cautelar ou em análise. Você pode solicitar revisão humana abaixo.</p>
+          <form id="formAppealConta" class="space-y-3">
+            <div class="campo-form">
+              <label for="appealJustificativa" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Justificativa para Revisão</label>
+              <textarea id="appealJustificativa" rows="3" required minlength="5" placeholder="Explique os fatos ou envie informações adicionais para análise humana..." class="input-form text-sm font-medium"></textarea>
+            </div>
+            <button type="submit" class="btn px-5 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Enviar Recurso</button>
+          </form>
+        </div>
+
+        <!-- ET-10: Direitos LGPD -->
+        <div class="mt-6 pt-6 border-t border-perto-road space-y-3">
+          <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-perto-sea text-lg">privacy_tip</span>
+            Privacidade &amp; Direitos LGPD
+          </h3>
+          <p class="text-xs text-perto-ink/70 font-body">Exporte seus dados em JSON ou solicite a anonimização/exclusão da sua conta conforme a LGPD.</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" id="btnExportarDadosLgpd" onclick="exportarDadosLgpd()" class="btn2 px-4 py-2.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">download</span>
+              Exportar Meus Dados (JSON)
+            </button>
+            <button type="button" id="btnExcluirContaLgpd" onclick="abrirModalExcluirConta()" class="btn-danger-soft px-4 py-2.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">person_remove</span>
+              Excluir / Anonimizar Conta
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -451,6 +522,171 @@
     </div>
   </div>
 
+  <!-- MODAL ET-02: PIN DE CONFIRMAÇÃO NA PORTA (em_transito -> em_execucao) -->
+  <div id="modalPinExecucao" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalPin" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalPin" class="text-lg font-black text-perto-ink m-0">Confirmar PIN do Cliente</h3>
+        <button type="button" aria-label="Fechar modal de PIN" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalPinExecucao()">✕</button>
+      </div>
+      <form id="formPinExecucao" class="mt-4 space-y-4">
+        <input type="hidden" id="pinOrderId">
+        <p class="text-xs text-perto-ink/75 font-body">Solicite ao cliente na porta os <strong>4 dígitos do PIN de confirmação</strong> para iniciar a execução do serviço.</p>
+        <div class="campo-form">
+          <label for="pinExecucaoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">PIN de 4 dígitos</label>
+          <input type="text" id="pinExecucaoInput" inputmode="numeric" pattern="\d{4}" maxlength="4" minlength="4" required placeholder="0000" class="input-form text-lg font-mono font-black tracking-widest text-center">
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalPinExecucao()">Cancelar</button>
+          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Validar PIN e Iniciar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-08: CHAT PROTEGIDO DO PEDIDO -->
+  <div id="modalChatPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalChat" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalChat" class="text-lg font-black text-perto-ink m-0">Chat Protegido</h3>
+        <button type="button" aria-label="Fechar chat" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalChat()">✕</button>
+      </div>
+      <input type="hidden" id="chatOrderId">
+      <div id="listaMensagensChat" class="mt-3 max-h-64 overflow-y-auto space-y-2 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body">
+        <p class="text-perto-ink/70">Carregando mensagens...</p>
+      </div>
+      <form id="formChatPedido" class="mt-3 flex gap-2">
+        <input type="text" id="chatMensagemInput" required minlength="1" maxlength="500" placeholder="Digite sua mensagem ao cliente..." aria-label="Mensagem no chat protegido" class="input-form flex-1 text-sm font-medium">
+        <button type="submit" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-13: SOS EMERGÊNCIA -->
+  <div id="modalSosPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalSos" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalSos" class="text-lg font-black text-perto-ink m-0">Acionar SOS Emergência</h3>
+        <button type="button" aria-label="Fechar modal SOS" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalSos()">✕</button>
+      </div>
+      <form id="formSosPedido" class="mt-4 space-y-4">
+        <input type="hidden" id="sosOrderId">
+        <p class="text-xs text-perto-ink/80 font-body bg-perto-sun/20 border border-perto-sun p-3 rounded-xl">
+          Ao acionar o SOS, a equipe de segurança PertoJá é notificada imediatamente com o registro do chamado. Em risco iminente, ligue 190/192/193.
+        </p>
+        <div class="campo-form">
+          <label for="sosMotivoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva a ocorrência</label>
+          <textarea id="sosMotivoInput" rows="3" required minlength="3" placeholder="Descreva brevemente o ocorrido..." class="input-form text-sm font-medium"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalSos()">Cancelar</button>
+          <button type="submit" class="btn-danger-soft px-6 py-2.5 rounded-full text-xs font-extrabold">Confirmar SOS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-14: ABRIR DISPUTA -->
+  <div id="modalDisputaPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalDisputa" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalDisputa" class="text-lg font-black text-perto-ink m-0">Abrir Disputa</h3>
+        <button type="button" aria-label="Fechar modal de disputa" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalDisputa()">✕</button>
+      </div>
+      <form id="formDisputaPedido" class="mt-4 space-y-4">
+        <input type="hidden" id="disputaOrderId">
+        <div class="campo-form">
+          <label for="disputaMotivoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Motivo da Disputa</label>
+          <input type="text" id="disputaMotivoInput" required minlength="3" placeholder="Ex: Divergência no escopo ou pagamento" class="input-form text-sm font-medium">
+        </div>
+        <div class="campo-form">
+          <label for="disputaDescricaoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Detalhes</label>
+          <textarea id="disputaDescricaoInput" rows="3" required minlength="5" placeholder="Descreva os detalhes para mediação..." class="input-form text-sm font-medium"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalDisputa()">Cancelar</button>
+          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Registrar Disputa</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-15: AVALIAR CLIENTE -->
+  <div id="modalAvaliarCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalAvaliar" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalAvaliar" class="text-lg font-black text-perto-ink m-0">Avaliar Cliente</h3>
+        <button type="button" aria-label="Fechar modal de avaliação" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalAvaliar()">✕</button>
+      </div>
+      <form id="formAvaliarCliente" class="mt-4 space-y-4">
+        <input type="hidden" id="avaliarOrderId">
+        <div class="campo-form">
+          <label for="avaliarNotaInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nota (1 a 5)</label>
+          <select id="avaliarNotaInput" class="input-form text-sm font-bold">
+            <option value="5">5 - Excelente</option>
+            <option value="4">4 - Muito bom</option>
+            <option value="3">3 - Regular</option>
+            <option value="2">2 - Abaixo do esperado</option>
+            <option value="1">1 - Insatisfatório</option>
+          </select>
+        </div>
+        <div class="campo-form">
+          <label for="avaliarComentarioInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Comentário (opcional)</label>
+          <textarea id="avaliarComentarioInput" rows="3" placeholder="Como foi o atendimento com este cliente?" class="input-form text-sm font-medium"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalAvaliar()">Cancelar</button>
+          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Enviar Avaliação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-10: EXCLUIR / ANONIMIZAR CONTA (LGPD) -->
+  <div id="modalExcluirConta" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalExcluirConta" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalExcluirConta" class="text-lg font-black text-perto-ink m-0">Excluir / Anonimizar Conta</h3>
+        <button type="button" aria-label="Fechar modal de exclusão" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalExcluirConta()">✕</button>
+      </div>
+      <form id="formExcluirConta" class="mt-4 space-y-4">
+        <p class="text-xs text-perto-ink/80 font-body bg-perto-sun/20 border border-perto-sun p-3 rounded-xl">
+          Esta ação anonimizará seus dados pessoais (PII) conforme a LGPD, preservando apenas registros fiscais obrigatórios. Não é possível desfazer.
+        </p>
+        <label class="flex items-start gap-2 text-xs text-perto-ink font-body cursor-pointer">
+          <input type="checkbox" id="chkConfirmarExclusao" required class="mt-0.5 w-4 h-4 rounded text-perto-sea">
+          <span>Confirmo que desejo excluir e anonimizar minha conta PertoJá.</span>
+        </label>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalExcluirConta()">Cancelar</button>
+          <button type="submit" class="btn-danger-soft px-6 py-2.5 rounded-full text-xs font-extrabold">Confirmar Exclusão</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-15: RÉPLICA OU CONTESTAÇÃO DE AVALIAÇÃO -->
+  <div id="modalReviewAcao" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalReviewAcao" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalReviewAcao" class="text-lg font-black text-perto-ink m-0">Responder Avaliação</h3>
+        <button type="button" aria-label="Fechar modal" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalReviewAcao()">✕</button>
+      </div>
+      <form id="formReviewAcao" class="mt-4 space-y-4">
+        <input type="hidden" id="reviewAcaoId">
+        <input type="hidden" id="reviewAcaoModo">
+        <div class="campo-form">
+          <label for="reviewAcaoTexto" id="labelReviewAcaoTexto" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Sua réplica</label>
+          <textarea id="reviewAcaoTexto" rows="3" required minlength="3" placeholder="Escreva sua resposta ou justificativa..." class="input-form text-sm font-medium"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
+          <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalReviewAcao()">Cancelar</button>
+          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Enviar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Container de Toasts para feedback visual -->
   <div id="toasts" aria-live="polite"></div>
 
@@ -463,7 +699,7 @@
             <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
             <span>Perto<b>Já</b></span>
           </a>
-          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais verificados com pagamento protegido em Escrow.</p>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e pagamento protegido em Escrow.</p>
         </div>
         <div class="footer-col">
           <span class="footer-col-title">Cliente</span>
@@ -482,6 +718,8 @@
           <span class="footer-col-title">Institucional</span>
           <a href="index.html">Início</a>
           <a href="sobre-nos.html">Sobre Nós</a>
+          <a href="termos.html">Termos de Uso</a>
+          <a href="privacidade.html">Política de Privacidade</a>
           <a href="login.html">Entrar</a>
         </div>
       </div>
@@ -601,10 +839,44 @@
         document.getElementById('perfilLat').value = dadosPrestador.lat || -23.5653;
         document.getElementById('perfilLng').value = dadosPrestador.lng || -46.6517;
 
+        atualizarStatusKycEConta();
+
         await carregarServicos();
         await carregarPedidos();
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    function atualizarStatusKycEConta() {
+      if (!dadosPrestador) return;
+      const tier = dadosPrestador.kyc_tier != null ? Number(dadosPrestador.kyc_tier) : 0;
+      const kycStatus = dadosPrestador.kyc_status || 'pendente';
+      const badgeKyc = document.getElementById('kycStatusBadge');
+      if (badgeKyc) {
+        badgeKyc.textContent = `Tier ${tier} · ${kycStatus}`;
+      }
+      const docSelect = document.getElementById('kycDocTipoPerfil');
+      if (docSelect && dadosPrestador.kyc_documento_tipo) {
+        docSelect.value = dadosPrestador.kyc_documento_tipo;
+      }
+      const regInput = document.getElementById('kycRegProfPerfil');
+      if (regInput && dadosPrestador.registro_profissional) {
+        regInput.value = dadosPrestador.registro_profissional;
+      }
+
+      const statusConta = dadosPrestador.status_conta || 'ativo';
+      const alertaConta = document.getElementById('alertaStatusConta');
+      const blocoRecurso = document.getElementById('blocoRecursoConta');
+      if (statusConta !== 'ativo') {
+        if (alertaConta) {
+          alertaConta.innerHTML = `Status da conta: <b>${escapeHtml(statusConta)}</b>. Você pode enviar um recurso na aba "Dados de Perfil & GPS".`;
+          alertaConta.style.display = 'block';
+        }
+        if (blocoRecurso) blocoRecurso.style.display = 'block';
+      } else {
+        if (alertaConta) alertaConta.style.display = 'none';
+        if (blocoRecurso) blocoRecurso.style.display = 'none';
       }
     }
 
@@ -643,13 +915,24 @@
       let faturamentoBruto = 0;
       let saldoEscrow = 0;
       let totalLiberado = 0;
+      const agora = new Date();
+      const anoAtual = agora.getFullYear();
+      const mesAtual = agora.getMonth();
 
       listaPedidos.forEach(p => {
         const valor = Number(p.preco_total || 0);
-        if (p.status !== 'cancelado') {
+        const dataRef = p.completed_at || p.criado_em || p.data_criacao || p.created_at;
+        let mesmoMes = true;
+        if (dataRef) {
+          const dt = new Date(String(dataRef).replace(' ', 'T'));
+          if (!isNaN(dt.getTime())) {
+            mesmoMes = dt.getFullYear() === anoAtual && dt.getMonth() === mesAtual;
+          }
+        }
+        if (p.status === 'finalizado' && mesmoMes) {
           faturamentoBruto += valor;
         }
-        if (p.status === 'finalizado') {
+        if (p.status === 'finalizado' && Number(p.pago) === 1) {
           totalLiberado += valor * (1 - taxaPct);
         } else if (p.status !== 'cancelado' && Number(p.pago) === 1) {
           saldoEscrow += valor * (1 - taxaPct);
@@ -668,26 +951,36 @@
       if (elAval) elAval.textContent = `★ ${avaliacao}`;
       if (elFat) elFat.textContent = brl(faturamentoBruto);
       if (elBar) {
-        const pct = Math.min(100, Math.round((faturamentoBruto / 1800) * 100));
+        const pct = plano === 'basico' ? Math.min(100, Math.round((faturamentoBruto / 1800) * 100)) : 100;
         elBar.style.width = `${pct}%`;
-        elBar.classList.toggle('bg-perto-ok', faturamentoBruto <= 1800);
-        elBar.classList.toggle('bg-perto-sea', faturamentoBruto > 1800);
+        elBar.classList.toggle('bg-perto-ok', plano === 'basico' && faturamentoBruto <= 1800);
+        elBar.classList.toggle('bg-perto-sea', plano !== 'basico' || faturamentoBruto > 1800);
       }
       if (elIsen) {
-        elIsen.textContent = faturamentoBruto <= 1800
-          ? `Isento de mensalidade (faltam ${brl(1800 - faturamentoBruto)} p/ teto)`
-          : 'Teto de R$ 1.800/mês atingido';
+        if (plano === 'basico') {
+          elIsen.textContent = faturamentoBruto <= 1800
+            ? `Isento de mensalidade no mês (faltam ${brl(1800 - faturamentoBruto)} p/ teto)`
+            : 'Teto de R$ 1.800/mês atingido (mensalidade R$ 90,00)';
+        } else {
+          elIsen.textContent = 'Plano Pro: mensalidade fixa R$ 180,00/mês (após 1º mês)';
+        }
       }
 
       const finBadge = document.getElementById('finPlanoBadge');
       const finEscrow = document.getElementById('finSaldoEscrow');
       const finLib = document.getElementById('finTotalLiberado');
+      const finRegra = document.getElementById('finRegraMensalidade');
       const finTaxa = document.getElementById('finTaxaInfo');
       const tbody = document.getElementById('tabelaExtratoFinanceiro');
 
       if (finBadge) finBadge.textContent = plano === 'pro' ? 'Plano Pro (8%)' : 'Plano Básico (12%)';
       if (finEscrow) finEscrow.textContent = brl(saldoEscrow);
       if (finLib) finLib.textContent = brl(totalLiberado);
+      if (finRegra) {
+        finRegra.textContent = plano === 'basico'
+          ? 'Isento ≤ R$ 1.800/mês (Básico)'
+          : 'Mensalidade fixa R$ 180,00/mês (Pro)';
+      }
       if (finTaxa) finTaxa.textContent = `Taxa atual do plano: ${taxaLabel} por serviço concluído`;
 
       if (tbody) {
@@ -904,7 +1197,7 @@
 
       const filtrados = listaPedidos.filter(p => {
         if (filtroPedidosAtual === 'novos') return p.status === 'solicitado';
-        if (filtroPedidosAtual === 'andamento') return ['confirmado', 'em_transito', 'em_execucao'].includes(p.status);
+        if (filtroPedidosAtual === 'andamento') return ['confirmado', 'em_transito', 'em_execucao', 'em_disputa'].includes(p.status);
         if (filtroPedidosAtual === 'finalizados') return ['finalizado', 'cancelado'].includes(p.status);
         return true;
       });
@@ -915,7 +1208,12 @@
       }
 
       div.innerHTML = filtrados.map(p => {
+        const enderecoProtegido = p.status === 'solicitado' || Boolean(p.endereco_protegido);
+        const enderecoRegiao = [p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(' / ');
         const enderecoCompleto = [p.endereco_cliente, p.numero_cliente, p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(', ');
+        const localTexto = enderecoProtegido
+          ? `${enderecoRegiao || 'Região do cliente'} (endereço exato liberado após confirmação)`
+          : (enderecoCompleto ? `${enderecoCompleto}${p.cep_cliente ? ` (CEP ${p.cep_cliente})` : ''}` : enderecoRegiao);
         const isNovo = p.status === 'solicitado';
 
         let acoesHtml = '';
@@ -932,7 +1230,7 @@
           `;
         } else if (p.status === 'em_transito') {
           acoesHtml = `
-            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'em_execucao')">Iniciar Execução</button>
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="abrirModalPinExecucao(${orderIdNum})">Iniciar Execução</button>
           `;
         } else if (p.status === 'em_execucao') {
           acoesHtml = `
@@ -940,6 +1238,28 @@
           `;
         } else {
           acoesHtml = `<span class="text-xs font-semibold text-perto-ink/70">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
+        }
+
+        const acoesContextuais = [];
+        if (['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado'].includes(p.status)) {
+          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalChat(${orderIdNum})">Chat Protegido</button>`);
+        }
+        if (p.status === 'em_transito' || p.status === 'em_execucao') {
+          acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalSos(${orderIdNum})">SOS Emergência</button>`);
+        }
+        if (['em_execucao', 'finalizado', 'cancelado'].includes(p.status)) {
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalDisputa(${orderIdNum})">Abrir Disputa</button>`);
+        }
+        if (p.status === 'em_disputa') {
+          acoesContextuais.push(`<span class="dispute-badge">Em Disputa</span>`);
+        }
+        if (p.status === 'finalizado' && !p.ja_avaliado) {
+          acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink" onclick="abrirModalAvaliar(${orderIdNum})">Avaliar Cliente</button>`);
+        }
+        const reviewIdNum = Number(p.cliente_review_id || p.review_id || 0);
+        if (reviewIdNum > 0) {
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'reply')">Responder Avaliação</button>`);
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'contest')">Contestar Avaliação</button>`);
         }
 
         return `
@@ -953,14 +1273,14 @@
           </div>
           <div class="meta my-1.5">
             <span>👤 Cliente: <b>${escapeHtml(p.cliente_nome)}</b></span>
-            <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Não informado'}</span>
+            <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
             <span>Status: <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b></span>
-            ${p.codigo_confirmacao ? `<span class="tag">Código: ${escapeHtml(p.codigo_confirmacao)}</span>` : ''}
           </div>
-          ${enderecoCompleto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 Local do Atendimento: ${escapeHtml(enderecoCompleto)} ${p.cep_cliente ? `(CEP ${escapeHtml(p.cep_cliente)})` : ''}</div>` : ''}
+          ${localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 Local do Atendimento: ${escapeHtml(localTexto)}</div>` : ''}
           ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
           <div class="flex gap-2 mt-3 flex-wrap items-center">
             ${acoesHtml}
+            ${acoesContextuais.join('')}
           </div>
         </div>
       `;}).join('');
@@ -985,6 +1305,7 @@
         }
 
         atualizarKPIsEFinanceiro();
+        carregarFinancialSummary();
         renderizarPedidos();
       } catch (e) {
         div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar chamados.</p>';
@@ -1034,9 +1355,11 @@
       fecharModalMotivoPedido();
     };
 
-    async function alterarStatusPedido(orderId, status, motivo = null) {
+    async function alterarStatusPedido(orderId, status, motivo = null, codigoConfirmacao = null) {
       try {
-        const body = motivo ? { status, motivo } : { status };
+        const body = { status };
+        if (motivo) body.motivo = motivo;
+        if (codigoConfirmacao) body.codigo_confirmacao = codigoConfirmacao;
         const res = await fetch(`/api/orders/${orderId}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -1045,14 +1368,392 @@
         if (res.ok) {
           toast(`Status atualizado para: ${status}`);
           await carregarPedidos();
+          return true;
         } else {
           const err = await res.json().catch(() => ({}));
           toast(err.error || 'Erro ao atualizar chamado.');
+          return false;
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+        return false;
+      }
+    }
+
+    async function carregarFinancialSummary() {
+      try {
+        const res = await fetch('/api/provider/financial-summary');
+        if (!res.ok) return;
+        const s = await res.json();
+        const plano = (s.plano === 'pro') ? 'pro' : ((dadosPrestador && dadosPrestador.plano === 'pro') ? 'pro' : 'basico');
+        const fatMes = s.faturamento_mes_corrente != null ? Number(s.faturamento_mes_corrente) : (s.faturamento_bruto_mes != null ? Number(s.faturamento_bruto_mes) : null);
+        if (fatMes != null) {
+          const elFat = document.getElementById('kpiFaturamento');
+          const elBar = document.getElementById('kpiProgressoBarra');
+          const elIsen = document.getElementById('kpiIsencaoTexto');
+          if (elFat) elFat.textContent = brl(fatMes);
+          if (elBar && plano === 'basico') {
+            elBar.style.width = `${Math.min(100, Math.round((fatMes / 1800) * 100))}%`;
+            elBar.classList.toggle('bg-perto-ok', fatMes <= 1800);
+            elBar.classList.toggle('bg-perto-sea', fatMes > 1800);
+          }
+          if (elIsen && plano === 'basico') {
+            elIsen.textContent = fatMes <= 1800
+              ? `Isento de mensalidade no mês (faltam ${brl(1800 - fatMes)} p/ teto)`
+              : 'Teto de R$ 1.800/mês atingido (mensalidade R$ 90,00)';
+          }
+        }
+        const escrowVal = s.saldo_escrow_retido != null ? s.saldo_escrow_retido : s.saldo_escrow;
+        if (escrowVal != null && document.getElementById('finSaldoEscrow')) {
+          document.getElementById('finSaldoEscrow').textContent = brl(escrowVal);
+        }
+        const liberadoVal = s.total_liberado_liquido != null ? s.total_liberado_liquido : s.total_liberado;
+        if (liberadoVal != null && document.getElementById('finTotalLiberado')) {
+          document.getElementById('finTotalLiberado').textContent = brl(liberadoVal);
+        }
+      } catch (e) {}
+    }
+
+    // Helper acessível para modais contextuais (Esc + foco)
+    const modalTriggers = {};
+    function abrirModalAcessivel(modalId, focusElId) {
+      modalTriggers[modalId] = document.activeElement;
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.style.display = 'flex';
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          fecharModalAcessivel(modalId);
+        }
+      };
+      el._onKeyDown = onKey;
+      document.addEventListener('keydown', onKey);
+      el.onclick = (e) => {
+        if (e.target === el) fecharModalAcessivel(modalId);
+      };
+      if (focusElId) setTimeout(() => document.getElementById(focusElId)?.focus(), 0);
+    }
+
+    function fecharModalAcessivel(modalId) {
+      const el = document.getElementById(modalId);
+      if (el) {
+        el.style.display = 'none';
+        if (el._onKeyDown) document.removeEventListener('keydown', el._onKeyDown);
+      }
+      const trig = modalTriggers[modalId];
+      if (trig && typeof trig.focus === 'function') trig.focus();
+      delete modalTriggers[modalId];
+    }
+
+    // ET-02: Modal PIN de execução
+    function abrirModalPinExecucao(orderId) {
+      document.getElementById('formPinExecucao').reset();
+      document.getElementById('pinOrderId').value = orderId;
+      abrirModalAcessivel('modalPinExecucao', 'pinExecucaoInput');
+    }
+    function fecharModalPinExecucao() { fecharModalAcessivel('modalPinExecucao'); }
+
+    document.getElementById('formPinExecucao').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('pinOrderId').value;
+      const pin = (document.getElementById('pinExecucaoInput').value || '').trim();
+      if (!/^\d{4}$/.test(pin)) {
+        toast('Informe exatamente 4 dígitos numéricos.');
+        return;
+      }
+      const ok = await alterarStatusPedido(orderId, 'em_execucao', null, pin);
+      if (ok) fecharModalPinExecucao();
+    };
+
+    // ET-08: Chat Protegido
+    async function abrirModalChat(orderId) {
+      document.getElementById('chatOrderId').value = orderId;
+      document.getElementById('chatMensagemInput').value = '';
+      abrirModalAcessivel('modalChatPedido', 'chatMensagemInput');
+      await carregarMensagensChat(orderId);
+    }
+    function fecharModalChat() { fecharModalAcessivel('modalChatPedido'); }
+
+    async function carregarMensagensChat(orderId) {
+      const box = document.getElementById('listaMensagensChat');
+      if (!box) return;
+      box.innerHTML = '<p class="text-perto-ink/70">Carregando mensagens...</p>';
+      try {
+        const res = await fetch(`/api/orders/${orderId}/messages`);
+        if (!res.ok) {
+          box.innerHTML = '<p class="text-perto-ink/70">Chat indisponível para este chamado.</p>';
+          return;
+        }
+        const msgs = await res.json();
+        if (!Array.isArray(msgs) || !msgs.length) {
+          box.innerHTML = '<p class="text-perto-ink/70">Nenhuma mensagem ainda. Inicie a conversa abaixo.</p>';
+          return;
+        }
+        box.innerHTML = msgs.map(m => `
+          <div class="p-2.5 rounded-xl bg-white border border-perto-road">
+            <div class="flex items-center justify-between text-[11px] text-perto-ink/60 mb-0.5">
+              <b>${escapeHtml(m.sender_nome || m.sender_tipo || 'Participante')}</b>
+              <span>${escapeHtml(m.criado_em || m.created_at || '')}</span>
+            </div>
+            <p class="m-0 text-perto-ink">${escapeHtml(m.mensagem || m.conteudo || m.texto || '')}</p>
+          </div>
+        `).join('');
+        box.scrollTop = box.scrollHeight;
+      } catch (e) {
+        box.innerHTML = '<p class="text-perto-ink/70">Erro ao carregar mensagens.</p>';
+      }
+    }
+
+    document.getElementById('formChatPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('chatOrderId').value;
+      const texto = (document.getElementById('chatMensagemInput').value || '').trim();
+      if (!texto) return;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensagem: texto, conteudo: texto })
+        });
+        if (res.ok) {
+          document.getElementById('chatMensagemInput').value = '';
+          await carregarMensagensChat(orderId);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Erro ao enviar mensagem.');
+        }
+      } catch (e) {
+        toast('Erro de conexão no chat.');
+      }
+    };
+
+    // ET-13: SOS Emergência
+    function abrirModalSos(orderId) {
+      document.getElementById('formSosPedido').reset();
+      document.getElementById('sosOrderId').value = orderId;
+      abrirModalAcessivel('modalSosPedido', 'sosMotivoInput');
+    }
+    function fecharModalSos() { fecharModalAcessivel('modalSosPedido'); }
+
+    document.getElementById('formSosPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('sosOrderId').value;
+      const motivo = (document.getElementById('sosMotivoInput').value || '').trim();
+      try {
+        const res = await fetch(`/api/orders/${orderId}/sos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo, descricao: motivo })
+        });
+        if (res.ok) {
+          toast('Alerta SOS registrado! Equipe notificada.');
+          fecharModalSos();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Erro ao registrar SOS.');
         }
       } catch (e) {
         toast('Erro de conexão.');
       }
+    };
+
+    // ET-14: Abrir Disputa
+    function abrirModalDisputa(orderId) {
+      document.getElementById('formDisputaPedido').reset();
+      document.getElementById('disputaOrderId').value = orderId;
+      abrirModalAcessivel('modalDisputaPedido', 'disputaMotivoInput');
     }
+    function fecharModalDisputa() { fecharModalAcessivel('modalDisputaPedido'); }
+
+    document.getElementById('formDisputaPedido').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('disputaOrderId').value;
+      const motivo = (document.getElementById('disputaMotivoInput').value || '').trim();
+      const descricao = (document.getElementById('disputaDescricaoInput').value || '').trim();
+      try {
+        const res = await fetch(`/api/orders/${orderId}/dispute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo, descricao })
+        });
+        if (res.ok) {
+          toast('Disputa registrada para mediação.');
+          fecharModalDisputa();
+          await carregarPedidos();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Erro ao abrir disputa.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
+
+    // ET-15: Avaliar Cliente
+    function abrirModalAvaliar(orderId) {
+      document.getElementById('formAvaliarCliente').reset();
+      document.getElementById('avaliarOrderId').value = orderId;
+      abrirModalAcessivel('modalAvaliarCliente', 'avaliarNotaInput');
+    }
+    function fecharModalAvaliar() { fecharModalAcessivel('modalAvaliarCliente'); }
+
+    document.getElementById('formAvaliarCliente').onsubmit = async (e) => {
+      e.preventDefault();
+      const orderId = document.getElementById('avaliarOrderId').value;
+      const nota = parseInt(document.getElementById('avaliarNotaInput').value, 10);
+      const comentario = (document.getElementById('avaliarComentarioInput').value || '').trim();
+      try {
+        const res = await fetch(`/api/orders/${orderId}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nota, comentario })
+        });
+        if (res.ok) {
+          toast('Avaliação enviada com sucesso!');
+          fecharModalAvaliar();
+          await carregarPedidos();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Erro ao enviar avaliação.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
+
+    // ET-15: Réplica / Contestação de Avaliação
+    function abrirModalReviewAcao(reviewId, modo) {
+      document.getElementById('formReviewAcao').reset();
+      document.getElementById('reviewAcaoId').value = reviewId;
+      document.getElementById('reviewAcaoModo').value = modo;
+      const isContest = modo === 'contest';
+      document.getElementById('tituloModalReviewAcao').textContent = isContest ? 'Contestar Avaliação' : 'Responder Avaliação';
+      document.getElementById('labelReviewAcaoTexto').textContent = isContest ? 'Motivo da contestação' : 'Sua réplica pública';
+      abrirModalAcessivel('modalReviewAcao', 'reviewAcaoTexto');
+    }
+    function fecharModalReviewAcao() { fecharModalAcessivel('modalReviewAcao'); }
+
+    document.getElementById('formReviewAcao').onsubmit = async (e) => {
+      e.preventDefault();
+      const reviewId = document.getElementById('reviewAcaoId').value;
+      const modo = document.getElementById('reviewAcaoModo').value;
+      const texto = (document.getElementById('reviewAcaoTexto').value || '').trim();
+      const isContest = modo === 'contest';
+      const url = isContest ? `/api/reviews/${reviewId}/contest` : `/api/reviews/${reviewId}/reply`;
+      const payload = isContest ? { motivo: texto } : { replica: texto };
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast(data.message || (isContest ? 'Contestação enviada!' : 'Réplica publicada!'));
+          fecharModalReviewAcao();
+          await carregarPedidos();
+        } else {
+          toast(data.error || 'Erro ao enviar.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
+
+    // ET-09: Verificação KYC
+    document.getElementById('formKycVerify').onsubmit = async (e) => {
+      e.preventDefault();
+      const documento_tipo = document.getElementById('kycDocTipoPerfil').value;
+      const registro_profissional = (document.getElementById('kycRegProfPerfil').value || '').trim();
+      try {
+        const res = await fetch('/api/kyc/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kyc_documento_tipo: documento_tipo, registro_profissional })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast(data.message || 'Verificação KYC atualizada!');
+          if (data.kyc_tier != null) dadosPrestador.kyc_tier = data.kyc_tier;
+          if (data.kyc_status) dadosPrestador.kyc_status = data.kyc_status;
+          atualizarStatusKycEConta();
+        } else {
+          toast(data.error || 'Erro ao enviar verificação KYC.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
+
+    // ET-10: Recurso / Revisão Humana
+    document.getElementById('formAppealConta').onsubmit = async (e) => {
+      e.preventDefault();
+      const justificativa = (document.getElementById('appealJustificativa').value || '').trim();
+      try {
+        const res = await fetch('/api/account/appeal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ justificativa, motivo: justificativa })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast(data.message || 'Recurso enviado para revisão humana.');
+          document.getElementById('formAppealConta').reset();
+        } else {
+          toast(data.error || 'Erro ao enviar recurso.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
+
+    // ET-10: LGPD Exportar / Excluir Conta
+    async function exportarDadosLgpd() {
+      try {
+        const res = await fetch('/api/profile/export');
+        if (!res.ok) {
+          toast('Erro ao exportar seus dados.');
+          return;
+        }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'pertoja-meus-dados.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('Exportação JSON concluída!');
+      } catch (e) {
+        toast('Erro de conexão ao exportar dados.');
+      }
+    }
+
+    function abrirModalExcluirConta() {
+      document.getElementById('formExcluirConta').reset();
+      abrirModalAcessivel('modalExcluirConta', 'chkConfirmarExclusao');
+    }
+    function fecharModalExcluirConta() { fecharModalAcessivel('modalExcluirConta'); }
+
+    document.getElementById('formExcluirConta').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const res = await fetch('/api/profile', { method: 'DELETE' });
+        if (res.ok) {
+          toast('Conta anonimizada/excluída conforme LGPD.');
+          fecharModalExcluirConta();
+          setTimeout(() => { window.location.href = 'index.html'; }, 800);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast(err.error || 'Não foi possível excluir a conta.');
+        }
+      } catch (e) {
+        toast('Erro de conexão.');
+      }
+    };
 
     async function buscarCepPrestador(cepVal) {
       if (!cepVal) return;
