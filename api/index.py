@@ -83,7 +83,9 @@ def _init_marketplace_app():
             target_app.wsgi_app = VercelPathNormalizerWSGI(target_app.wsgi_app)
         return target_app
     except Exception as exc:
-        print(f"❌ [CRITICAL] Falha ao importar aplicação Flask no Serverless Vercel: {exc}", file=sys.stderr)
+        err_detail = str(exc)
+        err_tb = traceback.format_exc()
+        print(f"❌ [CRITICAL] Falha ao importar aplicação Flask no Serverless Vercel: {err_detail}", file=sys.stderr)
         traceback.print_exc()
         from flask import Flask, jsonify
         err_app = Flask(__name__)
@@ -93,8 +95,8 @@ def _init_marketplace_app():
         def vercel_import_error(subpath=''):
             return jsonify({
                 'error': 'Falha na inicialização da função Serverless no Vercel',
-                'detail': str(exc),
-                'traceback': traceback.format_exc()
+                'detail': err_detail,
+                'traceback': err_tb
             }), 500
         return err_app
 
