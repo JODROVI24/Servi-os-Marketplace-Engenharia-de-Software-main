@@ -335,6 +335,9 @@
       </div>
       <div class="chat-box">
         <div id="chatClienteMessages" class="chat-messages max-h-60 overflow-y-auto space-y-2 mb-3 text-xs" aria-live="polite"></div>
+        <p id="chatClienteReadOnlyNotice" class="hidden text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2 mb-2" role="status">
+          Chat encerrado (somente leitura)
+        </p>
         <form id="formChatCliente" class="chat-form flex gap-2">
           <input type="hidden" id="chatClienteOrderId">
           <label for="inputChatClienteMsg" class="sr-only">Mensagem para o profissional</label>
@@ -436,6 +439,27 @@
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-perto-road">
         <button type="button" id="btnCancelarExcluirLgpd" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Cancelar</button>
         <button type="button" id="btnConfirmarExcluirLgpd" class="btn-lgpd-danger px-5 py-2 rounded-full text-xs font-extrabold bg-perto-sun text-perto-ink border-2 border-perto-ink">Confirmar Anonimização</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Acessível: Ver Avaliações Double-Blind (ET-13) -->
+  <div id="modalVerReviewsPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalVerReviewsTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 480px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalVerReviewsTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">reviews</span>
+          Avaliações do Atendimento
+        </h3>
+        <button type="button" id="btnFecharModalVerReviews" class="drawer-fechar" aria-label="Fechar modal de avaliações">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div id="verReviewsConteudo" class="space-y-3 text-xs font-body" aria-live="polite">
+        <p class="text-perto-ink/70">Carregando avaliações...</p>
+      </div>
+      <div class="flex justify-end pt-3 mt-3 border-t border-perto-road">
+        <button type="button" id="btnFecharModalVerReviewsRodape" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Fechar</button>
       </div>
     </div>
   </div>
@@ -769,14 +793,23 @@
           const disputaBadgeHtml = emDisputa
             ? `<span class="dispute-badge">⚖️ Em Mediação</span>`
             : '';
+          const escrowStatus = String(p.escrow_status || '').toLowerCase();
+          const aguardandoEscrow = st === 'finalizado' && escrowStatus === 'aguardando_liberacao' && !p.confirmado_cliente;
+          const escrowLiberado = st === 'finalizado' && escrowStatus === 'liberado';
+          const escrowBadgeHtml = aguardandoEscrow
+            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Em Garantia (48h)</span>`
+            : (escrowLiberado
+              ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">✓ Escrow Liberado</span>`
+              : '');
           const podeAvaliar = st === 'finalizado' && !p.ja_avaliado;
           const jaAvaliadoHtml = st === 'finalizado' && p.ja_avaliado
             ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
             : '';
-          const podeChat = ['confirmado', 'em_transito', 'em_execucao', 'em_disputa'].includes(st);
+          const podeChat = ['confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(st);
           const podeSos = ['em_transito', 'em_execucao'].includes(st);
           const podeConcluir = st === 'em_execucao';
           const podeDisputa = (st === 'em_execucao' || st === 'finalizado') && !emDisputa;
+          const podeVerReviews = st === 'finalizado';
 
           return `
             <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
@@ -790,6 +823,7 @@
                 ${pagamentoHtml}
                 <span>Status: <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b></span>
                 ${codigoHtml}
+                ${escrowBadgeHtml}
                 ${disputaBadgeHtml}
                 ${jaAvaliadoHtml}
               </div>
@@ -797,7 +831,7 @@
               ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
               <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
                 ${podeChat ? `
-                  <button type="button" class="btn2 btn-chat-pedido" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                  <button type="button" class="btn2 btn-chat-pedido" data-order-id="${p.order_id}" data-status="${escapeHtml(st)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                     <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">chat</span>
                     Chat do Pedido
                   </button>
@@ -806,6 +840,12 @@
                   <button type="button" class="btn btn-confirmar-conclusao" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                     <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">check_circle</span>
                     Confirmar Conclusão
+                  </button>
+                ` : ''}
+                ${aguardandoEscrow ? `
+                  <button type="button" class="btn btn-liberar-escrow" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">verified</span>
+                    Confirmar e Liberar Escrow
                   </button>
                 ` : ''}
                 ${podeDisputa ? `
@@ -826,6 +866,12 @@
                     Avaliar Prestador
                   </button>
                 ` : ''}
+                ${podeVerReviews ? `
+                  <button type="button" class="btn2 btn-ver-reviews" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">reviews</span>
+                    Ver Avaliações
+                  </button>
+                ` : ''}
                 <a href="pedido.html?order_id=${encodeURIComponent(p.order_id)}" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">map</span>
                   Ver no Mapa em Tempo Real
@@ -840,11 +886,17 @@
             abrirModalAvaliacao(btn.dataset.orderId, btn.dataset.prestador, btn.dataset.servico);
           };
         });
+        div.querySelectorAll('.btn-ver-reviews').forEach(btn => {
+          btn.onclick = () => abrirModalVerReviewsPedido(btn.dataset.orderId);
+        });
         div.querySelectorAll('.btn-chat-pedido').forEach(btn => {
-          btn.onclick = () => abrirModalChatCliente(btn.dataset.orderId);
+          btn.onclick = () => abrirModalChatCliente(btn.dataset.orderId, btn.dataset.status);
         });
         div.querySelectorAll('.btn-confirmar-conclusao').forEach(btn => {
           btn.onclick = () => confirmarConclusaoPedido(btn.dataset.orderId, btn);
+        });
+        div.querySelectorAll('.btn-liberar-escrow').forEach(btn => {
+          btn.onclick = () => confirmarLiberacaoEscrow(btn.dataset.orderId, btn);
         });
         div.querySelectorAll('.btn-abrir-disputa').forEach(btn => {
           btn.onclick = () => abrirModalDisputaCliente(btn.dataset.orderId);
@@ -897,7 +949,7 @@
       }
     };
 
-    // --- Fluxos Éticos do Portal do Cliente (ET-08, ET-10, ET-14, ET-15) ---
+    // --- Fluxos Éticos do Portal do Cliente (ET-08, ET-10, ET-13, ET-14, ET-15) ---
     async function confirmarConclusaoPedido(orderId, btnEl) {
       if (!orderId) return;
       if (btnEl) btnEl.disabled = true;
@@ -916,6 +968,35 @@
         }
       } catch (e) {
         toast('Erro de comunicação ao confirmar conclusão.');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function confirmarLiberacaoEscrow(orderId, btnEl) {
+      if (!orderId) return;
+      if (btnEl) btnEl.disabled = true;
+      try {
+        let res = await fetch(`/api/orders/${orderId}/confirm-completion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (res.status === 404 || res.status === 405) {
+          res = await fetch(`/api/orders/${orderId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'finalizado' })
+          });
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast(data.message || 'Escrow liberado com sucesso!');
+          await carregarHistoricoPedidos();
+        } else {
+          toast(data.error || 'Não foi possível liberar o Escrow.');
+        }
+      } catch (e) {
+        toast('Erro de comunicação ao liberar Escrow.');
       } finally {
         if (btnEl) btnEl.disabled = false;
       }
@@ -992,15 +1073,28 @@
       }
     }
 
-    async function abrirModalChatCliente(orderId) {
+    let chatClienteReadOnly = false;
+    async function abrirModalChatCliente(orderId, orderStatus) {
+      const st = String(orderStatus || '').toLowerCase();
+      chatClienteReadOnly = ['finalizado', 'cancelado'].includes(st);
       document.getElementById('chatClienteOrderId').value = orderId;
-      document.getElementById('inputChatClienteMsg').value = '';
-      ctrlChatCliente.abrir('#inputChatClienteMsg');
+      const input = document.getElementById('inputChatClienteMsg');
+      const btn = document.getElementById('btnEnviarChatCliente');
+      const notice = document.getElementById('chatClienteReadOnlyNotice');
+      input.value = '';
+      input.disabled = chatClienteReadOnly;
+      btn.disabled = chatClienteReadOnly;
+      if (notice) notice.classList.toggle('hidden', !chatClienteReadOnly);
+      ctrlChatCliente.abrir(chatClienteReadOnly ? '#btnFecharModalChatCliente' : '#inputChatClienteMsg');
       await carregarMensagensChatCliente(orderId);
     }
 
     document.getElementById('formChatCliente').onsubmit = async (e) => {
       e.preventDefault();
+      if (chatClienteReadOnly) {
+        toast('Chat encerrado (somente leitura).');
+        return;
+      }
       const orderId = document.getElementById('chatClienteOrderId').value;
       const input = document.getElementById('inputChatClienteMsg');
       const btn = document.getElementById('btnEnviarChatCliente');
@@ -1023,9 +1117,90 @@
       } catch (err) {
         toast('Erro de comunicação ao enviar mensagem.');
       } finally {
-        btn.disabled = false;
+        btn.disabled = chatClienteReadOnly;
       }
     };
+
+    const ctrlVerReviewsPedido = vincularModalAcessivel('modalVerReviewsPedido', ['btnFecharModalVerReviews', 'btnFecharModalVerReviewsRodape']);
+    async function abrirModalVerReviewsPedido(orderId) {
+      const box = document.getElementById('verReviewsConteudo');
+      if (!box) return;
+      box.innerHTML = '<p class="text-perto-ink/70">Carregando avaliações...</p>';
+      ctrlVerReviewsPedido.abrir('#btnFecharModalVerReviews');
+      try {
+        const res = await fetch(`/api/orders/${orderId}/reviews`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          box.innerHTML = `<p class="text-perto-ink/80">${escapeHtml(data.error || 'Não foi possível carregar as avaliações.')}</p>`;
+          return;
+        }
+        const minha = data.minha_avaliacao;
+        const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_prestador || data.review_recebida || null;
+        const oculta = Boolean(data.oculta_double_blind);
+        const minhaHtml = minha
+          ? `
+            <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
+              <div class="font-bold text-perto-ink mb-1">Sua avaliação (${escapeHtml(String(minha.nota || 5))} ★)</div>
+              <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
+            </div>
+          `
+          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não enviou sua avaliação para este pedido.</div>`;
+
+        let contraHtml = '';
+        if (oculta) {
+          contraHtml = `
+            <div class="p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-perto-ink">
+              <div class="font-bold mb-1">Avaliação do profissional protegida (Double-Blind)</div>
+              <p class="m-0">A avaliação do prestador será revelada simultaneamente após ambos avaliarem ou em 7 dias.</p>
+            </div>
+          `;
+        } else if (contraparte) {
+          const revId = Number(contraparte.id || 0);
+          contraHtml = `
+            <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
+              <div class="font-bold text-perto-ink">Avaliação do profissional (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
+              <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
+              ${revId > 0 ? `
+                <form id="formContestarReviewCliente" class="pt-2 border-t border-perto-road flex gap-2">
+                  <input type="text" id="inputMotivoContestReviewCliente" required minlength="3" placeholder="Motivo para contestar avaliação..." class="input-form text-xs flex-1">
+                  <button type="submit" class="btn2 px-3 py-1.5 rounded-full text-xs font-bold shrink-0">Contestar</button>
+                </form>
+              ` : ''}
+            </div>
+          `;
+        } else {
+          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">O profissional ainda não registrou uma avaliação.</div>`;
+        }
+
+        box.innerHTML = minhaHtml + contraHtml;
+        const formContest = document.getElementById('formContestarReviewCliente');
+        if (formContest && contraparte && contraparte.id) {
+          formContest.onsubmit = async (ev) => {
+            ev.preventDefault();
+            const motivo = (document.getElementById('inputMotivoContestReviewCliente').value || '').trim();
+            if (!motivo) return;
+            try {
+              const r = await fetch(`/api/reviews/${contraparte.id}/contest`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motivo })
+              });
+              const d = await r.json().catch(() => ({}));
+              if (r.ok) {
+                toast(d.message || 'Contestação enviada com sucesso.');
+                ctrlVerReviewsPedido.fechar();
+              } else {
+                toast(d.error || 'Erro ao contestar avaliação.');
+              }
+            } catch (err) {
+              toast('Erro de comunicação ao contestar avaliação.');
+            }
+          };
+        }
+      } catch (e) {
+        box.innerHTML = '<p class="text-perto-ink/70">Erro de comunicação ao carregar avaliações.</p>';
+      }
+    }
 
     const ctrlDisputaCliente = vincularModalAcessivel('modalDisputaCliente', ['btnFecharModalDisputa', 'btnCancelarDisputa']);
     function abrirModalDisputaCliente(orderId) {

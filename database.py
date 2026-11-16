@@ -137,12 +137,14 @@ def _normalizar_query(texto):
     - remove espaços no início e fim;
     - converte para minúsculas;
     - remove acentos via decomposição NFD e filtragem ASCII;
+    - remove número residencial isolado para maior reaproveitamento de cache (ET-10);
     - colapsa múltiplos espaços em um único espaço.
     """
     if not texto:
         return ''
-    sem_acentos = unicodedata.normalize('NFD', str(texto)).encode('ascii', 'ignore').decode('ascii')
-    return re.sub(r'\s+', ' ', sem_acentos).strip().lower()
+    sem_acentos = unicodedata.normalize('NFD', str(texto)).encode('ascii', 'ignore').decode('ascii').lower()
+    sem_numero = re.sub(r'(?<=[a-z\s]),?\s+\b\d{1,5}\b(?=\s*(?:,|$|-))', '', sem_acentos)
+    return re.sub(r'\s+', ' ', sem_numero).strip()
 
 
 def translate_placeholders(sql):
@@ -474,6 +476,7 @@ CREATE TABLE IF NOT EXISTS users (
     kyc_provider_ref TEXT,
     kyc_verified_at TIMESTAMP,
     registro_profissional TEXT,
+    cpf TEXT,
     status_conta TEXT DEFAULT 'ativo',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -527,6 +530,9 @@ CREATE TABLE IF NOT EXISTS orders (
     share_token TEXT,
     completed_at TIMESTAMP,
     released_at TIMESTAMP,
+    release_due_at TIMESTAMP,
+    confirmado_cliente INTEGER DEFAULT 0,
+    pin_tentativas INTEGER DEFAULT 0,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -548,6 +554,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     contestada INTEGER DEFAULT 0,
     motivo_contestacao TEXT,
     status_moderacao TEXT DEFAULT 'visivel',
+    revealed_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id),
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -616,6 +623,17 @@ CREATE TABLE IF NOT EXISTS order_messages (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS escrow_ledger (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    tipo_evento TEXT NOT NULL,
+    valor DOUBLE PRECISION DEFAULT 0,
+    status_escrow TEXT,
+    observacao TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -675,6 +693,7 @@ CREATE TABLE IF NOT EXISTS users (
     kyc_provider_ref TEXT,
     kyc_verified_at TIMESTAMP,
     registro_profissional TEXT,
+    cpf TEXT,
     status_conta TEXT DEFAULT 'ativo',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -728,6 +747,9 @@ CREATE TABLE IF NOT EXISTS orders (
     share_token TEXT,
     completed_at TIMESTAMP,
     released_at TIMESTAMP,
+    release_due_at TIMESTAMP,
+    confirmado_cliente INTEGER DEFAULT 0,
+    pin_tentativas INTEGER DEFAULT 0,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -749,6 +771,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     contestada INTEGER DEFAULT 0,
     motivo_contestacao TEXT,
     status_moderacao TEXT DEFAULT 'visivel',
+    revealed_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id),
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -817,6 +840,17 @@ CREATE TABLE IF NOT EXISTS order_messages (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS escrow_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    tipo_evento TEXT NOT NULL,
+    valor REAL DEFAULT 0,
+    status_escrow TEXT,
+    observacao TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -961,6 +995,7 @@ def _ensure_columns(conn, cursor, engine):
             ('kyc_provider_ref', 'TEXT'),
             ('kyc_verified_at', 'TIMESTAMP'),
             ('registro_profissional', 'TEXT'),
+            ('cpf', 'TEXT'),
             ('status_conta', "TEXT DEFAULT 'ativo'"),
         ],
         'orders': [
@@ -977,6 +1012,9 @@ def _ensure_columns(conn, cursor, engine):
             ('share_token', 'TEXT'),
             ('completed_at', 'TIMESTAMP'),
             ('released_at', 'TIMESTAMP'),
+            ('release_due_at', 'TIMESTAMP'),
+            ('confirmado_cliente', 'INTEGER DEFAULT 0'),
+            ('pin_tentativas', 'INTEGER DEFAULT 0'),
         ],
         'reviews': [
             ('autor_tipo', "TEXT DEFAULT 'cliente'"),
@@ -986,6 +1024,7 @@ def _ensure_columns(conn, cursor, engine):
             ('contestada', 'INTEGER DEFAULT 0'),
             ('motivo_contestacao', 'TEXT'),
             ('status_moderacao', "TEXT DEFAULT 'visivel'"),
+            ('revealed_at', 'TIMESTAMP'),
         ],
     }
 
@@ -1053,7 +1092,8 @@ def _ensure_orders_status_check(conn, cursor, engine):
         'lng_cliente', 'complemento_cliente', 'modalidade', 'agendado_para',
         'metodo_pagamento', 'pago', 'codigo_confirmacao', 'motivo_cancelamento',
         'escrow_status', 'taxa_deslocamento', 'valor_estornado', 'share_token',
-        'completed_at', 'released_at', 'criado_em', 'atualizado_em'
+        'completed_at', 'released_at', 'release_due_at', 'confirmado_cliente',
+        'pin_tentativas', 'criado_em', 'atualizado_em'
     ]
     copy_cols = [c for c in new_orders_cols if c in existing_cols]
     cols_csv = ', '.join(copy_cols)
@@ -1089,6 +1129,9 @@ def _ensure_orders_status_check(conn, cursor, engine):
             share_token TEXT,
             completed_at TIMESTAMP,
             released_at TIMESTAMP,
+            release_due_at TIMESTAMP,
+            confirmado_cliente INTEGER DEFAULT 0,
+            pin_tentativas INTEGER DEFAULT 0,
             criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -1121,7 +1164,7 @@ def init_db():
         # Verifica se as tabelas principais já existem antes de executar o schema inicial
         core_tables = (
             'users', 'services', 'orders', 'reviews', 'geocode_cache',
-            'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages'
+            'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages', 'escrow_ledger'
         )
         missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
 
@@ -1159,6 +1202,22 @@ def init_db():
         conn.commit()
 
         sincronizar_todos_prestadores(conn)
+
+        # Migração defensiva ET-09: garante Tier 2 e registro profissional para prestadores seed de Elétrica/Encanamento
+        cursor.execute('''
+            UPDATE users
+            SET kyc_tier = 2,
+                registro_profissional = COALESCE(registro_profissional, 'CFT/CREA-SEED')
+            WHERE tipo = 'prestador'
+              AND email LIKE '%@pertoja.com'
+              AND COALESCE(kyc_tier, 1) < 2
+              AND EXISTS (
+                  SELECT 1 FROM services s
+                  WHERE s.prestador_id = users.id
+                    AND s.categoria IN ('Elétrica', 'Encanamento')
+              )
+        ''')
+        conn.commit()
     finally:
         if engine == 'postgresql':
             try:
@@ -1239,13 +1298,15 @@ def sincronizar_todos_prestadores(conn):
     pwd_hash = generate_password_hash('123456')
 
     for nome, email, tel, bio, cat, s_titulo, preco, rating, cep, end, num, bairro, cid, uf, lat, lng, disp in PRESTADORES_SEED_35:
+        kyc_tier_seed = 2 if cat in ('Elétrica', 'Encanamento') else 1
+        reg_prof_seed = 'CFT/CREA-SEED' if cat in ('Elétrica', 'Encanamento') else None
         cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
         row = cursor.fetchone()
         if not row:
             cursor.execute('''
-                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel, kyc_tier, kyc_status, status_conta)
-                VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 15, ?, 1, 'aprovado', 'ativo')
-            ''', (nome, email, pwd_hash, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp))
+                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel, kyc_tier, kyc_status, registro_profissional, status_conta)
+                VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 15, ?, ?, 'aprovado', ?, 'ativo')
+            ''', (nome, email, pwd_hash, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp, kyc_tier_seed, reg_prof_seed))
             p_id = cursor.lastrowid
             cursor.execute('''
                 INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, lat, lng, ativo)
@@ -1278,12 +1339,15 @@ def get_cached_geocode(query):
     normalized = _normalizar_query(query)
     if not normalized:
         return None
+    conn = None
     try:
         conn = get_db_connection()
         row = conn.execute('SELECT lat, lng, criado_em FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
-        conn.close()
         if row:
-            criado_em = row['criado_em'] if 'criado_em' in row else None
+            try:
+                criado_em = row['criado_em']
+            except (KeyError, IndexError, TypeError):
+                criado_em = None
             if criado_em is not None:
                 if isinstance(criado_em, str):
                     try:
@@ -1295,10 +1359,18 @@ def get_cached_geocode(query):
                 else:
                     dt = datetime.utcnow()
                 if datetime.utcnow() - dt > timedelta(days=30):
+                    conn.execute('DELETE FROM geocode_cache WHERE query = ?', (normalized,))
+                    conn.commit()
                     return None
             return float(row['lat']), float(row['lng'])
     except Exception:
         pass
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
     return None
 
 

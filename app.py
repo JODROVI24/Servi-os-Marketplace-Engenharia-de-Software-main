@@ -7,7 +7,7 @@ import hmac
 import requests
 import gzip
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, session, send_from_directory, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -23,6 +23,48 @@ STATIC_DIR = os.path.join(BASE_DIR, 'public')
 ALLOWED_STATIC_EXTENSIONS = {
     '.html', '.css', '.js', '.webp', '.jpg', '.png', '.svg', '.ico', '.woff2', '.woff'
 }
+
+CATEGORIAS_PERMITIDAS = (
+    'Limpeza', 'Elétrica', 'Encanamento', 'Marcenaria', 'Pintura', 'Jardinagem', 'Tecnologia'
+)
+CATEGORIAS_TECNICAS = ('Elétrica', 'Encanamento')
+
+
+def _parse_dt(val):
+    """Converte string ISO/SQL ou datetime para datetime naive UTC."""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val.replace(tzinfo=None)
+    try:
+        return datetime.fromisoformat(str(val).replace('Z', '+00:00')).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _log_escrow_ledger(conn, order_id, tipo_evento, valor, status_escrow, observacao=''):
+    """Registra movimentação imutável no razão de Escrow (ET-08)."""
+    conn.execute('''
+        INSERT INTO escrow_ledger (order_id, tipo_evento, valor, status_escrow, observacao)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (order_id, tipo_evento, float(valor or 0.0), status_escrow, observacao))
+
+
+def _is_review_revealed(rev_row):
+    """Verifica se uma avaliação já foi revelada via double-blind (avaliação mútua ou 7 dias)."""
+    if not rev_row:
+        return False
+    if _row_get(rev_row, 'revealed_at') is not None:
+        return True
+    dt = _parse_dt(_row_get(rev_row, 'criado_em'))
+    return bool(dt is not None and (datetime.utcnow() - dt) >= timedelta(days=7))
+
+
+def _mask_phone(phone):
+    if not phone:
+        return ''
+    s = str(phone)
+    return (s[:-4] + '****') if len(s) >= 4 else '****'
 
 
 def _load_dotenv():
@@ -608,6 +650,10 @@ def register():
     if kyc_documento_tipo not in ('RG', 'CIN', 'CNH'):
         kyc_documento_tipo = 'RG'
     registro_profissional = str(data.get('registro_profissional') or '').strip() or None
+    raw_cpf = str(data.get('cpf') or '').strip()
+    cpf_limpo = re.sub(r'\D', '', raw_cpf) if raw_cpf else None
+    if raw_cpf and len(cpf_limpo) != 11:
+        return jsonify({'error': 'CPF inválido. Informe 11 dígitos numéricos.'}), 400
 
     # Se não passou coordenadas mas passou endereço, geocodifica
     if (raw_lat is None or raw_lat == '' or raw_lng is None or raw_lng == '') and (endereco or cep):
@@ -621,8 +667,15 @@ def register():
         lat = safe_coord(raw_lat, -23.5653)
         lng = safe_coord(raw_lng, -46.6517)
 
-    categoria = data.get('categoria', '').strip()
+    categoria = str(data.get('categoria') or '').strip()
     preco_inicial = data.get('preco_inicial')
+
+    if tipo == 'prestador' and categoria and categoria not in CATEGORIAS_PERMITIDAS:
+        return jsonify({'error': f'Categoria "{categoria}" não permitida pela plataforma.'}), 400
+
+    kyc_tier = 2 if (tipo == 'prestador' and registro_profissional and categoria in CATEGORIAS_TECNICAS) else 1
+    if tipo == 'prestador' and categoria in CATEGORIAS_TECNICAS and kyc_tier < 2:
+        return jsonify({'error': 'Categorias técnicas (Elétrica/Encanamento) exigem registro profissional e KYC Tier 2.'}), 403
 
     conn = get_db_connection()
     try:
@@ -633,9 +686,9 @@ def register():
         senha_hash = generate_password_hash(senha)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_status, kyc_documento_tipo, registro_profissional, status_conta)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'aprovado', ?, ?, 'ativo')
-        ''', (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_documento_tipo, registro_profissional))
+            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_status, kyc_documento_tipo, registro_profissional, cpf, status_conta)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aprovado', ?, ?, ?, 'ativo')
+        ''', (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_documento_tipo, registro_profissional, cpf_limpo))
         user_id = cursor.lastrowid
 
         cursor.execute('''
@@ -683,10 +736,11 @@ def register():
                 'estado': estado,
                 'lat': lat,
                 'lng': lng,
-                'kyc_tier': 1,
+                'kyc_tier': kyc_tier,
                 'kyc_status': 'aprovado',
                 'kyc_documento_tipo': kyc_documento_tipo,
                 'registro_profissional': registro_profissional,
+                'cpf': cpf_limpo,
                 'status_conta': 'ativo'
             }
         }), 201
@@ -1039,33 +1093,44 @@ def verify_kyc():
 
     registro_prof = str(data.get('registro_profissional') or _row_get(user, 'registro_profissional') or '').strip() or None
     selfie_ok = bool(data.get('selfie_verificada', True))
-    tier = int(data.get('tier') or (2 if (registro_prof or selfie_ok) else 1))
-    if tier < 1:
-        tier = 1
-    if tier > 2:
-        tier = 2
+    homonimo = bool(data.get('homonimo'))
+    raw_cpf = str(data.get('cpf') or '').strip()
+    cpf_limpo = re.sub(r'\D', '', raw_cpf) if raw_cpf else None
+    if raw_cpf and len(cpf_limpo) != 11:
+        return jsonify({'error': 'CPF inválido. Informe 11 dígitos numéricos.'}), 400
 
+    if 'tier' in data and data.get('tier') is not None:
+        try:
+            tier = int(data.get('tier'))
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Tier KYC inválido.'}), 400
+    else:
+        tier = 2 if (registro_prof or selfie_ok) else 1
+    tier = max(0, min(2, tier))
+
+    kyc_status = 'em_revisao' if homonimo else 'aprovado'
     provider_ref = f"kyc-{user['id']}-{secrets.token_hex(4)}"
     conn = get_db_connection()
     try:
         conn.execute('''
             UPDATE users
             SET kyc_tier = ?,
-                kyc_status = 'aprovado',
+                kyc_status = ?,
                 kyc_documento_tipo = ?,
                 kyc_provider_ref = ?,
                 kyc_verified_at = CURRENT_TIMESTAMP,
-                registro_profissional = COALESCE(?, registro_profissional)
+                registro_profissional = COALESCE(?, registro_profissional),
+                cpf = COALESCE(?, cpf)
             WHERE id = ?
-        ''', (tier, doc_tipo, provider_ref, registro_prof, user['id']))
+        ''', (tier, kyc_status, doc_tipo, provider_ref, registro_prof, cpf_limpo, user['id']))
         conn.commit()
     finally:
         conn.close()
 
     return jsonify({
-        'message': 'Verificação KYC concluída com sucesso.',
+        'message': 'Cadastro encaminhado para revisão humana (homônimo).' if homonimo else 'Verificação KYC concluída com sucesso.',
         'kyc_tier': tier,
-        'kyc_status': 'aprovado',
+        'kyc_status': kyc_status,
         'kyc_documento_tipo': doc_tipo,
         'kyc_provider_ref': provider_ref,
         'registro_profissional': registro_prof
@@ -1138,16 +1203,8 @@ def list_services():
     # Coordenadas do cliente para cálculo de distância
     center_lat = user_lat if user_lat is not None else -23.5653
     center_lng = user_lng if user_lng is not None else -46.6517
-    is_authenticated = bool(session.get('user_id'))
-    is_approx = (not is_authenticated) or (request.args.get('approx') == '1')
-
-    def _mask_phone(phone):
-        if not phone:
-            return ''
-        s = str(phone)
-        if len(s) >= 4:
-            return s[:-4] + '****'
-        return '****'
+    force_approx = (request.args.get('approx') == '1')
+    session_user_id = session.get('user_id')
 
     def _deterministic_jitter(service_id):
         digest = hashlib.sha256(f"pertoja-jitter-{service_id}".encode('utf-8')).digest()
@@ -1170,6 +1227,9 @@ def list_services():
         nota_bayes = ((v * avg) + (5 * 4.5)) / (v + 5)
         score = 1000 * (1 - min(dist_km / 15.0, 1.0)) + (nota_bayes * 100) + (200 if r['disponivel'] else 0)
 
+        is_owner = bool(session_user_id and int(session_user_id) == int(r['prestador_id']))
+        is_approx = (not is_owner) or force_approx
+
         if is_approx:
             d_lat, d_lng = _deterministic_jitter(r['service_id'])
             out_lat = round(svc_lat + d_lat, 6)
@@ -1178,7 +1238,7 @@ def list_services():
             out_lat = svc_lat
             out_lng = svc_lng
 
-        # Formata endereço legível (ET-03: omite logradouro/número/CEP em consultas não autenticadas ou approx=1)
+        # Formata endereço legível (ET-03: omite logradouro/número/CEP para não-donos ou approx=1)
         partes_end = []
         if not is_approx and r['endereco']:
             end_num = f"{r['endereco']}" + (f", {r['numero']}" if r['numero'] else '')
@@ -1192,7 +1252,7 @@ def list_services():
         endereco_formatado = " · ".join(partes_end) if partes_end else "São Paulo - SP"
         if is_approx:
             endereco_formatado = f"{endereco_formatado} (localização aproximada)"
-        tel_out = r['prestador_telefone'] if is_authenticated else _mask_phone(r['prestador_telefone'])
+        tel_out = r['prestador_telefone'] if not is_approx else _mask_phone(r['prestador_telefone'])
 
         results.append({
             'id': r['service_id'],
@@ -1293,10 +1353,17 @@ def create_service():
     if any(p in texto_combinado for p in escopos_proibidos):
         return jsonify({'error': 'Escopo de serviço proibido pelas políticas de segurança do PertoJá.'}), 400
 
+    if not titulo or not categoria or preco is None:
+        return jsonify({'error': 'Título, categoria e preço são obrigatórios.'}), 400
+
+    if categoria not in CATEGORIAS_PERMITIDAS:
+        return jsonify({'error': f'Categoria "{categoria}" não permitida. Escolha entre: {", ".join(CATEGORIAS_PERMITIDAS)}.'}), 400
+
     kyc_status = _row_get(user, 'kyc_status', 'aprovado')
     kyc_tier = int(_row_get(user, 'kyc_tier', 1) or 1)
-    if kyc_status == 'reprovado' or (data.get('exige_kyc_tier2') and kyc_tier < 2):
-        return jsonify({'error': 'Verificação KYC insuficiente para publicar este serviço.'}), 403
+    exige_tier2 = bool(data.get('exige_kyc_tier2')) or (categoria in CATEGORIAS_TECNICAS)
+    if kyc_status in ('reprovado', 'em_revisao') or (exige_tier2 and kyc_tier < 2):
+        return jsonify({'error': 'Verificação KYC Tier 2 obrigatória para publicar este serviço.'}), 403
 
     # Dados de endereço do serviço (herda do prestador se não informados)
     cep = str(data.get('cep') or user['cep'] or '').strip()
@@ -1353,6 +1420,25 @@ def update_service(service_id):
     categoria = str(data.get('categoria') or service['categoria']).strip()
     preco = data.get('preco', service['preco'])
     ativo = 1 if data.get('ativo', bool(service['ativo'])) else 0
+
+    if any(k in data for k in ('titulo', 'descricao', 'categoria')):
+        texto_combinado = f"{titulo} {descricao} {categoria}".lower()
+        escopos_proibidos = (
+            'escolta armada', 'arma de fogo',
+            'gás alta pressão sem certificação', 'gas alta pressao sem certificacao',
+            'ilícito', 'ilicito'
+        )
+        if any(p in texto_combinado for p in escopos_proibidos):
+            conn.close()
+            return jsonify({'error': 'Escopo de serviço proibido pelas políticas de segurança do PertoJá.'}), 400
+        if categoria not in CATEGORIAS_PERMITIDAS:
+            conn.close()
+            return jsonify({'error': f'Categoria "{categoria}" não permitida. Escolha entre: {", ".join(CATEGORIAS_PERMITIDAS)}.'}), 400
+        kyc_status = _row_get(user, 'kyc_status', 'aprovado')
+        kyc_tier = int(_row_get(user, 'kyc_tier', 1) or 1)
+        if kyc_status in ('reprovado', 'em_revisao') or (categoria in CATEGORIAS_TECNICAS and kyc_tier < 2):
+            conn.close()
+            return jsonify({'error': 'Verificação KYC Tier 2 obrigatória para publicar este serviço.'}), 403
 
     cep = str(data.get('cep') or service['cep'] or user['cep'] or '').strip()
     endereco = str(data.get('endereco') or service['endereco'] or user['endereco'] or '').strip()
@@ -1434,6 +1520,12 @@ def create_order():
     if _row_get(user, 'status_conta', 'ativo') in ('suspenso_cautelar', 'bloqueado'):
         return jsonify({
             'error': 'Conta suspensa cautelarmente ou bloqueada não pode criar chamados.',
+            'code': 'FORBIDDEN'
+        }), 403
+
+    if _row_get(user, 'kyc_status', 'aprovado') in ('em_revisao', 'reprovado'):
+        return jsonify({
+            'error': 'Conta em revisão cadastral (KYC) ou reprovada não pode criar chamados.',
             'code': 'FORBIDDEN'
         }), 403
 
@@ -1559,12 +1651,20 @@ def pay_order(order_id):
     if metodo_pagamento not in ('pix', 'cartao', 'escrow'):
         metodo_pagamento = 'escrow'
 
-    if escrow_hold:
+    if order['status'] in ('em_disputa', 'cancelado'):
+        conn.close()
+        return jsonify({'error': f"Não é possível efetuar pagamento de pedido com status '{order['status']}'."}), 400
+
+    if escrow_hold or order['status'] in ('solicitado', 'confirmado', 'em_transito'):
         conn.execute('''
             UPDATE orders
             SET pago = 1, escrow_status = 'retido', metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', (metodo_pagamento, order_id))
+        _log_escrow_ledger(
+            conn, order_id, 'escrow_hold', order['preco_total'], 'retido',
+            f'Pagamento retido em Escrow ({metodo_pagamento})'
+        )
         conn.commit()
         current_status = order['status']
         conn.close()
@@ -1577,17 +1677,19 @@ def pay_order(order_id):
             'metodo_pagamento': metodo_pagamento
         }), 200
 
-    if order['status'] in ('em_disputa', 'cancelado'):
-        conn.close()
-        return jsonify({'error': f"Não é possível finalizar pagamento de pedido com status '{order['status']}'."}), 400
-
     conn.execute('''
         UPDATE orders 
         SET pago = 1, status = 'finalizado', escrow_status = 'liberado',
-            completed_at = CURRENT_TIMESTAMP, released_at = CURRENT_TIMESTAMP,
+            confirmado_cliente = 1,
+            completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+            released_at = CURRENT_TIMESTAMP,
             metodo_pagamento = ?, atualizado_em = CURRENT_TIMESTAMP 
         WHERE id = ?
     ''', (metodo_pagamento, order_id))
+    _log_escrow_ledger(
+        conn, order_id, 'escrow_release', order['preco_total'], 'liberado',
+        f'Pagamento liberado na conclusão ({metodo_pagamento})'
+    )
     conn.commit()
     conn.close()
 
@@ -1625,6 +1727,8 @@ def list_orders():
                 o.taxa_deslocamento,
                 o.valor_estornado,
                 o.share_token,
+                o.confirmado_cliente,
+                o.release_due_at,
                 EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'cliente') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
@@ -1673,6 +1777,8 @@ def list_orders():
                 o.taxa_deslocamento,
                 o.valor_estornado,
                 o.share_token,
+                o.confirmado_cliente,
+                o.release_due_at,
                 EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'prestador') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
@@ -1688,44 +1794,57 @@ def list_orders():
         '''
         orders = conn.execute(sql, (user['id'],)).fetchall()
 
+    counterpart_tipo = 'prestador' if user['tipo'] == 'cliente' else 'cliente'
+    counterpart_reviews = {}
+    order_ids = [o['order_id'] for o in orders]
+    if order_ids:
+        placeholders = ','.join(['?'] * len(order_ids))
+        rev_rows = conn.execute(
+            f"SELECT id, order_id, revealed_at, criado_em FROM reviews WHERE order_id IN ({placeholders}) AND COALESCE(autor_tipo, 'cliente') = ?",
+            (*order_ids, counterpart_tipo)
+        ).fetchall()
+        for rr in rev_rows:
+            if _is_review_revealed(rr):
+                counterpart_reviews[rr['order_id']] = rr['id']
+
     conn.close()
     mask_pii = request.args.get('mask_pii') == '1'
     result = []
     for o in orders:
         item = dict(o)
         item['ja_avaliado'] = bool(item.get('ja_avaliado'))
+        item['confirmado_cliente'] = bool(int(item.get('confirmado_cliente') or 0))
+        item['release_due_at'] = str(item['release_due_at']) if item.get('release_due_at') else None
+        item['cliente_review_id'] = counterpart_reviews.get(item['order_id'])
         item['escrow_status'] = item.get('escrow_status') or 'pendente'
         item['taxa_deslocamento'] = float(item.get('taxa_deslocamento') or 0.0)
         item['valor_estornado'] = float(item.get('valor_estornado') or 0.0)
         item['em_disputa'] = (item.get('status') == 'em_disputa')
 
         if user['tipo'] == 'prestador':
-            # ET-02: Prestador nunca recebe o PIN de confirmação
+            # ET-02 / ET-04 / ET-15: Prestador nunca recebe o PIN e telefone do cliente é sempre mascarado
             item['codigo_confirmacao'] = None
             item['pin_obrigatorio'] = True
             bairro = item.get('bairro_cliente') or ''
             cidade = item.get('cidade_cliente') or 'São Paulo'
             st = item.get('status')
-            item['endereco_protegido'] = (st == 'solicitado')
+            item['endereco_protegido'] = (st not in ('confirmado', 'em_transito', 'em_execucao'))
             item['endereco_cliente_resumo'] = f"{bairro}, {cidade}".strip(', ')
-            if mask_pii or st in ('solicitado', 'finalizado', 'cancelado'):
+            item['cliente_telefone'] = _mask_phone(item.get('cliente_telefone'))
+            if mask_pii or st not in ('confirmado', 'em_transito', 'em_execucao'):
                 item['endereco_cliente'] = 'Protegido'
                 item['numero_cliente'] = ''
                 item['complemento_cliente'] = ''
                 item['cep_cliente'] = ''
                 item['lat_cliente'] = None
                 item['lng_cliente'] = None
-                tel = str(item.get('cliente_telefone') or '')
-                item['cliente_telefone'] = (tel[:-4] + '****') if len(tel) >= 4 else '****'
         else:
-            st = item.get('status')
-            if mask_pii or st in ('finalizado', 'cancelado'):
-                item['prestador_endereco'] = 'Protegido'
-                item['prestador_numero'] = ''
-                item['prestador_lat'] = None
-                item['prestador_lng'] = None
-                tel = str(item.get('prestador_telefone') or '')
-                item['prestador_telefone'] = (tel[:-4] + '****') if len(tel) >= 4 else '****'
+            # ET-04 / ET-15: Para cliente, endereço/coordenadas/telefone do prestador são sempre protegidos
+            item['prestador_endereco'] = 'Protegido'
+            item['prestador_numero'] = ''
+            item['prestador_lat'] = None
+            item['prestador_lng'] = None
+            item['prestador_telefone'] = _mask_phone(item.get('prestador_telefone'))
 
         result.append(item)
     return jsonify(result)
@@ -1762,31 +1881,64 @@ def update_order_status(order_id):
         return jsonify({'error': 'Sem permissão para alterar este pedido.'}), 403
 
     atual_status = order['status']
-    if atual_status in ('finalizado', 'cancelado') and novo_status != 'em_disputa' and novo_status != atual_status:
+    if atual_status == 'cancelado':
         conn.close()
-        return jsonify({'error': f'Não é permitido regredir ou alterar um pedido já {atual_status}.'}), 400
+        return jsonify({'error': 'Não é permitido alterar um pedido cancelado.'}), 400
 
-    status_rank = {'solicitado': 0, 'confirmado': 1, 'em_transito': 2, 'em_execucao': 3, 'finalizado': 4}
-    if atual_status in status_rank and novo_status in status_rank and status_rank[novo_status] < status_rank[atual_status]:
+    # ET-07: Grafo estrito de transições + papel do ator
+    allowed_transitions = {
+        'solicitado': {'confirmado', 'cancelado', 'em_disputa'},
+        'confirmado': {'em_transito', 'cancelado', 'em_disputa'},
+        'em_transito': {'em_execucao', 'cancelado', 'em_disputa'},
+        'em_execucao': {'finalizado', 'cancelado', 'em_disputa'},
+        'finalizado': {'finalizado', 'em_disputa'},
+    }
+    if atual_status not in allowed_transitions or novo_status not in allowed_transitions[atual_status]:
         conn.close()
-        return jsonify({'error': f'Transição regressiva inválida de {atual_status} para {novo_status}.'}), 400
+        return jsonify({'error': f'Transição inválida de {atual_status} para {novo_status}.'}), 400
 
-    # ET-02 / ET-07: Validação obrigatória de PIN ao iniciar execução
+    if novo_status in ('confirmado', 'em_transito', 'em_execucao') and user['tipo'] != 'prestador':
+        conn.close()
+        return jsonify({'error': f'Apenas o prestador pode alterar o status para {novo_status}.'}), 403
+
+    if atual_status == 'finalizado' and novo_status == 'finalizado' and user['tipo'] != 'cliente':
+        conn.close()
+        return jsonify({'error': 'Apenas o cliente pode confirmar a conclusão do pedido finalizado.'}), 403
+
+    if novo_status == 'cancelado' and not motivo:
+        conn.close()
+        return jsonify({'error': 'Informe o motivo do cancelamento.'}), 400
+
+    # ET-02 / ET-07: Validação obrigatória de PIN ao iniciar execução (trava após 5 tentativas)
     if novo_status == 'em_execucao':
+        pin_tentativas = int(_row_get(order, 'pin_tentativas', 0) or 0)
+        if pin_tentativas >= 5:
+            conn.close()
+            return jsonify({'error': 'Limite de 5 tentativas de PIN excedido. Pedido bloqueado por segurança.'}), 429
         pin_esperado = str(_row_get(order, 'codigo_confirmacao', '') or '').strip()
         if pin_esperado:
             pin_informado = str(data.get('codigo_confirmacao') or '').strip()
             if not pin_informado or pin_informado != pin_esperado:
+                conn.execute(
+                    'UPDATE orders SET pin_tentativas = COALESCE(pin_tentativas, 0) + 1, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?',
+                    (order_id,)
+                )
+                conn.commit()
                 conn.close()
-                return jsonify({'error': 'Código de confirmação (PIN) obrigatório e deve corresponder ao informado pelo cliente.'}), 400
+                return jsonify({
+                    'error': 'Código de confirmação (PIN) obrigatório e deve corresponder ao informado pelo cliente.',
+                    'pin_tentativas': pin_tentativas + 1
+                }), 400
 
     escrow_status = _row_get(order, 'escrow_status', 'pendente')
     taxa_deslocamento = float(_row_get(order, 'taxa_deslocamento', 0.0) or 0.0)
     valor_estornado = float(_row_get(order, 'valor_estornado', 0.0) or 0.0)
+    pago_int = int(_row_get(order, 'pago', 0) or 0)
+    preco = float(_row_get(order, 'preco_total', 0.0) or 0.0)
+    release_due_at = _row_get(order, 'release_due_at')
 
     if novo_status == 'cancelado':
-        if int(_row_get(order, 'pago', 0) or 0) == 1:
-            preco = float(_row_get(order, 'preco_total', 0.0) or 0.0)
+        if pago_int == 1:
             if atual_status in ('em_transito', 'em_execucao') and user['tipo'] == 'cliente':
                 taxa_deslocamento = min(round(preco * 0.20, 2), 40.0)
                 valor_estornado = round(max(0.0, preco - taxa_deslocamento), 2)
@@ -1795,20 +1947,48 @@ def update_order_status(order_id):
                 taxa_deslocamento = 0.0
                 valor_estornado = preco
                 escrow_status = 'estornado_total'
+            _log_escrow_ledger(
+                conn, order_id, 'escrow_refund', valor_estornado, escrow_status,
+                f'Cancelamento ({atual_status}): {motivo}'
+            )
         conn.execute('''
             UPDATE orders 
             SET status = ?, motivo_cancelamento = ?, escrow_status = ?,
                 taxa_deslocamento = ?, valor_estornado = ?, atualizado_em = CURRENT_TIMESTAMP 
             WHERE id = ?
-        ''', (novo_status, motivo or _row_get(order, 'motivo_cancelamento'), escrow_status, taxa_deslocamento, valor_estornado, order_id))
+        ''', (novo_status, motivo, escrow_status, taxa_deslocamento, valor_estornado, order_id))
     elif novo_status == 'finalizado':
-        escrow_status = 'liberado'
-        conn.execute('''
-            UPDATE orders 
-            SET status = ?, escrow_status = ?, completed_at = CURRENT_TIMESTAMP,
-                released_at = CURRENT_TIMESTAMP, atualizado_em = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        ''', (novo_status, escrow_status, order_id))
+        if user['tipo'] == 'cliente':
+            if pago_int == 1:
+                escrow_status = 'liberado'
+                _log_escrow_ledger(
+                    conn, order_id, 'escrow_release', preco, 'liberado',
+                    'Confirmação de conclusão pelo cliente'
+                )
+            conn.execute('''
+                UPDATE orders 
+                SET status = ?, escrow_status = ?, confirmado_cliente = 1,
+                    completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+                    released_at = CASE WHEN pago = 1 THEN CURRENT_TIMESTAMP ELSE released_at END,
+                    atualizado_em = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            ''', (novo_status, escrow_status, order_id))
+        else:
+            if pago_int == 1:
+                release_due_at = (datetime.utcnow() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+                escrow_status = 'aguardando_liberacao'
+                _log_escrow_ledger(
+                    conn, order_id, 'escrow_48h_window', preco, 'aguardando_liberacao',
+                    f'Janela de liberação 48h iniciada até {release_due_at}'
+                )
+            conn.execute('''
+                UPDATE orders 
+                SET status = ?, escrow_status = ?,
+                    completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+                    release_due_at = COALESCE(?, release_due_at),
+                    atualizado_em = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            ''', (novo_status, escrow_status, release_due_at, order_id))
     elif novo_status == 'em_disputa':
         escrow_status = 'em_disputa'
         conn.execute('''
@@ -1831,8 +2011,59 @@ def update_order_status(order_id):
         'status': novo_status,
         'escrow_status': escrow_status,
         'taxa_deslocamento': taxa_deslocamento,
-        'valor_estornado': valor_estornado
+        'valor_estornado': valor_estornado,
+        'release_due_at': str(release_due_at) if release_due_at else None
     })
+
+
+@app.route('/api/orders/<int:order_id>/confirm-completion', methods=['POST'])
+def confirm_order_completion(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas o cliente pode confirmar a conclusão do serviço.'}), 403
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if order['cliente_id'] != user['id']:
+            return jsonify({'error': 'Sem permissão para confirmar este pedido.'}), 403
+        if order['status'] not in ('em_execucao', 'finalizado'):
+            return jsonify({'error': f"Pedido em status '{order['status']}' não pode ser confirmado."}), 400
+
+        escrow_status = _row_get(order, 'escrow_status', 'pendente')
+        pago_int = int(_row_get(order, 'pago', 0) or 0)
+        if pago_int == 1:
+            escrow_status = 'liberado'
+            _log_escrow_ledger(
+                conn, order_id, 'escrow_release', order['preco_total'], 'liberado',
+                'Confirmação de conclusão via /confirm-completion'
+            )
+
+        conn.execute('''
+            UPDATE orders
+            SET status = 'finalizado',
+                confirmado_cliente = 1,
+                escrow_status = ?,
+                completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+                released_at = CASE WHEN pago = 1 THEN CURRENT_TIMESTAMP ELSE released_at END,
+                atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (escrow_status, order_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Conclusão confirmada e pagamento liberado com sucesso!',
+        'order_id': order_id,
+        'status': 'finalizado',
+        'confirmado_cliente': True,
+        'escrow_status': escrow_status
+    }), 200
 
 
 @app.route('/api/orders/<int:order_id>/dispute', methods=['POST'])
@@ -1894,7 +2125,7 @@ def provider_financial_summary():
     conn = get_db_connection()
     try:
         orders = conn.execute('''
-            SELECT status, pago, preco_total, escrow_status, criado_em, completed_at
+            SELECT status, pago, preco_total, escrow_status, release_due_at, criado_em, completed_at
             FROM orders
             WHERE prestador_id = ?
         ''', (user['id'],)).fetchall()
@@ -1903,7 +2134,9 @@ def provider_financial_summary():
 
     faturamento_bruto_mes = 0.0
     saldo_escrow_retido = 0.0
+    escrow_aguardando_48h = 0.0
     total_liberado = 0.0
+    now_utc = datetime.utcnow()
 
     for o in orders:
         preco = float(_row_get(o, 'preco_total', 0.0) or 0.0)
@@ -1916,12 +2149,23 @@ def provider_financial_summary():
             if ref_dt.startswith(current_ym):
                 faturamento_bruto_mes += preco
             if pago == 1:
-                total_liberado += preco
-        elif pago == 1 and status not in ('finalizado', 'cancelado') and escrow_st != 'estornado_total':
+                if escrow_st == 'liberado':
+                    total_liberado += preco
+                elif escrow_st == 'aguardando_liberacao':
+                    due_dt = _parse_dt(_row_get(o, 'release_due_at'))
+                    if due_dt is not None and due_dt <= now_utc:
+                        total_liberado += preco
+                    else:
+                        saldo_escrow_retido += preco
+                        escrow_aguardando_48h += preco
+                else:
+                    saldo_escrow_retido += preco
+        elif pago == 1 and status not in ('finalizado', 'cancelado') and escrow_st not in ('estornado_total', 'estornado_parcial'):
             saldo_escrow_retido += preco
 
     faturamento_bruto_mes = round(faturamento_bruto_mes, 2)
     saldo_escrow_retido = round(saldo_escrow_retido, 2)
+    escrow_aguardando_48h = round(escrow_aguardando_48h, 2)
     total_liberado = round(total_liberado, 2)
     total_liberado_liquido = round(total_liberado * (1.0 - taxa_percentual), 2)
     isento_mensalidade = (plano == 'basico' and faturamento_bruto_mes <= 1800.0)
@@ -1933,6 +2177,7 @@ def provider_financial_summary():
         'faturamento_bruto_mes': faturamento_bruto_mes,
         'isento_mensalidade': isento_mensalidade,
         'saldo_escrow_retido': saldo_escrow_retido,
+        'escrow_aguardando_48h': escrow_aguardando_48h,
         'total_liberado': total_liberado,
         'total_liberado_liquido': total_liberado_liquido
     }), 200
@@ -2019,6 +2264,18 @@ def review_order(order_id):
             'UPDATE users SET avaliacao_media = ?, total_avaliacoes = ? WHERE id = ?',
             (nova_media, novo_total, avaliado_id)
         )
+
+        other_tipo = 'prestador' if autor_tipo == 'cliente' else 'cliente'
+        other_rev = conn.execute(
+            "SELECT id FROM reviews WHERE order_id = ? AND COALESCE(autor_tipo, 'cliente') = ?",
+            (order_id, other_tipo)
+        ).fetchone()
+        revealed = bool(other_rev)
+        if revealed:
+            conn.execute(
+                'UPDATE reviews SET revealed_at = CURRENT_TIMESTAMP WHERE order_id = ?',
+                (order_id,)
+            )
         conn.commit()
     finally:
         conn.close()
@@ -2028,8 +2285,52 @@ def review_order(order_id):
         'review_id': review_id,
         'autor_tipo': autor_tipo,
         'avaliacao_media': nova_media,
-        'total_avaliacoes': novo_total
+        'total_avaliacoes': novo_total,
+        'revealed': revealed
     }), 201
+
+
+@app.route('/api/orders/<int:order_id>/reviews', methods=['GET'])
+def get_order_reviews(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para visualizar avaliações deste pedido.'}), 403
+
+        rows = conn.execute('SELECT * FROM reviews WHERE order_id = ? ORDER BY id ASC', (order_id,)).fetchall()
+    finally:
+        conn.close()
+
+    minha_avaliacao = None
+    contraparte_raw = None
+    for r in rows:
+        r_tipo = _row_get(r, 'autor_tipo', 'cliente') or 'cliente'
+        if r_tipo == user['tipo']:
+            minha_avaliacao = dict(r)
+        else:
+            contraparte_raw = r
+
+    oculta_double_blind = False
+    contraparte_avaliacao = None
+    if contraparte_raw is not None:
+        if _is_review_revealed(contraparte_raw):
+            contraparte_avaliacao = dict(contraparte_raw)
+        else:
+            oculta_double_blind = True
+
+    return jsonify({
+        'order_id': order_id,
+        'minha_avaliacao': minha_avaliacao,
+        'contraparte_avaliacao': contraparte_avaliacao,
+        'oculta_double_blind': oculta_double_blind
+    }), 200
 
 
 @app.route('/api/reviews/<int:review_id>/reply', methods=['POST'])
@@ -2118,6 +2419,8 @@ def trigger_order_sos(order_id):
             return jsonify({'error': 'Pedido não encontrado.'}), 404
         if user['id'] not in (order['cliente_id'], order['prestador_id']):
             return jsonify({'error': 'Sem permissão para acionar SOS neste pedido.'}), 403
+        if order['status'] in ('finalizado', 'cancelado'):
+            return jsonify({'error': 'Não é possível acionar SOS para pedido já encerrado.'}), 400
 
         contraparte_id = order['prestador_id'] if user['id'] == order['cliente_id'] else order['cliente_id']
         cursor = conn.cursor()
@@ -2184,6 +2487,8 @@ def get_shared_route(token):
 
     if not row:
         return jsonify({'error': 'Link de compartilhamento inválido ou expirado.'}), 404
+    if row['status'] in ('finalizado', 'cancelado'):
+        return jsonify({'error': 'Link de compartilhamento expirado pois o pedido foi encerrado.'}), 410
 
     return jsonify({
         'order_id': row['order_id'],
@@ -2250,6 +2555,9 @@ def order_messages(order_id):
                 ORDER BY m.id ASC
             ''', (order_id,)).fetchall()
             return jsonify([dict(r) for r in rows]), 200
+
+        if order['status'] in ('finalizado', 'cancelado'):
+            return jsonify({'error': 'O chat é somente leitura após o encerramento do pedido.'}), 400
 
         data = request.get_json(silent=True) or {}
         mensagem = str(data.get('mensagem') or '').strip()

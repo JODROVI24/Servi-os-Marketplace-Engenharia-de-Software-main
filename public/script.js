@@ -323,7 +323,7 @@ function renderList() {
          </div>
          <div class="text-xs font-semibold text-perto-sea mt-0.5 flex items-center gap-1 truncate">
            <span aria-hidden="true">📍</span>
-           <span class="truncate">${escapeHtml(p.endereco || 'São Paulo - SP')}</span>
+           <span class="truncate">${escapeHtml(p.endereco || 'São Paulo - SP')}${p.localizacao_aproximada ? ' · Região aproximada' : ''}</span>
          </div>
          <div class="meta mt-1.5">
            <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
@@ -394,8 +394,8 @@ function renderMap(posAtual) {
         <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">${escapeHtml(p.s)}</h4>
         <div style="color: var(--sea); font-weight: 800; font-size: 1rem; margin-bottom: 4px;">${brl(p.p)}</div>
         <div style="color: #444; margin-bottom: 3px;">👤 <b>${escapeHtml(p.n)}</b> · ★ ${p.r.toFixed(1)}</div>
-        <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}</div>
-        <div style="color: #4b6073; font-size: 0.72rem; margin-bottom: 4px;">🔒 Localização aproximada na vitrine para proteção de privacidade</div>
+        <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}${p.localizacao_aproximada ? ' (região aproximada)' : ''}</div>
+        ${p.localizacao_aproximada ? '<div style="color: #4b6073; font-size: 0.72rem; margin-bottom: 4px;">🔒 Localização aproximada na vitrine para proteção de privacidade</div>' : ''}
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
         <button type="button" class="btn btn-requisitar" data-req-popup="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
@@ -746,10 +746,32 @@ function atualizarPaineisSegurancaPedido(status, pedidoApi) {
   const chatSec = document.getElementById('pedidoChatSection');
   const sharedBox = document.getElementById('sharedRouteBox');
   const sharedLink = document.getElementById('sharedRouteLink');
-  const ativo = status === 'confirmado' || status === 'em_transito' || status === 'em_execucao';
+  const st = String(status || '').toLowerCase();
+  const ativo = st === 'confirmado' || st === 'em_transito' || st === 'em_execucao';
+  const encerrado = st === 'finalizado' || st === 'cancelado';
 
   if (segBar) segBar.hidden = !ativo;
-  if (chatSec) chatSec.hidden = !(ativo || status === 'em_disputa');
+  if (chatSec) chatSec.hidden = !(ativo || st === 'em_disputa' || encerrado);
+
+  const chatInput = document.getElementById('inputPedidoChatMsg');
+  const chatBtn = document.getElementById('btnEnviarPedidoChat');
+  const formChat = document.getElementById('formPedidoChat');
+  let roNotice = document.getElementById('pedidoChatReadOnlyNotice');
+  if (!roNotice && formChat && formChat.parentNode) {
+    roNotice = document.createElement('p');
+    roNotice.id = 'pedidoChatReadOnlyNotice';
+    roNotice.className = 'text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2 mb-2';
+    roNotice.setAttribute('role', 'status');
+    roNotice.textContent = 'Chat encerrado (somente leitura)';
+    roNotice.hidden = true;
+    formChat.parentNode.insertBefore(roNotice, formChat);
+  }
+  if (chatInput) {
+    chatInput.disabled = encerrado;
+    chatInput.placeholder = encerrado ? 'Chat encerrado (somente leitura)' : 'Escreva uma mensagem...';
+  }
+  if (chatBtn) chatBtn.disabled = encerrado;
+  if (roNotice) roNotice.hidden = !encerrado;
 
   if (ativo && pedidoApi && pedidoApi.share_token && sharedBox && sharedLink) {
     const url = `${window.location.origin}/api/shared-route/${encodeURIComponent(pedidoApi.share_token)}`;
@@ -803,7 +825,7 @@ function atualizarUIStatusPedido(pedidoApi, best) {
   const stepIdx = mapStatusToStep(status);
   renderSteps(stepIdx);
   atualizarPaineisSegurancaPedido(status, pedidoApi);
-  if (order.db_id && (status === 'confirmado' || status === 'em_transito' || status === 'em_execucao' || status === 'em_disputa')) {
+  if (order.db_id && ['confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(status)) {
     carregarMensagensPedido(order.db_id);
   }
 
@@ -1439,13 +1461,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.location.href = 'login.html?redirect=pedido.html';
             return;
           }
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            toast(data.error || 'Não foi possível processar o pagamento.');
+            return;
+          }
+          const realStatus = String(data.status || (currentOrderData && currentOrderData.status) || '').toLowerCase();
+          if (realStatus) {
+            if (currentOrderData) currentOrderData.status = realStatus;
+            renderSteps(mapStatusToStep(realStatus));
+            atualizarPaineisSegurancaPedido(realStatus, data);
+          }
+          const escrowSt = String(data.escrow_status || '').toLowerCase();
+          $('#pay').hidden = true;
+          if (escrowSt === 'retido' || escrowSt === 'aguardando_liberacao') {
+            toast(data.message || 'Pagamento retido em Escrow com segurança.');
+            info('Pagamento confirmado e retido em Escrow conforme regras da plataforma.');
+          } else if (escrowSt === 'liberado') {
+            toast(data.message || 'Pagamento confirmado e Escrow liberado.');
+            info(realStatus === 'finalizado' ? 'Pagamento registrado e Escrow liberado. Chamado concluído!' : 'Escrow liberado conforme confirmação.');
+          } else {
+            toast(data.message || 'Transação processada com sucesso via PertoJá Pagamentos.');
+            info(realStatus === 'finalizado' ? 'Pagamento registrado. Chamado concluído com sucesso!' : 'Pagamento registrado com sucesso.');
+          }
+          return;
         }
       } catch (e) {
         console.warn('Erro ao registrar pagamento na API:', e);
+        toast('Erro de comunicação ao registrar pagamento.');
+        return;
       }
       $('#pay').hidden = true;
       toast('Transação processada com sucesso via PertoJá Pagamentos.');
-      info('Pagamento registrado. Chamado concluído com sucesso!');
+      info('Pagamento registrado com sucesso.');
     };
   }
 
@@ -1649,6 +1697,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     formChatPed.onsubmit = async (e) => {
       e.preventDefault();
       if (!order || !order.db_id) return;
+      const stAtual = currentOrderData ? String(currentOrderData.status || '').toLowerCase() : '';
+      if (stAtual === 'finalizado' || stAtual === 'cancelado') {
+        toast('Chat encerrado (somente leitura).');
+        return;
+      }
       const input = document.getElementById('inputPedidoChatMsg');
       const btnSend = document.getElementById('btnEnviarPedidoChat');
       const mensagem = input ? input.value.trim() : '';

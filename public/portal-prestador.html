@@ -334,7 +334,11 @@
             <span id="kycStatusBadge" class="tag">Tier 0 · Pendente</span>
           </div>
 
-          <form id="formKycVerify" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-xs text-perto-ink font-body">
+            <b>Atenção (ET-09):</b> Categorias de maior risco como <b>Elétrica</b> e <b>Encanamento</b> exigem <b>Tier 2</b> com registro profissional válido (CREA / CFT / CRT / NR-10).
+          </div>
+
+          <form id="formKycVerify" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div class="campo-form">
               <label for="kycDocTipoPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Documento</label>
               <select id="kycDocTipoPerfil" class="input-form text-sm font-medium">
@@ -344,10 +348,14 @@
               </select>
             </div>
             <div class="campo-form">
+              <label for="kycCpfInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CPF (opcional)</label>
+              <input type="text" id="kycCpfInput" placeholder="000.000.000-00" maxlength="14" class="input-form text-sm font-medium">
+            </div>
+            <div class="campo-form">
               <label for="kycRegProfPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Registro Profissional (opcional)</label>
               <input type="text" id="kycRegProfPerfil" placeholder="CREA / CFT / CRT / NR-10" class="input-form text-sm font-medium">
             </div>
-            <div class="sm:col-span-2 flex justify-end">
+            <div class="sm:col-span-3 flex justify-end">
               <button type="submit" class="btn2 px-5 py-2.5 rounded-full text-xs font-extrabold inline-flex items-center gap-1.5">
                 <span class="material-symbols-outlined text-sm">shield</span>
                 Enviar / Atualizar KYC
@@ -413,7 +421,7 @@
           <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
             <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Saldo em Escrow (Retido)</span>
             <strong id="finSaldoEscrow" class="text-2xl font-black text-perto-sea">R$ 0,00</strong>
-            <span class="text-xs text-perto-ink/70 font-body block mt-1">Liberado ao finalizar cada atendimento</span>
+            <span id="finEscrowHint" class="text-xs text-perto-ink/70 font-body block mt-1">Liberado ao finalizar ou após garantia de 48h</span>
           </div>
           <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
             <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Total Liberado (Líquido)</span>
@@ -555,9 +563,12 @@
       <div id="listaMensagensChat" class="mt-3 max-h-64 overflow-y-auto space-y-2 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body">
         <p class="text-perto-ink/70">Carregando mensagens...</p>
       </div>
+      <p id="chatPrestadorReadOnlyNotice" class="hidden mt-3 text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2" role="status">
+        Chat encerrado (somente leitura)
+      </p>
       <form id="formChatPedido" class="mt-3 flex gap-2">
         <input type="text" id="chatMensagemInput" required minlength="1" maxlength="500" placeholder="Digite sua mensagem ao cliente..." aria-label="Mensagem no chat protegido" class="input-form flex-1 text-sm font-medium">
-        <button type="submit" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
+        <button type="submit" id="btnEnviarChatPedido" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
       </form>
     </div>
   </div>
@@ -688,6 +699,22 @@
           <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Enviar</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL ET-13: VER AVALIAÇÕES DOUBLE-BLIND DO PEDIDO -->
+  <div id="modalVerReviewsPrestador" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalVerReviewsPrestador" style="display: none;">
+    <div class="modal-conteudo">
+      <div class="flex items-center justify-between pb-3 border-b border-perto-road">
+        <h3 id="tituloModalVerReviewsPrestador" class="text-lg font-black text-perto-ink m-0">Avaliações do Atendimento</h3>
+        <button type="button" aria-label="Fechar avaliações" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalVerReviewsPrestador()">✕</button>
+      </div>
+      <div id="verReviewsPrestadorConteudo" class="mt-3 space-y-3 text-xs font-body" aria-live="polite">
+        <p class="text-perto-ink/70">Carregando avaliações...</p>
+      </div>
+      <div class="flex justify-end pt-3 mt-3 border-t border-perto-road">
+        <button type="button" class="btn-neutral px-5 py-2 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador()">Fechar</button>
+      </div>
     </div>
   </div>
 
@@ -858,7 +885,8 @@
       const kycStatus = dadosPrestador.kyc_status || 'pendente';
       const badgeKyc = document.getElementById('kycStatusBadge');
       if (badgeKyc) {
-        badgeKyc.textContent = `Tier ${tier} · ${kycStatus}`;
+        const kycLabel = kycStatus === 'em_revisao' ? 'Em revisão humana (homônimo)' : kycStatus;
+        badgeKyc.textContent = `Tier ${tier} · ${kycLabel}`;
       }
       const docSelect = document.getElementById('kycDocTipoPerfil');
       if (docSelect && dadosPrestador.kyc_documento_tipo) {
@@ -937,7 +965,12 @@
           faturamentoBruto += valor;
         }
         if (p.status === 'finalizado' && Number(p.pago) === 1) {
-          totalLiberado += valor * (1 - taxaPct);
+          const escrowSt = String(p.escrow_status || '').toLowerCase();
+          if (escrowSt === 'aguardando_liberacao') {
+            saldoEscrow += valor * (1 - taxaPct);
+          } else {
+            totalLiberado += valor * (1 - taxaPct);
+          }
         } else if (p.status !== 'cancelado' && Number(p.pago) === 1) {
           saldoEscrow += valor * (1 - taxaPct);
         }
@@ -994,8 +1027,11 @@
           tbody.innerHTML = listaPedidos.map(p => {
             const bruto = Number(p.preco_total || 0);
             const liquido = p.status === 'cancelado' ? 0 : bruto * (1 - taxaPct);
+            const escrowSt = String(p.escrow_status || '').toLowerCase();
             const situacao = p.status === 'finalizado'
-              ? '<span class="tag">Liberado</span>'
+              ? (escrowSt === 'aguardando_liberacao'
+                ? '<span class="badge-novo">Em Garantia 48h</span>'
+                : '<span class="tag">Liberado</span>')
               : (p.status === 'cancelado'
                 ? '<span class="tag off">Cancelado</span>'
                 : (Number(p.pago) === 1 ? '<span class="badge-novo">Em Escrow</span>' : '<span class="tag">Aguardando</span>'));
@@ -1245,8 +1281,8 @@
         }
 
         const acoesContextuais = [];
-        if (['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado'].includes(p.status)) {
-          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalChat(${orderIdNum})">Chat Protegido</button>`);
+        if (['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(p.status)) {
+          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalChat(${orderIdNum}, '${escapeHtml(String(p.status || ''))}')">Chat Protegido</button>`);
         }
         if (p.status === 'em_transito' || p.status === 'em_execucao') {
           acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalSos(${orderIdNum})">SOS Emergência</button>`);
@@ -1260,11 +1296,21 @@
         if (p.status === 'finalizado' && !p.ja_avaliado) {
           acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" onclick="abrirModalAvaliar(${orderIdNum})"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
         }
+        if (p.status === 'finalizado') {
+          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalVerReviewsPrestador(${orderIdNum})">Ver Avaliações</button>`);
+        }
         const reviewIdNum = Number(p.cliente_review_id || p.review_id || 0);
         if (reviewIdNum > 0) {
           acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'reply')">Responder Avaliação</button>`);
           acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'contest')">Contestar Avaliação</button>`);
         }
+
+        const escrowSt = String(p.escrow_status || '').toLowerCase();
+        const escrowBadgeHtml = (p.status === 'finalizado' && escrowSt === 'aguardando_liberacao')
+          ? `<span class="badge-novo">Em Garantia 48h — aguardando cliente ou prazo</span>`
+          : ((p.status === 'finalizado' && escrowSt === 'liberado')
+            ? `<span class="tag">Escrow Liberado</span>`
+            : '');
 
         return `
         <div class="svc mb-3.5 ${isNovo ? 'order-card-new' : 'border-l-4 border-perto-sun'}">
@@ -1279,6 +1325,7 @@
             <span>👤 Cliente: <b>${escapeHtml(p.cliente_nome)}</b></span>
             <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
             <span>Status: <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b></span>
+            ${escrowBadgeHtml}
           </div>
           ${localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 Local do Atendimento: ${escapeHtml(localTexto)}</div>` : ''}
           ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
@@ -1407,9 +1454,18 @@
               : 'Teto de R$ 1.800/mês atingido (mensalidade R$ 90,00)';
           }
         }
-        const escrowVal = s.saldo_escrow_retido != null ? s.saldo_escrow_retido : s.saldo_escrow;
+        const escrowVal = s.saldo_escrow_retido != null
+          ? s.saldo_escrow_retido
+          : (s.escrow_aguardando_48h != null ? s.escrow_aguardando_48h : s.saldo_escrow);
         if (escrowVal != null && document.getElementById('finSaldoEscrow')) {
           document.getElementById('finSaldoEscrow').textContent = brl(escrowVal);
+        }
+        const hintEl = document.getElementById('finEscrowHint');
+        if (hintEl && s.escrow_aguardando_48h != null) {
+          const val48 = Number(s.escrow_aguardando_48h || 0);
+          hintEl.textContent = val48 > 0
+            ? `Inclui ${brl(val48)} em Garantia 48h (aguardando cliente ou prazo)`
+            : 'Liberado ao finalizar ou após garantia de 48h';
         }
         const liberadoVal = s.total_liberado_liquido != null ? s.total_liberado_liquido : s.total_liberado;
         if (liberadoVal != null && document.getElementById('finTotalLiberado')) {
@@ -1470,11 +1526,24 @@
       if (ok) fecharModalPinExecucao();
     };
 
-    // ET-08: Chat Protegido
-    async function abrirModalChat(orderId) {
+    // ET-08 & ET-15: Chat Protegido
+    let chatPrestadorReadOnly = false;
+    async function abrirModalChat(orderId, orderStatus) {
+      let st = String(orderStatus || '').toLowerCase();
+      if (!st && Array.isArray(listaPedidos)) {
+        const found = listaPedidos.find(o => Number(o.order_id) === Number(orderId));
+        if (found) st = String(found.status || '').toLowerCase();
+      }
+      chatPrestadorReadOnly = ['finalizado', 'cancelado'].includes(st);
       document.getElementById('chatOrderId').value = orderId;
-      document.getElementById('chatMensagemInput').value = '';
-      abrirModalAcessivel('modalChatPedido', 'chatMensagemInput');
+      const input = document.getElementById('chatMensagemInput');
+      const btn = document.getElementById('btnEnviarChatPedido');
+      const notice = document.getElementById('chatPrestadorReadOnlyNotice');
+      input.value = '';
+      input.disabled = chatPrestadorReadOnly;
+      if (btn) btn.disabled = chatPrestadorReadOnly;
+      if (notice) notice.classList.toggle('hidden', !chatPrestadorReadOnly);
+      abrirModalAcessivel('modalChatPedido', chatPrestadorReadOnly ? null : 'chatMensagemInput');
       await carregarMensagensChat(orderId);
     }
     function fecharModalChat() { fecharModalAcessivel('modalChatPedido'); }
@@ -1511,6 +1580,10 @@
 
     document.getElementById('formChatPedido').onsubmit = async (e) => {
       e.preventDefault();
+      if (chatPrestadorReadOnly) {
+        toast('Chat encerrado (somente leitura).');
+        return;
+      }
       const orderId = document.getElementById('chatOrderId').value;
       const texto = (document.getElementById('chatMensagemInput').value || '').trim();
       if (!texto) return;
@@ -1655,6 +1728,63 @@
       }
     };
 
+    // ET-13: Ver Avaliações Double-Blind do Pedido
+    function fecharModalVerReviewsPrestador() { fecharModalAcessivel('modalVerReviewsPrestador'); }
+    async function abrirModalVerReviewsPrestador(orderId) {
+      const box = document.getElementById('verReviewsPrestadorConteudo');
+      if (!box) return;
+      box.innerHTML = '<p class="text-perto-ink/70">Carregando avaliações...</p>';
+      abrirModalAcessivel('modalVerReviewsPrestador');
+      try {
+        const res = await fetch(`/api/orders/${orderId}/reviews`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          box.innerHTML = `<p class="text-perto-ink/80">${escapeHtml(data.error || 'Não foi possível carregar as avaliações.')}</p>`;
+          return;
+        }
+        const minha = data.minha_avaliacao;
+        const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_cliente || data.review_recebida || null;
+        const oculta = Boolean(data.oculta_double_blind);
+        const minhaHtml = minha
+          ? `
+            <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
+              <div class="font-bold text-perto-ink mb-1">Sua avaliação ao cliente (${escapeHtml(String(minha.nota || 5))} ★)</div>
+              <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
+            </div>
+          `
+          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não avaliou este cliente.</div>`;
+
+        let contraHtml = '';
+        if (oculta) {
+          contraHtml = `
+            <div class="p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-perto-ink">
+              <div class="font-bold mb-1">Avaliação do cliente protegida (Double-Blind)</div>
+              <p class="m-0">A avaliação do cliente será revelada simultaneamente após ambos avaliarem ou em 7 dias.</p>
+            </div>
+          `;
+        } else if (contraparte) {
+          const revId = Number(contraparte.id || 0);
+          contraHtml = `
+            <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
+              <div class="font-bold text-perto-ink">Avaliação do cliente (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
+              <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
+              ${revId > 0 ? `
+                <div class="flex flex-wrap gap-2 pt-2 border-t border-perto-road">
+                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador(); abrirModalReviewAcao(${revId}, 'reply')">Responder Avaliação</button>
+                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador(); abrirModalReviewAcao(${revId}, 'contest')">Contestar Avaliação</button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        } else {
+          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">O cliente ainda não registrou uma avaliação.</div>`;
+        }
+        box.innerHTML = minhaHtml + contraHtml;
+      } catch (e) {
+        box.innerHTML = '<p class="text-perto-ink/70">Erro de comunicação ao carregar avaliações.</p>';
+      }
+    }
+
     // ET-15: Réplica / Contestação de Avaliação
     function abrirModalReviewAcao(reviewId, modo) {
       document.getElementById('formReviewAcao').reset();
@@ -1698,12 +1828,15 @@
     document.getElementById('formKycVerify').onsubmit = async (e) => {
       e.preventDefault();
       const documento_tipo = document.getElementById('kycDocTipoPerfil').value;
+      const cpf = (document.getElementById('kycCpfInput')?.value || '').trim();
       const registro_profissional = (document.getElementById('kycRegProfPerfil').value || '').trim();
+      const payload = { kyc_documento_tipo: documento_tipo, registro_profissional };
+      if (cpf) payload.cpf = cpf;
       try {
         const res = await fetch('/api/kyc/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kyc_documento_tipo: documento_tipo, registro_profissional })
+          body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
