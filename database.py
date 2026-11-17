@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+import time
 import unicodedata
 import urllib.parse
 from datetime import datetime, timedelta
@@ -341,9 +342,16 @@ class PostgresCursorWrapper:
         return self
 
     def executescript(self, script):
-        statements = [s.strip() for s in script.split(';') if s.strip()]
-        for stmt in statements:
-            self.execute(stmt)
+        for raw_stmt in script.split(';'):
+            stmt = raw_stmt.strip()
+            if not stmt:
+                continue
+            has_sql = any(
+                line.strip() and not line.strip().startswith('--')
+                for line in stmt.splitlines()
+            )
+            if has_sql:
+                self.execute(stmt)
         return self
 
     def fetchone(self):
@@ -663,6 +671,118 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id SERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('sandbox', 'mercadopago', 'stripe', 'pagseguro')),
+    gateway_customer_id TEXT,
+    gateway_token TEXT NOT NULL,
+    brand TEXT NOT NULL,
+    last4 TEXT NOT NULL CHECK(length(last4) = 4),
+    exp_month INTEGER NOT NULL CHECK(exp_month >= 1 AND exp_month <= 12),
+    exp_year INTEGER NOT NULL CHECK(exp_year >= 2024),
+    holder_label TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_methods_user ON payment_methods(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_methods_user_gw_tok ON payment_methods(user_id, gateway, gateway_token);
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id SERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    order_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('sandbox', 'mercadopago', 'stripe', 'pagseguro')),
+    method TEXT NOT NULL CHECK(method IN ('pix', 'cartao', 'boleto', 'escrow')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'requires_action', 'authorized', 'paid', 'escrow_held', 'released', 'refunded', 'partially_refunded', 'failed', 'expired', 'cancelled')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+    refunded_cents INTEGER NOT NULL DEFAULT 0 CHECK(refunded_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'BRL',
+    gateway_payment_id TEXT,
+    gateway_reference TEXT,
+    checkout_url TEXT,
+    pix_qr_code TEXT,
+    pix_qr_base64 TEXT,
+    boleto_barcode TEXT,
+    boleto_digitable_line TEXT,
+    boleto_url TEXT,
+    payment_method_id INTEGER,
+    escrow_synced INTEGER NOT NULL DEFAULT 0,
+    failure_code TEXT,
+    failure_message TEXT,
+    metadata_json TEXT,
+    expires_at TIMESTAMP,
+    paid_at TIMESTAMP,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(payment_method_id) REFERENCES payment_methods(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_tx_order ON payment_transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_pay_tx_user ON payment_transactions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_tx_gw_pid ON payment_transactions(gateway, gateway_payment_id) WHERE gateway_payment_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS payment_idempotency_keys (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    payment_id INTEGER,
+    response_status INTEGER,
+    response_body TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(payment_id) REFERENCES payment_transactions(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_idem_user_scope_key ON payment_idempotency_keys(user_id, scope, idempotency_key);
+
+CREATE TABLE IF NOT EXISTS payment_webhooks (
+    id SERIAL PRIMARY KEY,
+    gateway TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    gateway_payment_id TEXT,
+    signature_valid INTEGER NOT NULL DEFAULT 0,
+    processing_status TEXT NOT NULL DEFAULT 'received' CHECK(processing_status IN ('received', 'processed', 'ignored', 'failed')),
+    payload_hash TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    error_message TEXT,
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_webhooks_gw_event ON payment_webhooks(gateway, event_id);
+
+CREATE TABLE IF NOT EXISTS payment_refunds (
+    id SERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    payment_id INTEGER NOT NULL,
+    order_id INTEGER NOT NULL,
+    requested_by INTEGER,
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'succeeded', 'failed')),
+    gateway_refund_id TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(payment_id) REFERENCES payment_transactions(id) ON DELETE CASCADE,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(requested_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_refunds_payment ON payment_refunds(payment_id);
+CREATE INDEX IF NOT EXISTS idx_pay_refunds_order ON payment_refunds(order_id);
 '''
 
 SQLITE_SCHEMA_SQL = '''
@@ -881,6 +1001,118 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('sandbox', 'mercadopago', 'stripe', 'pagseguro')),
+    gateway_customer_id TEXT,
+    gateway_token TEXT NOT NULL,
+    brand TEXT NOT NULL,
+    last4 TEXT NOT NULL CHECK(length(last4) = 4),
+    exp_month INTEGER NOT NULL CHECK(exp_month >= 1 AND exp_month <= 12),
+    exp_year INTEGER NOT NULL CHECK(exp_year >= 2024),
+    holder_label TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_methods_user ON payment_methods(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_methods_user_gw_tok ON payment_methods(user_id, gateway, gateway_token);
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    order_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('sandbox', 'mercadopago', 'stripe', 'pagseguro')),
+    method TEXT NOT NULL CHECK(method IN ('pix', 'cartao', 'boleto', 'escrow')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'requires_action', 'authorized', 'paid', 'escrow_held', 'released', 'refunded', 'partially_refunded', 'failed', 'expired', 'cancelled')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+    refunded_cents INTEGER NOT NULL DEFAULT 0 CHECK(refunded_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'BRL',
+    gateway_payment_id TEXT,
+    gateway_reference TEXT,
+    checkout_url TEXT,
+    pix_qr_code TEXT,
+    pix_qr_base64 TEXT,
+    boleto_barcode TEXT,
+    boleto_digitable_line TEXT,
+    boleto_url TEXT,
+    payment_method_id INTEGER,
+    escrow_synced INTEGER NOT NULL DEFAULT 0,
+    failure_code TEXT,
+    failure_message TEXT,
+    metadata_json TEXT,
+    expires_at TIMESTAMP,
+    paid_at TIMESTAMP,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(payment_method_id) REFERENCES payment_methods(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_tx_order ON payment_transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_pay_tx_user ON payment_transactions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_tx_gw_pid ON payment_transactions(gateway, gateway_payment_id) WHERE gateway_payment_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS payment_idempotency_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    payment_id INTEGER,
+    response_status INTEGER,
+    response_body TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(payment_id) REFERENCES payment_transactions(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_idem_user_scope_key ON payment_idempotency_keys(user_id, scope, idempotency_key);
+
+CREATE TABLE IF NOT EXISTS payment_webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gateway TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    gateway_payment_id TEXT,
+    signature_valid INTEGER NOT NULL DEFAULT 0,
+    processing_status TEXT NOT NULL DEFAULT 'received' CHECK(processing_status IN ('received', 'processed', 'ignored', 'failed')),
+    payload_hash TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    error_message TEXT,
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_webhooks_gw_event ON payment_webhooks(gateway, event_id);
+
+CREATE TABLE IF NOT EXISTS payment_refunds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    payment_id INTEGER NOT NULL,
+    order_id INTEGER NOT NULL,
+    requested_by INTEGER,
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'succeeded', 'failed')),
+    gateway_refund_id TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(payment_id) REFERENCES payment_transactions(id) ON DELETE CASCADE,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(requested_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_refunds_payment ON payment_refunds(payment_id);
+CREATE INDEX IF NOT EXISTS idx_pay_refunds_order ON payment_refunds(order_id);
 '''
 
 
@@ -1153,6 +1385,129 @@ def _ensure_orders_status_check(conn, cursor, engine):
     conn.commit()
 
 
+def _get_table_columns(cursor, table_name, engine):
+    """Retorna o conjunto de nomes de colunas existentes em uma tabela."""
+    if engine == 'postgresql':
+        rows = cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = ?",
+            (table_name,)
+        ).fetchall()
+        cols = set()
+        for r in rows:
+            try:
+                cols.add(r['column_name'])
+            except (KeyError, TypeError, IndexError):
+                cols.add(r[0])
+        return cols
+    info_rows = cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
+    cols = set()
+    for r in info_rows:
+        try:
+            cols.add(r['name'])
+        except (KeyError, TypeError, IndexError):
+            cols.add(r[1])
+    return cols
+
+
+def _retire_legacy_table(cursor, table_name, engine, ts_suffix):
+    """Remove tabela legada vazia ou renomeia para <table>_legacy_<ts> preservando dados e evitando colisão de índices/constraints."""
+    row = cursor.execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()
+    try:
+        count = int(row['cnt'])
+    except (KeyError, TypeError, IndexError):
+        count = int(row[0]) if row else 0
+    if count == 0:
+        if engine == 'postgresql':
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+        else:
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+        return
+
+    legacy_name = f"{table_name}_legacy_{ts_suffix}"
+    cursor.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_name}")
+
+    if engine == 'postgresql':
+        con_rows = cursor.execute(
+            "SELECT c.conname FROM pg_constraint c "
+            "JOIN pg_class cl ON c.conrelid = cl.oid "
+            "JOIN pg_namespace n ON cl.relnamespace = n.oid "
+            "WHERE n.nspname = 'public' AND cl.relname = ?",
+            (legacy_name,)
+        ).fetchall()
+        for r in con_rows:
+            try:
+                conname = r['conname']
+            except (KeyError, TypeError, IndexError):
+                conname = r[0]
+            if conname and not str(conname).endswith(f"_legacy_{ts_suffix}"):
+                new_con = f"{str(conname)[:40]}_legacy_{ts_suffix}"
+                cursor.execute(f"ALTER TABLE {legacy_name} RENAME CONSTRAINT {conname} TO {new_con}")
+
+        idx_rows = cursor.execute(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?",
+            (legacy_name,)
+        ).fetchall()
+        for r in idx_rows:
+            try:
+                idx_name = r['indexname']
+            except (KeyError, TypeError, IndexError):
+                idx_name = r[0]
+            if idx_name and (str(idx_name).startswith('idx_pay_') or str(idx_name).startswith('idx_payment_')):
+                new_idx = f"{str(idx_name)[:40]}_legacy_{ts_suffix}"
+                cursor.execute(f"ALTER INDEX IF EXISTS {idx_name} RENAME TO {new_idx}")
+    else:
+        idx_rows = cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex_%'",
+            (legacy_name,)
+        ).fetchall()
+        for r in idx_rows:
+            try:
+                idx_name = r['name']
+            except (KeyError, TypeError, IndexError):
+                idx_name = r[0]
+            if idx_name and (str(idx_name).startswith('idx_pay_') or str(idx_name).startswith('idx_payment_')):
+                cursor.execute(f"DROP INDEX IF EXISTS {idx_name}")
+
+
+def _cleanup_legacy_payment_tables(conn, cursor, engine):
+    """
+    Remove ou renomeia tabelas de pagamento legadas incompatíveis (ex.: de commits revertidos)
+    antes da criação do schema 007_payment_system.
+    """
+    ts_suffix = str(int(time.time()))
+    changed = False
+
+    tx_exists = _table_exists(cursor, 'payment_transactions', engine)
+    tx_is_legacy = False
+    if tx_exists:
+        tx_cols = _get_table_columns(cursor, 'payment_transactions', engine)
+        tx_is_legacy = 'amount_cents' not in tx_cols
+
+    if tx_is_legacy:
+        for extra_legacy in ('payment_tokens', 'idempotency_keys', 'payment_payment_refs'):
+            if _table_exists(cursor, extra_legacy, engine):
+                _retire_legacy_table(cursor, extra_legacy, engine, ts_suffix)
+                changed = True
+
+    legacy_checks = (
+        ('payment_refunds', 'payment_id'),
+        ('payment_idempotency_keys', 'scope'),
+        ('payment_webhooks', 'event_id'),
+        ('payment_transactions', 'amount_cents'),
+        ('payment_methods', 'gateway_token'),
+    )
+    for tbl_name, required_col in legacy_checks:
+        if _table_exists(cursor, tbl_name, engine):
+            cols = _get_table_columns(cursor, tbl_name, engine)
+            if required_col not in cols:
+                _retire_legacy_table(cursor, tbl_name, engine, ts_suffix)
+                changed = True
+
+    if changed:
+        conn.commit()
+
+
 def init_db():
     engine = get_active_engine()
     conn = get_db_connection()
@@ -1163,6 +1518,9 @@ def init_db():
         if engine == 'postgresql':
             cursor.execute("SELECT pg_advisory_lock(7391042)")
             conn.commit()
+
+        # Limpeza/arquivamento defensivo de tabelas de pagamento legadas incompatíveis antes de schema_sql / migrations
+        _cleanup_legacy_payment_tables(conn, cursor, engine)
 
         # Verifica se as tabelas principais já existem antes de executar o schema inicial
         core_tables = (

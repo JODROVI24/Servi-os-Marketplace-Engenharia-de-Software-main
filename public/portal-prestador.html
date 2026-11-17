@@ -797,6 +797,17 @@
         .replace(/'/g, '&#39;');
     }
 
+    function formatarMetodoPagamento(metodo) {
+      const mapa = {
+        escrow: 'Escrow no Local',
+        escrow_local: 'Escrow no Local',
+        pix: 'Pix (Escrow)',
+        cartao: 'Cartão (Escrow)',
+        boleto: 'Boleto Bancário (Escrow)'
+      };
+      return mapa[String(metodo || '').toLowerCase()] || metodo || 'Escrow no Local';
+    }
+
     function tocarAlertaSonoro() {
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -968,18 +979,20 @@
             mesmoMes = dt.getFullYear() === anoAtual && dt.getMonth() === mesAtual;
           }
         }
-        if (p.status === 'finalizado' && mesmoMes) {
-          faturamentoBruto += valor;
+        const escrowSt = String(p.escrow_status || '').toLowerCase();
+        const estornado = Number(p.valor_estornado || 0);
+        const valorLiquidoBase = escrowSt === 'estornado_total'
+          ? 0
+          : (escrowSt === 'estornado_parcial' ? Math.max(0, valor - estornado) : valor);
+        if (p.status === 'finalizado' && mesmoMes && escrowSt !== 'estornado_total') {
+          faturamentoBruto += valorLiquidoBase;
         }
-        if (p.status === 'finalizado' && Number(p.pago) === 1) {
-          const escrowSt = String(p.escrow_status || '').toLowerCase();
-          if (escrowSt === 'aguardando_liberacao') {
-            saldoEscrow += valor * (1 - taxaPct);
-          } else {
-            totalLiberado += valor * (1 - taxaPct);
-          }
-        } else if (p.status !== 'cancelado' && Number(p.pago) === 1) {
-          saldoEscrow += valor * (1 - taxaPct);
+        if (escrowSt === 'estornado_total') {
+          // Estornado total não compõe saldo em escrow nem liberado
+        } else if (escrowSt === 'liberado' && Number(p.pago) === 1) {
+          totalLiberado += valorLiquidoBase * (1 - taxaPct);
+        } else if (p.status !== 'cancelado' && (Number(p.pago) === 1 || escrowSt === 'retido' || escrowSt === 'aguardando_liberacao')) {
+          saldoEscrow += valorLiquidoBase * (1 - taxaPct);
         }
       });
 
@@ -1033,15 +1046,26 @@
         } else {
           tbody.innerHTML = listaPedidos.map(p => {
             const bruto = Number(p.preco_total || 0);
-            const liquido = p.status === 'cancelado' ? 0 : bruto * (1 - taxaPct);
             const escrowSt = String(p.escrow_status || '').toLowerCase();
-            const situacao = p.status === 'finalizado'
-              ? (escrowSt === 'aguardando_liberacao'
-                ? '<span class="badge-novo">Em Garantia 48h</span>'
-                : '<span class="tag">Liberado</span>')
-              : (p.status === 'cancelado'
-                ? '<span class="tag off">Cancelado</span>'
-                : (Number(p.pago) === 1 ? '<span class="badge-novo">Em Escrow</span>' : '<span class="tag">Aguardando</span>'));
+            const estornado = Number(p.valor_estornado || 0);
+            let liquido = bruto * (1 - taxaPct);
+            if (p.status === 'cancelado' || escrowSt === 'estornado_total') {
+              liquido = 0;
+            } else if (escrowSt === 'estornado_parcial') {
+              liquido = Math.max(0, bruto - estornado) * (1 - taxaPct);
+            }
+            let situacao = '<span class="tag">Aguardando Pagamento do Cliente</span>';
+            if (escrowSt === 'estornado_total' || escrowSt === 'estornado_parcial') {
+              situacao = '<span class="tag off">Estornado</span>';
+            } else if (p.status === 'cancelado') {
+              situacao = '<span class="tag off">Cancelado</span>';
+            } else if (escrowSt === 'liberado') {
+              situacao = '<span class="tag">Liberado</span>';
+            } else if (escrowSt === 'aguardando_liberacao') {
+              situacao = '<span class="badge-novo">Em Garantia 48h</span>';
+            } else if (escrowSt === 'retido' || Number(p.pago) === 1) {
+              situacao = '<span class="badge-novo">Retido em Escrow</span>';
+            }
             return `
               <tr>
                 <td class="py-3 px-4 font-semibold text-perto-ink">#${escapeHtml(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
@@ -1315,11 +1339,18 @@
         }
 
         const escrowSt = String(p.escrow_status || '').toLowerCase();
-        const escrowBadgeHtml = (p.status === 'finalizado' && escrowSt === 'aguardando_liberacao')
-          ? `<span class="badge-novo">Em Garantia 48h — aguardando cliente ou prazo</span>`
-          : ((p.status === 'finalizado' && escrowSt === 'liberado')
-            ? `<span class="tag">Escrow Liberado</span>`
-            : '');
+        let escrowBadgeHtml = '';
+        if (escrowSt === 'estornado_total' || escrowSt === 'estornado_parcial') {
+          escrowBadgeHtml = `<span class="tag off">Estornado</span>`;
+        } else if (escrowSt === 'liberado') {
+          escrowBadgeHtml = `<span class="tag">Liberado</span>`;
+        } else if (escrowSt === 'aguardando_liberacao') {
+          escrowBadgeHtml = `<span class="badge-novo">Em Garantia 48h — aguardando cliente ou prazo</span>`;
+        } else if (escrowSt === 'retido' || Number(p.pago) === 1) {
+          escrowBadgeHtml = `<span class="badge-novo">Retido em Escrow</span>`;
+        } else if (p.status !== 'cancelado') {
+          escrowBadgeHtml = `<span class="tag">Aguardando Pagamento do Cliente</span>`;
+        }
 
         return `
         <div class="svc mb-3.5 ${isNovo ? 'order-card-new' : 'border-l-4 border-perto-sun'}">
@@ -1333,6 +1364,7 @@
           <div class="meta my-1.5">
             <span>👤 Cliente: <b>${escapeHtml(p.cliente_nome)}</b></span>
             <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
+            <span>💳 Pagamento: <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>
             <span>Status: <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b></span>
             ${escrowBadgeHtml}
           </div>

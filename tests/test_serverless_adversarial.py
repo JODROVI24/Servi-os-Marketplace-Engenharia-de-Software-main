@@ -289,6 +289,9 @@ class TestVercelPathNormalizerWSGIAdversarial(unittest.TestCase):
             ('/cep/01001000', '/api/cep/01001000'),
             ('/geocode', '/api/geocode'),
             ('/auth/login', '/api/auth/login'),
+            ('/payments/config', '/api/payments/config'),
+            ('/payments/intents', '/api/payments/intents'),
+            ('/webhooks/payments/sandbox', '/api/webhooks/payments/sandbox'),
         ]
         for stripped_path, expected in known_routes:
             env = self._call_normalizer(stripped_path, '')

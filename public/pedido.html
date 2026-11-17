@@ -449,6 +449,7 @@
             <option value="escrow">Pagamento protegido em Escrow (Escrow no Local)</option>
             <option value="pix">Pix (Reserva Escrow imediata)</option>
             <option value="cartao">Cartão (Reserva Escrow imediata)</option>
+            <option value="boleto">Boleto Bancário (Reserva Escrow após compensação)</option>
           </select>
         </div>
 
@@ -547,6 +548,66 @@
           <button type="submit" id="btnConfirmarSos" class="sos-btn px-5 py-2 rounded-full text-xs font-extrabold bg-perto-sun text-perto-ink border-2 border-perto-ink">Confirmar SOS</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal Acessível de Checkout de Pagamento (PCI-Safe) -->
+  <div id="modalCheckoutPagamento" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalCheckoutTitulo" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 500px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="modalCheckoutTitulo" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">payments</span>
+          Pagamento Seguro (Escrow)
+        </h3>
+        <button type="button" id="btnFecharModalCheckout" class="drawer-fechar" aria-label="Fechar modal de pagamento">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div id="checkoutSandboxBanner" class="mb-3 p-2.5 rounded-xl bg-[#fff7dd] border border-perto-sun text-xs font-bold text-perto-ink" hidden>
+        [Ambiente Sandbox] Modo de simulação ativo — nenhuma cobrança real será efetuada.
+      </div>
+
+      <div id="checkoutResumo" class="p-3 rounded-xl bg-perto-bg border border-perto-road mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div id="checkoutPedidoLabel" class="text-xs font-bold text-perto-sea uppercase tracking-wider">Pedido</div>
+          <div id="checkoutMetodoLabel" class="text-sm font-black text-perto-ink">Método</div>
+        </div>
+        <div id="checkoutValorLabel" class="text-base font-black text-perto-ink">R$ 0,00</div>
+      </div>
+
+      <div id="checkoutMetodoRow" class="campo-form mb-3">
+        <label for="checkoutMetodoSelect" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Forma de Pagamento</label>
+        <select id="checkoutMetodoSelect" class="input-form text-xs font-semibold mt-1">
+          <option value="pix">Pix (Reserva Escrow imediata)</option>
+          <option value="cartao">Cartão (Checkout Seguro)</option>
+          <option value="boleto">Boleto Bancário (Escrow após compensação)</option>
+          <option value="escrow">Escrow no Local (Confirmar Reserva)</option>
+        </select>
+      </div>
+
+      <div id="checkoutGatewayRow" class="campo-form mb-3" hidden>
+        <label for="checkoutGatewaySelect" class="text-[11px] font-bold text-perto-ink uppercase tracking-wider">Provedor de Pagamento</label>
+        <select id="checkoutGatewaySelect" class="input-form text-xs font-semibold mt-1"></select>
+      </div>
+
+      <div id="checkoutConfigNotice" class="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 font-semibold" hidden></div>
+
+      <div id="checkoutBody" class="space-y-3 text-xs text-perto-ink">
+        <p class="text-perto-ink/70 m-0">Preparando cobrança segura...</p>
+      </div>
+
+      <div id="checkoutStatusBox" class="mt-3 p-2.5 rounded-xl bg-perto-bg border border-perto-road text-xs font-semibold text-perto-ink flex items-center justify-between gap-2" hidden>
+        <span id="checkoutStatusText">Aguardando pagamento...</span>
+        <span id="checkoutExpiryText" class="text-[11px] text-perto-ink/70"></span>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-perto-road flex-wrap">
+        <button type="button" id="btnCheckoutSimularSandbox" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink" hidden>
+          Simular Confirmação de Pagamento
+        </button>
+        <button type="button" id="btnFecharCheckoutRodape" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Fechar</button>
+      </div>
     </div>
   </div>
 

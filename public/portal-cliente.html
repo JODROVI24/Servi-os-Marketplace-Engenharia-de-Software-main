@@ -670,9 +670,10 @@
         escrow: 'Escrow no Local',
         escrow_local: 'Escrow no Local',
         pix: 'Pix (Escrow)',
-        cartao: 'Cartão (Escrow)'
+        cartao: 'Cartão (Escrow)',
+        boleto: 'Boleto Bancário (Escrow)'
       };
-      return mapa[metodo] || metodo || 'Escrow no Local';
+      return mapa[String(metodo || '').toLowerCase()] || metodo || 'Escrow no Local';
     }
 
     let avaliacaoTriggerEl = null;
@@ -796,11 +797,26 @@
           const escrowStatus = String(p.escrow_status || '').toLowerCase();
           const aguardandoEscrow = st === 'finalizado' && escrowStatus === 'aguardando_liberacao' && !p.confirmado_cliente;
           const escrowLiberado = st === 'finalizado' && escrowStatus === 'liberado';
-          const escrowBadgeHtml = aguardandoEscrow
-            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Em Garantia (48h)</span>`
-            : (escrowLiberado
-              ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">✓ Escrow Liberado</span>`
-              : '');
+          const estornadoTotal = escrowStatus === 'estornado_total';
+          const estornadoParcial = escrowStatus === 'estornado_parcial';
+          const precisaPagar = !p.pago && st !== 'cancelado';
+          let escrowBadgeHtml = '';
+          if (estornadoTotal) {
+            escrowBadgeHtml = `<span class="tag off">↩️ Estornado Total</span>`;
+          } else if (estornadoParcial) {
+            escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">↩️ Estornado Parcial</span>`;
+          } else if (aguardandoEscrow) {
+            escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Em Garantia (48h)</span>`;
+          } else if (escrowLiberado) {
+            escrowBadgeHtml = `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">✓ Escrow Liberado</span>`;
+          } else if (escrowStatus === 'retido' || p.pago) {
+            escrowBadgeHtml = `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">🔒 Retido em Escrow</span>`;
+          } else if (precisaPagar) {
+            escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Aguardando Pagamento</span>`;
+          }
+          const estornoInfoHtml = (estornadoTotal || estornadoParcial) && p.valor_estornado != null
+            ? `<div style="font-size:0.82rem; color:#991b1b; font-weight:700; margin: 4px 0;">↩️ Valor estornado: ${escapeHtml(brl(p.valor_estornado))}</div>`
+            : '';
           const podeAvaliar = st === 'finalizado' && !p.ja_avaliado;
           const jaAvaliadoHtml = st === 'finalizado' && p.ja_avaliado
             ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
@@ -829,7 +845,13 @@
               </div>
               ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
               ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
+              ${estornoInfoHtml}
               <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+                ${precisaPagar ? `
+                  <a href="pedido.html?order_id=${encodeURIComponent(p.order_id)}&pay=1" class="btn" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                    💳 Pagar / Ver Cobrança
+                  </a>
+                ` : ''}
                 ${podeChat ? `
                   <button type="button" class="btn2 btn-chat-pedido" data-order-id="${p.order_id}" data-status="${escapeHtml(st)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                     <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">chat</span>

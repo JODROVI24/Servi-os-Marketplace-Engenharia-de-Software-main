@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import json
 import math
 import secrets
 import hashlib
@@ -17,6 +18,14 @@ import database
 from database import (
     get_db_connection, init_db, get_cached_geocode, save_cached_geocode,
     DBIntegrityError, get_active_engine
+)
+from payment_adapters import (
+    get_payment_adapter,
+    list_gateway_configs,
+    is_sandbox_enabled,
+    PaymentGatewayError,
+    GatewayNotConfiguredError,
+    WebhookSignatureError,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -123,6 +132,8 @@ app.config.update(
 @app.before_request
 def _csrf_origin_check():
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        if request.path == '/api/webhooks/payments' or request.path.startswith('/api/webhooks/payments/'):
+            return None
         origin = request.headers.get('Origin')
         referer = request.headers.get('Referer')
         host = (urlparse(f'//{request.host}').hostname or '').lower() if request.host else ''
@@ -1174,6 +1185,7 @@ def delete_profile():
             WHERE prestador_id = ?
         ''', (user['id'],))
         conn.execute('DELETE FROM password_reset_tokens WHERE user_id = ?', (user['id'],))
+        conn.execute('DELETE FROM payment_methods WHERE user_id = ?', (user['id'],))
         conn.commit()
     finally:
         conn.close()
@@ -1760,7 +1772,7 @@ def create_order():
     metodo_pagamento = str(data.get('metodo_pagamento') or 'escrow').strip().lower()
     if metodo_pagamento == 'escrow_local':
         metodo_pagamento = 'escrow'
-    elif metodo_pagamento not in ('pix', 'cartao', 'escrow'):
+    elif metodo_pagamento not in ('pix', 'cartao', 'boleto', 'escrow'):
         metodo_pagamento = 'escrow'
     codigo_confirmacao = f"{secrets.randbelow(9000) + 1000}"
 
@@ -1835,9 +1847,11 @@ def pay_order(order_id):
             return jsonify({'error': 'Sem permissão para pagar pedido de outro cliente.', 'code': 'FORBIDDEN'}), 403
 
         data = request.get_json(silent=True) or {}
+        if _contains_forbidden_card_fields(data):
+            return jsonify({'error': 'Dados brutos de cartão (PAN/CVV) não são permitidos.', 'code': 'PCI_VIOLATION'}), 400
         escrow_hold = bool(data.get('escrow_hold'))
         metodo_pagamento = str(data.get('metodo_pagamento') or _row_get(order, 'metodo_pagamento', 'escrow')).strip().lower()
-        if metodo_pagamento not in ('pix', 'cartao', 'escrow'):
+        if metodo_pagamento not in ('pix', 'cartao', 'boleto', 'escrow'):
             metodo_pagamento = 'escrow'
 
         if order['status'] in ('em_disputa', 'cancelado'):
@@ -1847,6 +1861,7 @@ def pay_order(order_id):
         if int(_row_get(order, 'pago', 0) or 0) == 1 or escrow_atual in ('retido', 'aguardando_liberacao', 'liberado'):
             return jsonify({'error': 'Pagamento já efetuado ou pedido já em escrow/liberado.'}), 409
 
+        amount_cents = max(1, int(round(float(_row_get(order, 'preco_total', 0.0) or 0.0) * 100)))
         cursor = conn.cursor()
         if (escrow_hold and order['status'] != 'finalizado') or order['status'] in ('solicitado', 'confirmado', 'em_transito'):
             cursor.execute('''
@@ -1862,6 +1877,16 @@ def pay_order(order_id):
                 conn, order_id, 'escrow_hold', order['preco_total'], 'retido',
                 f'Pagamento retido em Escrow ({metodo_pagamento})'
             )
+            cursor.execute('''
+                INSERT INTO payment_transactions (
+                    public_id, order_id, user_id, gateway, method, status,
+                    amount_cents, gateway_payment_id, escrow_synced, paid_at
+                )
+                VALUES (?, ?, ?, 'sandbox', ?, 'escrow_held', ?, ?, 1, CURRENT_TIMESTAMP)
+            ''', (
+                f"pay_{secrets.token_hex(12)}", order_id, user['id'], metodo_pagamento,
+                amount_cents, f"sbx_legacy_{order_id}_{secrets.token_hex(6)}"
+            ))
             conn.commit()
             return jsonify({
                 'message': 'Pagamento retido em garantia (escrow) com sucesso!',
@@ -1889,6 +1914,16 @@ def pay_order(order_id):
             conn, order_id, 'escrow_release', order['preco_total'], 'liberado',
             f'Pagamento liberado na conclusão ({metodo_pagamento})'
         )
+        cursor.execute('''
+            INSERT INTO payment_transactions (
+                public_id, order_id, user_id, gateway, method, status,
+                amount_cents, gateway_payment_id, escrow_synced, paid_at
+            )
+            VALUES (?, ?, ?, 'sandbox', ?, 'released', ?, ?, 1, CURRENT_TIMESTAMP)
+        ''', (
+            f"pay_{secrets.token_hex(12)}", order_id, user['id'], metodo_pagamento,
+            amount_cents, f"sbx_legacy_{order_id}_{secrets.token_hex(6)}"
+        ))
         conn.commit()
     finally:
         conn.close()
@@ -2857,6 +2892,975 @@ def order_messages(order_id):
             'sender_tipo': user['tipo'],
             'mensagem': mensagem
         }), 201
+    finally:
+        conn.close()
+
+
+# ================= Sistema de Pagamentos Dual-Engine PCI-Safe =================
+
+VALID_PAYMENT_GATEWAYS = ('sandbox', 'mercadopago', 'stripe', 'pagseguro')
+VALID_PAYMENT_METHODS = ('pix', 'cartao', 'boleto', 'escrow')
+FORBIDDEN_CARD_KEYS = {
+    'card_number', 'pan', 'cvv', 'cvc', 'security_code', 'card_pan',
+    'numero_cartao', 'codigo_seguranca'
+}
+
+
+def _contains_forbidden_card_fields(payload):
+    """Rejeita recursivamente quaisquer chaves de PAN/CVV brutos (PCI-DSS)."""
+    if isinstance(payload, dict):
+        for k, v in payload.items():
+            if str(k).strip().lower() in FORBIDDEN_CARD_KEYS:
+                return True
+            if _contains_forbidden_card_fields(v):
+                return True
+    elif isinstance(payload, list):
+        for item in payload:
+            if _contains_forbidden_card_fields(item):
+                return True
+    return False
+
+
+def _compute_request_hash(payload_dict):
+    canonical = json.dumps(payload_dict, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
+def _extract_idempotency_key(data):
+    key = request.headers.get('Idempotency-Key')
+    if not key and isinstance(data, dict):
+        key = data.get('idempotency_key')
+    if key is None:
+        return None
+    key = str(key).strip()
+    return key[:128] if key else None
+
+
+def _check_idempotency(conn, user_id, scope, idempotency_key, request_hash):
+    if not idempotency_key:
+        return ('miss', None)
+    row = conn.execute(
+        'SELECT * FROM payment_idempotency_keys WHERE user_id = ? AND scope = ? AND idempotency_key = ?',
+        (user_id, scope, idempotency_key)
+    ).fetchone()
+    if not row:
+        return ('miss', None)
+    if row['request_hash'] != request_hash:
+        return ('conflict', None)
+    if row['response_status'] is not None and row['response_body'] is not None:
+        try:
+            body = json.loads(row['response_body'])
+        except Exception:
+            body = {'status': 'ok'}
+        return ('replay', (int(row['response_status']), body))
+    return ('conflict', None)
+
+
+def _save_idempotency(conn, user_id, scope, idempotency_key, request_hash, payment_id, response_status, response_body):
+    if not idempotency_key:
+        return None
+    try:
+        conn.execute('''
+            INSERT INTO payment_idempotency_keys (
+                user_id, scope, idempotency_key, request_hash, payment_id, response_status, response_body
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id, scope, idempotency_key, request_hash, payment_id,
+            int(response_status), json.dumps(response_body, ensure_ascii=False)
+        ))
+        return None
+    except DBIntegrityError:
+        conn.rollback()
+        row = conn.execute(
+            'SELECT * FROM payment_idempotency_keys WHERE user_id = ? AND scope = ? AND idempotency_key = ?',
+            (user_id, scope, idempotency_key)
+        ).fetchone()
+        if row and row['request_hash'] == request_hash and row['response_status'] is not None:
+            try:
+                body = json.loads(row['response_body'])
+            except Exception:
+                body = response_body
+            return ('replay', (int(row['response_status']), body))
+        return ('conflict', None)
+
+
+def _lookup_payment_tx(conn, payment_ref):
+    ref = str(payment_ref or '').strip()
+    if not ref:
+        return None
+    row = conn.execute('SELECT * FROM payment_transactions WHERE public_id = ?', (ref,)).fetchone()
+    if row:
+        return row
+    if ref.isdigit():
+        return conn.execute('SELECT * FROM payment_transactions WHERE id = ?', (int(ref),)).fetchone()
+    return None
+
+
+def _serialize_payment_tx(tx, is_provider=False):
+    data = {
+        'id': tx['id'],
+        'payment_id': tx['public_id'],
+        'public_id': tx['public_id'],
+        'order_id': tx['order_id'],
+        'user_id': tx['user_id'],
+        'gateway': tx['gateway'],
+        'method': tx['method'],
+        'status': tx['status'],
+        'amount_cents': int(tx['amount_cents']),
+        'refunded_cents': int(_row_get(tx, 'refunded_cents', 0) or 0),
+        'currency': _row_get(tx, 'currency', 'BRL'),
+        'gateway_payment_id': _row_get(tx, 'gateway_payment_id'),
+        'gateway_reference': _row_get(tx, 'gateway_reference'),
+        'checkout_url': None if is_provider else _row_get(tx, 'checkout_url'),
+        'pix_qr_code': None if is_provider else _row_get(tx, 'pix_qr_code'),
+        'pix_qr_base64': None if is_provider else _row_get(tx, 'pix_qr_base64'),
+        'boleto_barcode': _row_get(tx, 'boleto_barcode'),
+        'boleto_digitable_line': _row_get(tx, 'boleto_digitable_line'),
+        'boleto_url': None if is_provider else _row_get(tx, 'boleto_url'),
+        'payment_method_id': None if is_provider else _row_get(tx, 'payment_method_id'),
+        'escrow_synced': bool(int(_row_get(tx, 'escrow_synced', 0) or 0)),
+        'failure_code': _row_get(tx, 'failure_code'),
+        'failure_message': _row_get(tx, 'failure_message'),
+        'expires_at': str(_row_get(tx, 'expires_at')) if _row_get(tx, 'expires_at') else None,
+        'paid_at': str(_row_get(tx, 'paid_at')) if _row_get(tx, 'paid_at') else None,
+        'criado_em': str(_row_get(tx, 'criado_em')) if _row_get(tx, 'criado_em') else None,
+    }
+    return data
+
+
+def _settle_payment_and_sync_escrow(conn, payment, order):
+    """Liquida pagamento de forma atômica e sincroniza estado de Escrow + razão."""
+    order_id = order['id']
+    payment_id = payment['id']
+    method = _row_get(payment, 'method', 'escrow')
+    preco = float(_row_get(order, 'preco_total', 0.0) or 0.0)
+
+    if order['status'] in ('cancelado', 'em_disputa'):
+        return (False, f"Pedido em status '{order['status']}' não pode ser liquidado.")
+
+    cursor = conn.cursor()
+    if order['status'] == 'finalizado':
+        tx_status = 'released'
+        new_escrow = 'liberado'
+        cursor.execute('''
+            UPDATE orders
+            SET pago = 1, escrow_status = 'liberado', confirmado_cliente = 1,
+                metodo_pagamento = ?, released_at = COALESCE(released_at, CURRENT_TIMESTAMP),
+                atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND pago = 0 AND status NOT IN ('cancelado', 'em_disputa')
+        ''', (method, order_id))
+        if cursor.rowcount != 1:
+            return (False, 'Pedido já pago ou em estado inválido.')
+        cursor.execute('''
+            UPDATE payment_transactions
+            SET status = 'released', escrow_synced = 1,
+                paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
+                atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND escrow_synced = 0
+        ''', (payment_id,))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return (False, 'Pagamento já sincronizado anteriormente.')
+        _log_escrow_ledger(
+            conn, order_id, 'escrow_release', preco, 'liberado',
+            f'Pagamento liberado na conclusão ({method})'
+        )
+    else:
+        tx_status = 'escrow_held'
+        new_escrow = 'retido'
+        cursor.execute('''
+            UPDATE orders
+            SET pago = 1, escrow_status = 'retido', metodo_pagamento = ?,
+                atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND pago = 0 AND status NOT IN ('cancelado', 'em_disputa')
+        ''', (method, order_id))
+        if cursor.rowcount != 1:
+            return (False, 'Pedido já pago ou em estado inválido.')
+        cursor.execute('''
+            UPDATE payment_transactions
+            SET status = 'escrow_held', escrow_synced = 1,
+                paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
+                atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND escrow_synced = 0
+        ''', (payment_id,))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return (False, 'Pagamento já sincronizado anteriormente.')
+        _log_escrow_ledger(
+            conn, order_id, 'escrow_hold', preco, 'retido',
+            f'Pagamento retido em Escrow ({method})'
+        )
+    return (True, {'status': tx_status, 'escrow_status': new_escrow})
+
+
+@app.route('/api/payments/config', methods=['GET'])
+@rate_limit(60, 60)
+def get_payments_config():
+    sandbox_enabled = is_sandbox_enabled()
+    configs = list_gateway_configs()
+    default_gateway = 'sandbox' if sandbox_enabled else next(
+        (g['id'] for g in configs if g.get('configured')), 'mercadopago'
+    )
+    return jsonify({
+        'default_gateway': default_gateway,
+        'sandbox_enabled': sandbox_enabled,
+        'gateways': configs
+    }), 200
+
+
+@app.route('/api/payments/methods', methods=['GET', 'POST'])
+@rate_limit(30, 60)
+def payment_methods_collection():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+
+    conn = get_db_connection()
+    try:
+        if request.method == 'GET':
+            rows = conn.execute('''
+                SELECT id, public_id, gateway, brand, last4, exp_month, exp_year, holder_label, is_default, criado_em
+                FROM payment_methods
+                WHERE user_id = ? AND active = 1
+                ORDER BY is_default DESC, id DESC
+            ''', (user['id'],)).fetchall()
+            return jsonify([dict(r) for r in rows]), 200
+
+        acct_err = _require_active_account(user)
+        if acct_err:
+            return acct_err
+
+        data = request.get_json(silent=True) or {}
+        if _contains_forbidden_card_fields(data):
+            return jsonify({'error': 'Dados brutos de cartão (PAN/CVV) não são permitidos.', 'code': 'PCI_VIOLATION'}), 400
+
+        gateway = str(data.get('gateway') or 'sandbox').strip().lower()
+        if gateway not in VALID_PAYMENT_GATEWAYS:
+            return jsonify({'error': 'Gateway inválido.'}), 400
+        if gateway == 'sandbox' and not is_sandbox_enabled():
+            return jsonify({'error': 'Gateway sandbox desabilitado.'}), 403
+
+        gateway_token = str(data.get('gateway_token') or '').strip()
+        brand = str(data.get('brand') or '').strip()[:40]
+        last4 = str(data.get('last4') or '').strip()
+        holder_label = str(data.get('holder_label') or '').strip()[:80] or None
+        gateway_customer_id = str(data.get('gateway_customer_id') or '').strip()[:120] or None
+        is_default = 1 if data.get('is_default') else 0
+
+        if not gateway_token or not brand or len(last4) != 4 or not last4.isdigit():
+            return jsonify({'error': 'Token, bandeira e last4 (4 dígitos) são obrigatórios.'}), 400
+
+        try:
+            exp_month = int(data.get('exp_month'))
+            exp_year = int(data.get('exp_year'))
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Mês e ano de validade inválidos.'}), 400
+
+        if not (1 <= exp_month <= 12) or exp_year < 2024:
+            return jsonify({'error': 'Data de validade fora do intervalo permitido.'}), 400
+
+        public_id = f"pm_{secrets.token_hex(12)}"
+        cursor = conn.cursor()
+        try:
+            if is_default:
+                cursor.execute('UPDATE payment_methods SET is_default = 0 WHERE user_id = ?', (user['id'],))
+            cursor.execute('''
+                INSERT INTO payment_methods (
+                    public_id, user_id, gateway, gateway_customer_id, gateway_token,
+                    brand, last4, exp_month, exp_year, holder_label, is_default, active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ''', (
+                public_id, user['id'], gateway, gateway_customer_id, gateway_token,
+                brand, last4, exp_month, exp_year, holder_label, is_default
+            ))
+            method_id = cursor.lastrowid
+            conn.commit()
+        except DBIntegrityError:
+            conn.rollback()
+            return jsonify({'error': 'Método de pagamento já cadastrado para este gateway.'}), 409
+
+        return jsonify({
+            'id': method_id,
+            'public_id': public_id,
+            'gateway': gateway,
+            'brand': brand,
+            'last4': last4,
+            'exp_month': exp_month,
+            'exp_year': exp_year,
+            'holder_label': holder_label,
+            'is_default': bool(is_default)
+        }), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/methods/<method_ref>', methods=['DELETE'])
+@rate_limit(30, 60)
+def delete_payment_method(method_ref):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+    acct_err = _require_active_account(user)
+    if acct_err:
+        return acct_err
+
+    conn = get_db_connection()
+    try:
+        ref = str(method_ref or '').strip()
+        row = conn.execute('SELECT * FROM payment_methods WHERE public_id = ?', (ref,)).fetchone()
+        if not row and ref.isdigit():
+            row = conn.execute('SELECT * FROM payment_methods WHERE id = ?', (int(ref),)).fetchone()
+        if not row or row['user_id'] != user['id']:
+            return jsonify({'error': 'Método de pagamento não encontrado.'}), 404
+
+        conn.execute('DELETE FROM payment_methods WHERE id = ? AND user_id = ?', (row['id'], user['id']))
+        conn.commit()
+        return jsonify({'message': 'Método de pagamento removido com sucesso.'}), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/intents', methods=['POST'])
+@rate_limit(20, 60)
+def create_payment_intent():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas clientes podem iniciar pagamentos.', 'code': 'FORBIDDEN'}), 403
+    acct_err = _require_active_account(user)
+    if acct_err:
+        return acct_err
+
+    data = request.get_json(silent=True) or {}
+    if _contains_forbidden_card_fields(data):
+        return jsonify({'error': 'Dados brutos de cartão (PAN/CVV) não são permitidos.', 'code': 'PCI_VIOLATION'}), 400
+
+    try:
+        order_id = int(data.get('order_id'))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'order_id inválido.'}), 400
+
+    gateway = str(data.get('gateway') or ('sandbox' if is_sandbox_enabled() else 'mercadopago')).strip().lower()
+    if gateway not in VALID_PAYMENT_GATEWAYS:
+        return jsonify({'error': 'Gateway de pagamento inválido.'}), 400
+    if gateway == 'sandbox' and not is_sandbox_enabled():
+        return jsonify({'error': 'Gateway sandbox desabilitado em produção.', 'code': 'SANDBOX_DISABLED'}), 403
+
+    method = str(data.get('method') or data.get('metodo_pagamento') or 'pix').strip().lower()
+    if method not in VALID_PAYMENT_METHODS:
+        return jsonify({'error': 'Método de pagamento inválido.'}), 400
+
+    payment_method_id = data.get('payment_method_id')
+    if payment_method_id is not None:
+        try:
+            payment_method_id = int(payment_method_id)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'payment_method_id inválido.'}), 400
+
+    idempotency_key = _extract_idempotency_key(data)
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if order['cliente_id'] != user['id']:
+            return jsonify({'error': 'Sem permissão para pagar pedido de outro cliente.'}), 403
+        if order['status'] in ('cancelado', 'em_disputa'):
+            return jsonify({'error': f"Não é possível pagar pedido com status '{order['status']}'."}), 400
+
+        escrow_atual = _row_get(order, 'escrow_status', 'pendente')
+        if int(_row_get(order, 'pago', 0) or 0) == 1 or escrow_atual in ('retido', 'aguardando_liberacao', 'liberado'):
+            return jsonify({'error': 'Pedido já pago ou em escrow.'}), 409
+
+        amount_cents = int(round(float(_row_get(order, 'preco_total', 0.0) or 0.0) * 100))
+        if amount_cents <= 0:
+            return jsonify({'error': 'Valor do pedido inválido.'}), 400
+
+        if data.get('amount_cents') is not None:
+            try:
+                client_cents = int(data.get('amount_cents'))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'amount_cents inválido.'}), 400
+            if client_cents != amount_cents:
+                return jsonify({'error': 'Valor divergente do valor oficial do pedido.'}), 400
+
+        if data.get('amount') is not None:
+            try:
+                client_amount_cents = int(round(float(data.get('amount')) * 100))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'amount inválido.'}), 400
+            if client_amount_cents != amount_cents:
+                return jsonify({'error': 'Valor divergente do valor oficial do pedido.'}), 400
+
+        payment_method_token = None
+        if payment_method_id is not None:
+            pm_row = conn.execute(
+                'SELECT * FROM payment_methods WHERE id = ? AND user_id = ? AND active = 1',
+                (payment_method_id, user['id'])
+            ).fetchone()
+            if not pm_row or pm_row['gateway'] != gateway:
+                return jsonify({'error': 'Método de pagamento salvo não encontrado para este gateway.'}), 404
+            payment_method_token = pm_row['gateway_token']
+
+        req_hash = _compute_request_hash({
+            'order_id': order_id,
+            'gateway': gateway,
+            'method': method,
+            'amount_cents': amount_cents,
+            'payment_method_id': payment_method_id,
+        })
+        idem_state, idem_payload = _check_idempotency(conn, user['id'], 'create_intent', idempotency_key, req_hash)
+        if idem_state == 'conflict':
+            return jsonify({'error': 'Chave de idempotência reutilizada com parâmetros diferentes.', 'code': 'IDEMPOTENCY_CONFLICT'}), 409
+        if idem_state == 'replay':
+            status_code, body = idem_payload
+            return jsonify(body), status_code
+
+        public_id = f"pay_{secrets.token_hex(12)}"
+        return_url = str(data.get('return_url') or '').strip() or f"/pedido.html?order_id={order_id}"
+        payer = {
+            'id': user['id'],
+            'email': _row_get(user, 'email', ''),
+            'name': _row_get(user, 'nome', ''),
+            'cpf': _row_get(user, 'cpf', ''),
+        }
+
+        try:
+            adapter = get_payment_adapter(gateway)
+            intent_res = adapter.create_intent(
+                public_id=public_id,
+                order_id=order_id,
+                amount_cents=amount_cents,
+                currency='BRL',
+                method=method,
+                description=f"Pedido PertoJá #{order_id}",
+                payer=payer,
+                return_url=return_url,
+                payment_method_token=payment_method_token,
+                metadata={'order_id': order_id, 'user_id': user['id']},
+            )
+        except GatewayNotConfiguredError as exc:
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+        except PaymentGatewayError as exc:
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+
+        tx_status = intent_res.get('status') or 'requires_action'
+        gateway_payment_id = intent_res.get('gateway_payment_id')
+        gateway_reference = intent_res.get('gateway_reference')
+        checkout_url = intent_res.get('checkout_url')
+        pix_qr_code = intent_res.get('pix_qr_code')
+        pix_qr_base64 = intent_res.get('pix_qr_base64')
+        boleto_barcode = intent_res.get('boleto_barcode')
+        boleto_digitable_line = intent_res.get('boleto_digitable_line')
+        boleto_url = intent_res.get('boleto_url')
+        expires_at = intent_res.get('expires_at') or None
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO payment_transactions (
+                    public_id, order_id, user_id, gateway, method, status,
+                    amount_cents, currency, gateway_payment_id, gateway_reference,
+                    checkout_url, pix_qr_code, pix_qr_base64,
+                    boleto_barcode, boleto_digitable_line, boleto_url,
+                    payment_method_id, expires_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'BRL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                public_id, order_id, user['id'], gateway, method, tx_status,
+                amount_cents, gateway_payment_id, gateway_reference,
+                checkout_url, pix_qr_code, pix_qr_base64,
+                boleto_barcode, boleto_digitable_line, boleto_url,
+                payment_method_id, expires_at
+            ))
+            payment_id = cursor.lastrowid
+        except DBIntegrityError:
+            conn.rollback()
+            return jsonify({'error': 'Transação duplicada detectada.'}), 409
+
+        resp_body = {
+            'payment_id': public_id,
+            'id': payment_id,
+            'order_id': order_id,
+            'gateway': gateway,
+            'method': method,
+            'status': tx_status,
+            'amount_cents': amount_cents,
+            'currency': 'BRL',
+            'checkout_url': checkout_url,
+            'pix_qr_code': pix_qr_code,
+            'pix_qr_base64': pix_qr_base64,
+            'boleto_barcode': boleto_barcode,
+            'boleto_digitable_line': boleto_digitable_line,
+            'boleto_url': boleto_url,
+            'expires_at': expires_at,
+        }
+        idem_race = _save_idempotency(
+            conn, user['id'], 'create_intent', idempotency_key, req_hash, payment_id, 201, resp_body
+        )
+        if idem_race:
+            race_state, race_payload = idem_race
+            if race_state == 'conflict':
+                return jsonify({'error': 'Conflito de idempotência.'}), 409
+            return jsonify(race_payload[1]), race_payload[0]
+
+        conn.commit()
+        return jsonify(resp_body), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/order/<int:order_id>', methods=['GET'])
+@rate_limit(60, 60)
+def get_order_payments(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+        if user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Sem permissão para visualizar pagamentos deste pedido.'}), 403
+
+        is_provider = (user['id'] == order['prestador_id'] and user['id'] != order['cliente_id'])
+        rows = conn.execute(
+            'SELECT * FROM payment_transactions WHERE order_id = ? ORDER BY id DESC',
+            (order_id,)
+        ).fetchall()
+        return jsonify({
+            'order_id': order_id,
+            'pago': bool(int(_row_get(order, 'pago', 0) or 0)),
+            'escrow_status': _row_get(order, 'escrow_status', 'pendente'),
+            'metodo_pagamento': _row_get(order, 'metodo_pagamento', 'escrow'),
+            'transactions': [_serialize_payment_tx(r, is_provider=is_provider) for r in rows]
+        }), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/<payment_ref>', methods=['GET'])
+@rate_limit(60, 60)
+def get_payment_detail(payment_ref):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+
+    conn = get_db_connection()
+    try:
+        tx = _lookup_payment_tx(conn, payment_ref)
+        if not tx:
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (tx['order_id'],)).fetchone()
+        if not order or user['id'] not in (order['cliente_id'], order['prestador_id']):
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+
+        is_provider = (user['id'] == order['prestador_id'] and user['id'] != order['cliente_id'])
+        return jsonify(_serialize_payment_tx(tx, is_provider=is_provider)), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/<payment_ref>/confirm', methods=['POST'])
+@rate_limit(20, 60)
+def confirm_payment_intent(payment_ref):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas o cliente pode confirmar o pagamento.'}), 403
+    acct_err = _require_active_account(user)
+    if acct_err:
+        return acct_err
+
+    data = request.get_json(silent=True) or {}
+    idempotency_key = _extract_idempotency_key(data)
+    simulate_outcome = str(data.get('simulate_outcome') or 'paid').strip().lower()
+    if simulate_outcome not in ('paid', 'failed'):
+        simulate_outcome = 'paid'
+
+    conn = get_db_connection()
+    try:
+        tx = _lookup_payment_tx(conn, payment_ref)
+        if not tx:
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (tx['order_id'],)).fetchone()
+        if not order or order['cliente_id'] != user['id']:
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+
+        if tx['gateway'] == 'sandbox' and not is_sandbox_enabled():
+            return jsonify({'error': 'Gateway sandbox desabilitado em produção.', 'code': 'SANDBOX_DISABLED'}), 403
+
+        req_hash = _compute_request_hash({
+            'payment_id': tx['id'],
+            'simulate_outcome': simulate_outcome if tx['gateway'] == 'sandbox' else 'live',
+        })
+        idem_state, idem_payload = _check_idempotency(conn, user['id'], 'confirm_payment', idempotency_key, req_hash)
+        if idem_state == 'conflict':
+            return jsonify({'error': 'Chave de idempotência reutilizada com parâmetros diferentes.', 'code': 'IDEMPOTENCY_CONFLICT'}), 409
+        if idem_state == 'replay':
+            return jsonify(idem_payload[1]), idem_payload[0]
+
+        if tx['status'] in ('escrow_held', 'released', 'paid') or int(_row_get(tx, 'escrow_synced', 0) or 0) == 1:
+            return jsonify({'error': 'Pagamento já confirmado anteriormente.'}), 409
+        if tx['status'] in ('failed', 'expired', 'cancelled', 'refunded', 'partially_refunded'):
+            return jsonify({'error': f"Pagamento em estado terminal '{tx['status']}' não pode ser confirmado."}), 409
+
+        try:
+            adapter = get_payment_adapter(tx['gateway'])
+            res = adapter.confirm_intent(
+                gateway_payment_id=tx['gateway_payment_id'],
+                method=tx['method'],
+                simulate_outcome=simulate_outcome,
+            )
+        except GatewayNotConfiguredError as exc:
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+        except PaymentGatewayError as exc:
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+
+        resolved_gw_pid = res.get('gateway_payment_id')
+        resolved_gw_ref = res.get('gateway_reference')
+        if resolved_gw_pid and resolved_gw_pid != _row_get(tx, 'gateway_payment_id'):
+            fallback_ref = _row_get(tx, 'gateway_reference') or resolved_gw_ref or _row_get(tx, 'gateway_payment_id')
+            conn.execute('''
+                UPDATE payment_transactions
+                SET gateway_payment_id = ?, gateway_reference = COALESCE(gateway_reference, ?),
+                    atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (resolved_gw_pid, fallback_ref, tx['id']))
+
+        gw_status = res.get('status') or tx['status']
+        if gw_status == 'paid':
+            ok, settle_info = _settle_payment_and_sync_escrow(conn, tx, order)
+            if not ok:
+                conn.rollback()
+                return jsonify({'error': settle_info}), 409
+            resp_body = {
+                'payment_id': tx['public_id'],
+                'id': tx['id'],
+                'order_id': order['id'],
+                'status': settle_info['status'],
+                'escrow_status': settle_info['escrow_status'],
+                'pago': True,
+            }
+        elif gw_status in ('failed', 'expired', 'cancelled'):
+            conn.execute('''
+                UPDATE payment_transactions
+                SET status = ?, failure_code = ?, failure_message = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND escrow_synced = 0
+            ''', (
+                gw_status, res.get('failure_code'), res.get('failure_message'), tx['id']
+            ))
+            resp_body = {
+                'payment_id': tx['public_id'],
+                'id': tx['id'],
+                'order_id': order['id'],
+                'status': gw_status,
+                'escrow_status': _row_get(order, 'escrow_status', 'pendente'),
+                'pago': False,
+            }
+        else:
+            resp_body = {
+                'payment_id': tx['public_id'],
+                'id': tx['id'],
+                'order_id': order['id'],
+                'status': gw_status,
+                'escrow_status': _row_get(order, 'escrow_status', 'pendente'),
+                'pago': bool(int(_row_get(order, 'pago', 0) or 0)),
+            }
+
+        idem_race = _save_idempotency(
+            conn, user['id'], 'confirm_payment', idempotency_key, req_hash, tx['id'], 200, resp_body
+        )
+        if idem_race:
+            race_state, race_payload = idem_race
+            if race_state == 'conflict':
+                return jsonify({'error': 'Conflito de idempotência.'}), 409
+            return jsonify(race_payload[1]), race_payload[0]
+
+        conn.commit()
+        return jsonify(resp_body), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/<payment_ref>/refund', methods=['POST'])
+@rate_limit(20, 60)
+def refund_payment(payment_ref):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.', 'code': 'UNAUTHORIZED'}), 401
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas o cliente pode solicitar estorno.'}), 403
+    acct_err = _require_active_account(user)
+    if acct_err:
+        return acct_err
+
+    data = request.get_json(silent=True) or {}
+    idempotency_key = _extract_idempotency_key(data)
+    reason = str(data.get('reason') or data.get('motivo') or '').strip()[:300]
+
+    conn = get_db_connection()
+    try:
+        tx = _lookup_payment_tx(conn, payment_ref)
+        if not tx:
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (tx['order_id'],)).fetchone()
+        if not order or order['cliente_id'] != user['id']:
+            return jsonify({'error': 'Pagamento não encontrado.'}), 404
+
+        escrow_atual = _row_get(order, 'escrow_status', 'pendente')
+        if order['status'] in ('em_execucao', 'finalizado', 'em_disputa') or escrow_atual in (
+            'liberado', 'aguardando_liberacao', 'em_disputa', 'congelado_disputa'
+        ):
+            return jsonify({'error': 'Estorno direto indisponível neste estágio do pedido; utilize a abertura de disputa.'}), 409
+        if tx['status'] not in ('paid', 'escrow_held', 'partially_refunded'):
+            return jsonify({'error': f"Pagamento em status '{tx['status']}' não pode ser estornado."}), 409
+
+        already_refunded = int(_row_get(tx, 'refunded_cents', 0) or 0)
+        remaining_cents = int(tx['amount_cents']) - already_refunded
+        if remaining_cents <= 0:
+            return jsonify({'error': 'Pagamento já foi totalmente estornado.'}), 409
+
+        if data.get('amount_cents') is not None:
+            try:
+                requested_cents = int(data.get('amount_cents'))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'amount_cents inválido.'}), 400
+        elif data.get('amount') is not None:
+            try:
+                requested_cents = int(round(float(data.get('amount')) * 100))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'amount inválido.'}), 400
+        else:
+            requested_cents = remaining_cents
+
+        if requested_cents <= 0:
+            return jsonify({'error': 'Valor de estorno deve ser positivo.'}), 400
+        if requested_cents > remaining_cents:
+            return jsonify({'error': 'Valor de estorno excede o saldo disponível.'}), 409
+
+        req_hash = _compute_request_hash({
+            'payment_id': tx['id'],
+            'requested_cents': requested_cents,
+            'reason': reason,
+        })
+        idem_state, idem_payload = _check_idempotency(conn, user['id'], 'refund_payment', idempotency_key, req_hash)
+        if idem_state == 'conflict':
+            return jsonify({'error': 'Chave de idempotência reutilizada com parâmetros diferentes.', 'code': 'IDEMPOTENCY_CONFLICT'}), 409
+        if idem_state == 'replay':
+            return jsonify(idem_payload[1]), idem_payload[0]
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE payment_transactions
+            SET refunded_cents = refunded_cents + ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND (amount_cents - refunded_cents) >= ?
+        ''', (requested_cents, tx['id'], requested_cents))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return jsonify({'error': 'Saldo insuficiente ou estorno concorrente em andamento.'}), 409
+
+        try:
+            adapter = get_payment_adapter(tx['gateway'])
+            ref_res = adapter.refund_payment(
+                gateway_payment_id=tx['gateway_payment_id'],
+                amount_cents=requested_cents,
+                reason=reason,
+            )
+        except GatewayNotConfiguredError as exc:
+            conn.rollback()
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+        except PaymentGatewayError as exc:
+            conn.rollback()
+            return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+
+        refreshed_tx = conn.execute(
+            'SELECT refunded_cents, amount_cents FROM payment_transactions WHERE id = ?',
+            (tx['id'],)
+        ).fetchone()
+        total_refunded = int(refreshed_tx['refunded_cents'])
+        is_full = total_refunded >= int(refreshed_tx['amount_cents'])
+        new_tx_status = 'refunded' if is_full else 'partially_refunded'
+        new_escrow_status = 'estornado_total' if is_full else 'estornado_parcial'
+        refund_public_id = f"ref_{secrets.token_hex(12)}"
+        gateway_refund_id = ref_res.get('gateway_refund_id')
+
+        cursor.execute('''
+            INSERT INTO payment_refunds (
+                public_id, payment_id, order_id, requested_by, amount_cents, reason, status, gateway_refund_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'succeeded', ?)
+        ''', (refund_public_id, tx['id'], order['id'], user['id'], requested_cents, reason, gateway_refund_id))
+
+        cursor.execute('''
+            UPDATE payment_transactions
+            SET status = ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_tx_status, tx['id']))
+
+        cursor.execute('''
+            UPDATE orders
+            SET escrow_status = ?, valor_estornado = ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_escrow_status, round(total_refunded / 100.0, 2), order['id']))
+
+        _log_escrow_ledger(
+            conn, order['id'], 'escrow_refund', round(requested_cents / 100.0, 2), new_escrow_status,
+            f"Estorno via {tx['gateway']}: {reason}" if reason else f"Estorno via {tx['gateway']}"
+        )
+
+        resp_body = {
+            'refund_id': refund_public_id,
+            'payment_id': tx['public_id'],
+            'order_id': order['id'],
+            'status': new_tx_status,
+            'escrow_status': new_escrow_status,
+            'refunded_cents': total_refunded,
+            'requested_cents': requested_cents,
+            'gateway_refund_id': gateway_refund_id,
+        }
+        idem_race = _save_idempotency(
+            conn, user['id'], 'refund_payment', idempotency_key, req_hash, tx['id'], 200, resp_body
+        )
+        if idem_race:
+            race_state, race_payload = idem_race
+            if race_state == 'conflict':
+                return jsonify({'error': 'Conflito de idempotência.'}), 409
+            return jsonify(race_payload[1]), race_payload[0]
+
+        conn.commit()
+        return jsonify(resp_body), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/webhooks/payments', methods=['POST'])
+@app.route('/api/webhooks/payments/<gateway>', methods=['POST'])
+@rate_limit(120, 60)
+def payment_gateway_webhook(gateway=None):
+    # Webhooks nunca acessam flask.session e verificam assinatura HMAC antes de qualquer escrita no banco.
+    gw = (gateway or request.args.get('gateway') or request.headers.get('X-Payment-Gateway') or '').strip().lower()
+    if gw not in VALID_PAYMENT_GATEWAYS:
+        return jsonify({'error': 'Gateway de webhook inválido.'}), 400
+
+    raw_body = request.get_data(cache=False) or b''
+    payload_hash = hashlib.sha256(raw_body).hexdigest()
+    try:
+        adapter = get_payment_adapter(gw)
+        event = adapter.verify_webhook(raw_body=raw_body, headers=request.headers, query_params=request.args)
+    except WebhookSignatureError as exc:
+        return jsonify({'error': str(exc), 'code': exc.code}), 401
+    except GatewayNotConfiguredError as exc:
+        return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+    except PaymentGatewayError as exc:
+        return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+
+    event_id = str(event.get('event_id') or '').strip() or payload_hash
+    event_type = str(event.get('event_type') or 'unknown').strip()
+    gateway_payment_id = event.get('gateway_payment_id')
+    gateway_reference = event.get('gateway_reference')
+    event_public_id = event.get('public_id')
+    mapped_status = event.get('mapped_status')
+    payload_json = raw_body.decode('utf-8', errors='replace')
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO payment_webhooks (
+                    gateway, event_id, event_type, gateway_payment_id,
+                    signature_valid, processing_status, payload_hash, payload_json
+                )
+                VALUES (?, ?, ?, ?, 1, 'received', ?, ?)
+            ''', (gw, event_id, event_type, gateway_payment_id, payload_hash, payload_json))
+            webhook_id = cursor.lastrowid
+        except DBIntegrityError:
+            conn.rollback()
+            return jsonify({'status': 'duplicate_ignored', 'event_id': event_id}), 200
+
+        tx = None
+        if gateway_payment_id:
+            tx = conn.execute(
+                'SELECT * FROM payment_transactions WHERE gateway = ? AND gateway_payment_id = ?',
+                (gw, str(gateway_payment_id))
+            ).fetchone()
+        if not tx and gateway_reference:
+            tx = conn.execute(
+                'SELECT * FROM payment_transactions WHERE gateway = ? AND (gateway_reference = ? OR gateway_payment_id = ?)',
+                (gw, str(gateway_reference), str(gateway_reference))
+            ).fetchone()
+        if not tx and gateway_payment_id:
+            tx = conn.execute(
+                'SELECT * FROM payment_transactions WHERE gateway = ? AND gateway_reference = ?',
+                (gw, str(gateway_payment_id))
+            ).fetchone()
+        if not tx and event_public_id:
+            tx = conn.execute(
+                'SELECT * FROM payment_transactions WHERE gateway = ? AND public_id = ?',
+                (gw, str(event_public_id))
+            ).fetchone()
+        if not tx and gateway_payment_id:
+            tx = conn.execute(
+                'SELECT * FROM payment_transactions WHERE gateway = ? AND public_id = ?',
+                (gw, str(gateway_payment_id))
+            ).fetchone()
+
+        if not tx:
+            conn.execute('''
+                UPDATE payment_webhooks
+                SET processing_status = 'ignored', processed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (webhook_id,))
+            conn.commit()
+            return jsonify({'status': 'ignored', 'event_id': event_id}), 200
+
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (tx['order_id'],)).fetchone()
+        if mapped_status == 'paid' and order:
+            if gateway_payment_id and str(gateway_payment_id) != str(_row_get(tx, 'gateway_payment_id') or ''):
+                fallback_ref = _row_get(tx, 'gateway_reference') or gateway_reference or _row_get(tx, 'gateway_payment_id')
+                conn.execute('''
+                    UPDATE payment_transactions
+                    SET gateway_payment_id = ?, gateway_reference = COALESCE(gateway_reference, ?),
+                        atualizado_em = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (str(gateway_payment_id), fallback_ref, tx['id']))
+            ok, _ = _settle_payment_and_sync_escrow(conn, tx, order)
+            if not ok:
+                conn.rollback()
+                try:
+                    conn.execute('''
+                        INSERT INTO payment_webhooks (
+                            gateway, event_id, event_type, gateway_payment_id,
+                            signature_valid, processing_status, payload_hash, payload_json, processed_at
+                        )
+                        VALUES (?, ?, ?, ?, 1, 'ignored', ?, ?, CURRENT_TIMESTAMP)
+                    ''', (gw, event_id, event_type, gateway_payment_id, payload_hash, payload_json))
+                    conn.commit()
+                except DBIntegrityError:
+                    conn.rollback()
+                return jsonify({'status': 'ignored', 'event_id': event_id}), 200
+        elif mapped_status in ('failed', 'expired', 'cancelled'):
+            conn.execute('''
+                UPDATE payment_transactions
+                SET status = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND escrow_synced = 0 AND status IN ('pending', 'requires_action', 'authorized')
+            ''', (mapped_status, tx['id']))
+
+        conn.execute('''
+            UPDATE payment_webhooks
+            SET processing_status = 'processed', processed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (webhook_id,))
+        conn.commit()
+        return jsonify({'status': 'processed', 'event_id': event_id}), 200
     finally:
         conn.close()
 
