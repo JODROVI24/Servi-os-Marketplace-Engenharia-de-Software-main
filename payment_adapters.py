@@ -14,6 +14,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
+from urllib.parse import quote
 
 import requests
 
@@ -138,14 +139,15 @@ def _fallback_event_id(raw_body: bytes, *candidates: Any) -> str:
 
 
 def _validate_timestamp(ts_raw: str, tolerance: int = WEBHOOK_TOLERANCE_SECONDS) -> int:
-    """Valida timestamp Unix dentro da janela de tolerância."""
+    """Valida timestamp Unix (segundos ou milissegundos) dentro da janela de tolerância."""
     try:
         ts_val = int(float(ts_raw))
     except (TypeError, ValueError) as exc:
         raise WebhookSignatureError("Timestamp de webhook inválido.") from exc
-    if abs(time.time() - ts_val) > tolerance:
+    ts_sec = ts_val / 1000.0 if ts_val > 1e11 else float(ts_val)
+    if abs(time.time() - ts_sec) > tolerance:
         raise WebhookSignatureError("Timestamp de webhook expirado.")
-    return ts_val
+    return int(ts_sec)
 
 
 def _parse_kv_signature_header(header_value: str) -> dict[str, list[str]]:
@@ -173,6 +175,31 @@ def _require_env(name: str, gateway_label: str) -> str:
 def _return_base_url() -> str:
     """Retorna URL base configurada para redirecionamento de checkout."""
     return os.environ.get("PAYMENT_RETURN_BASE_URL", "").strip().rstrip("/")
+
+
+def _notification_url(gateway: str) -> str:
+    """Retorna URL de notificação webhook pública (HTTPS não-localhost) para o gateway."""
+    if (gateway or "").strip().lower() == "mercadopago":
+        explicit = os.environ.get("MERCADOPAGO_NOTIFICATION_URL", "").strip()
+        if explicit:
+            return explicit
+        base = _return_base_url()
+        lower = base.lower()
+        if base.startswith("https://") and not any(
+            host in lower for host in ("localhost", "127.0.0.1", "0.0.0.0")
+        ):
+            return f"{base}/api/webhooks/payments/mercadopago"
+    return ""
+
+
+def _split_payer_name(full_name: Any) -> tuple[str, str]:
+    """Divide nome completo em primeiro nome e sobrenome."""
+    parts = str(full_name or "").strip().split(None, 1)
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], parts[1]
 
 
 def _request_json(
@@ -367,6 +394,8 @@ class BasePaymentAdapter:
         gateway_payment_id: str,
         method: str,
         simulate_outcome: str = "paid",
+        gateway_reference: str | None = None,
+        public_id: str | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -376,6 +405,8 @@ class BasePaymentAdapter:
         gateway_payment_id: str,
         amount_cents: int,
         reason: str = "",
+        idempotency_key: str | None = None,
+        full_refund: bool = False,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -459,7 +490,10 @@ class SandboxPaymentAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         method: str,
         simulate_outcome: str = "paid",
+        gateway_reference: str | None = None,
+        public_id: str | None = None,
     ) -> dict[str, Any]:
+        _ = (gateway_reference, public_id)
         if not is_sandbox_enabled():
             raise GatewayNotConfiguredError("Sandbox de pagamentos desabilitado.")
         outcome = (simulate_outcome or "paid").strip().lower()
@@ -477,7 +511,10 @@ class SandboxPaymentAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         amount_cents: int,
         reason: str = "",
+        idempotency_key: str | None = None,
+        full_refund: bool = False,
     ) -> dict[str, Any]:
+        _ = (reason, idempotency_key, full_refund)
         if not is_sandbox_enabled():
             raise GatewayNotConfiguredError("Sandbox de pagamentos desabilitado.")
         return {
@@ -535,8 +572,11 @@ class MercadoPagoAdapter(BasePaymentAdapter):
     def _api_base(self) -> str:
         return os.environ.get("MERCADOPAGO_API_BASE", "https://api.mercadopago.com").strip().rstrip("/")
 
+    def _access_token(self) -> str:
+        return _require_env("MERCADOPAGO_ACCESS_TOKEN", "Mercado Pago")
+
     def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
-        token = _require_env("MERCADOPAGO_ACCESS_TOKEN", "Mercado Pago")
+        token = self._access_token()
         hdrs = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -560,43 +600,87 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         base = self._api_base()
-        payer_email = (payer or {}).get("email") or "cliente@pertoja.local"
+        payer_dict = payer or {}
+        payer_email = str(payer_dict.get("email") or "").strip() or "pagamentos@pertoja.com.br"
+        first_name, last_name = _split_payer_name(payer_dict.get("name"))
+
+        meta = metadata or {}
+        item_id = str(meta.get("item_id") or meta.get("servico_id") or order_id)
+        item_title = str(meta.get("item_title") or description or f"Pedido #{order_id}")[:250]
+        item_description = str(meta.get("item_description") or description or item_title)[:250]
+        category_id = str(meta.get("category_id") or "services")[:50]
+        statement_descriptor = str(
+            meta.get("statement_descriptor")
+            or os.environ.get("MERCADOPAGO_STATEMENT_DESCRIPTOR")
+            or "PERTOJA"
+        ).strip()[:13]
+        notif_url = _notification_url(self.gateway_name)
+        unit_price = round(amount_cents / 100.0, 2)
 
         if method == "cartao" and not payment_method_token:
-            resolved_return = return_url or (
-                f"{_return_base_url()}/pedido.html?order_id={order_id}" if _return_base_url() else ""
-            )
+            base_ret = _return_base_url()
+            raw_ret = str(return_url or "").strip()
+            if raw_ret.startswith("/") and base_ret:
+                resolved_return = f"{base_ret}{raw_ret}"
+            elif raw_ret:
+                resolved_return = raw_ret
+            elif base_ret:
+                resolved_return = f"{base_ret}/pedido.html?order_id={order_id}"
+            else:
+                resolved_return = ""
+
+            pref_payer: dict[str, Any] = {"email": payer_email}
+            if first_name:
+                pref_payer["name"] = first_name
+            if last_name:
+                pref_payer["surname"] = last_name
+
             body: dict[str, Any] = {
                 "items": [
                     {
-                        "title": description[:250],
+                        "id": item_id,
+                        "title": item_title,
+                        "description": item_description,
+                        "category_id": category_id,
                         "quantity": 1,
                         "currency_id": currency.upper(),
-                        "unit_price": round(amount_cents / 100.0, 2),
+                        "unit_price": unit_price,
                     }
                 ],
                 "external_reference": public_id,
-                "payer": {"email": payer_email},
-                "metadata": metadata or {"order_id": order_id, "public_id": public_id},
+                "payer": pref_payer,
+                "statement_descriptor": statement_descriptor,
+                "metadata": meta or {"order_id": order_id, "public_id": public_id},
             }
-            if resolved_return:
+            if resolved_return.startswith(("https://", "http://")):
                 body["back_urls"] = {
                     "success": resolved_return,
                     "failure": resolved_return,
                     "pending": resolved_return,
                 }
+                body["auto_return"] = "approved"
+            if notif_url:
+                body["notification_url"] = notif_url
+
             data = _request_json(
                 "POST",
                 f"{base}/checkout/preferences",
                 headers=self._headers(public_id),
                 json_body=body,
             )
+            token = self._access_token()
+            is_sandbox = token.startswith("TEST-") or os.environ.get("MERCADOPAGO_SANDBOX") == "1"
+            checkout_url = (
+                (data.get("sandbox_init_point") or data.get("init_point"))
+                if is_sandbox
+                else (data.get("init_point") or data.get("sandbox_init_point"))
+            )
             return {
                 "gateway": self.gateway_name,
                 "gateway_payment_id": str(data.get("id") or ""),
                 "gateway_reference": public_id,
                 "status": "requires_action",
-                "checkout_url": data.get("init_point") or data.get("sandbox_init_point"),
+                "checkout_url": checkout_url,
                 "pix_qr_code": None,
                 "pix_qr_base64": None,
                 "boleto_barcode": None,
@@ -606,13 +690,76 @@ class MercadoPagoAdapter(BasePaymentAdapter):
                 "raw_response": data,
             }
 
+        mp_payer: dict[str, Any] = {"email": payer_email}
+        if first_name:
+            mp_payer["first_name"] = first_name
+        if last_name:
+            mp_payer["last_name"] = last_name
+        cpf_digits = "".join(
+            ch for ch in str(payer_dict.get("cpf") or payer_dict.get("tax_id") or "") if ch.isdigit()
+        )
+        if len(cpf_digits) == 11:
+            mp_payer["identification"] = {"type": "CPF", "number": cpf_digits}
+
+        if method == "boleto":
+            zip_code = "".join(
+                ch for ch in str(payer_dict.get("cep") or payer_dict.get("zip_code") or "") if ch.isdigit()
+            )
+            street_name = str(payer_dict.get("endereco") or payer_dict.get("street_name") or "").strip()
+            street_number = str(payer_dict.get("numero") or payer_dict.get("street_number") or "").strip()
+            neighborhood = str(payer_dict.get("bairro") or payer_dict.get("neighborhood") or "").strip()
+            city = str(payer_dict.get("cidade") or payer_dict.get("city") or "").strip()
+            federal_unit = str(payer_dict.get("estado") or payer_dict.get("federal_unit") or "").strip().upper()
+            if len(cpf_digits) != 11 or not all(
+                (zip_code, street_name, street_number, neighborhood, city, federal_unit)
+            ):
+                raise PaymentGatewayError(
+                    "CPF e endereço completo são obrigatórios para Boleto no Mercado Pago.",
+                    code="MISSING_PAYER_DATA",
+                    http_status=400,
+                )
+            mp_payer["address"] = {
+                "zip_code": zip_code,
+                "street_name": street_name,
+                "street_number": street_number,
+                "neighborhood": neighborhood,
+                "city": city,
+                "federal_unit": federal_unit,
+            }
+
         mp_method = "pix" if method == "pix" else ("bolbradesco" if method == "boleto" else "credit_card")
         pay_body: dict[str, Any] = {
-            "transaction_amount": round(amount_cents / 100.0, 2),
-            "description": description[:250],
+            "transaction_amount": unit_price,
+            "description": item_description,
             "external_reference": public_id,
-            "payer": {"email": payer_email},
+            "payer": mp_payer,
+            "statement_descriptor": statement_descriptor,
+            "additional_info": {
+                "items": [
+                    {
+                        "id": item_id,
+                        "title": item_title,
+                        "description": item_description,
+                        "category_id": category_id,
+                        "quantity": 1,
+                        "unit_price": unit_price,
+                    }
+                ]
+            },
         }
+        tz_brt = timezone(timedelta(hours=-3))
+        now_brt = datetime.now(tz_brt)
+        if method == "pix":
+            pay_body["date_of_expiration"] = (now_brt + timedelta(minutes=30)).strftime(
+                "%Y-%m-%dT%H:%M:%S.000-03:00"
+            )
+        elif method == "boleto":
+            pay_body["date_of_expiration"] = (now_brt + timedelta(days=3)).strftime(
+                "%Y-%m-%dT%H:%M:%S.000-03:00"
+            )
+        if notif_url:
+            pay_body["notification_url"] = notif_url
+
         if payment_method_token:
             pay_body["token"] = payment_method_token
         else:
@@ -638,7 +785,10 @@ class MercadoPagoAdapter(BasePaymentAdapter):
             "pix_qr_code": tx_data.get("qr_code"),
             "pix_qr_base64": tx_data.get("qr_code_base64"),
             "boleto_barcode": barcode_obj.get("content") if isinstance(barcode_obj, dict) else None,
-            "boleto_digitable_line": None,
+            "boleto_digitable_line": (
+                tx_details.get("digitable_line")
+                or (barcode_obj.get("content") if isinstance(barcode_obj, dict) else None)
+            ),
             "boleto_url": tx_details.get("external_resource_url") if method == "boleto" else None,
             "expires_at": data.get("date_of_expiration"),
             "raw_response": data,
@@ -650,19 +800,49 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         method: str,
         simulate_outcome: str = "paid",
+        gateway_reference: str | None = None,
+        public_id: str | None = None,
     ) -> dict[str, Any]:
         # Nunca confia em simulate_outcome em gateways reais: consulta sempre a API.
-        _ = (method, simulate_outcome)
+        _ = simulate_outcome
         base = self._api_base()
+        gw_id = str(gateway_payment_id or "").strip()
+
+        if (method == "cartao" or not gw_id.isdigit()) and public_id:
+            encoded_ref = quote(str(public_id), safe="")
+            search_data = _request_json(
+                "GET",
+                f"{base}/v1/payments/search?external_reference={encoded_ref}&sort=date_created&criteria=desc",
+                headers=self._headers(),
+            )
+            results = search_data.get("results") or []
+            if results and isinstance(results[0], dict):
+                latest = results[0]
+                mapped = _map_status(latest.get("status"))
+                return {
+                    "gateway": self.gateway_name,
+                    "gateway_payment_id": str(latest.get("id") or gw_id),
+                    "gateway_reference": gateway_reference or gw_id,
+                    "status": mapped,
+                    "paid_at": latest.get("date_approved") if mapped == "paid" else None,
+                }
+            return {
+                "gateway": self.gateway_name,
+                "gateway_payment_id": gw_id,
+                "gateway_reference": gateway_reference or gw_id,
+                "status": "requires_action",
+                "paid_at": None,
+            }
+
         data = _request_json(
             "GET",
-            f"{base}/v1/payments/{gateway_payment_id}",
+            f"{base}/v1/payments/{gw_id}",
             headers=self._headers(),
         )
         mapped = _map_status(data.get("status"))
         return {
             "gateway": self.gateway_name,
-            "gateway_payment_id": str(data.get("id") or gateway_payment_id),
+            "gateway_payment_id": str(data.get("id") or gw_id),
             "status": mapped,
             "paid_at": data.get("date_approved") if mapped == "paid" else None,
         }
@@ -673,19 +853,31 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         amount_cents: int,
         reason: str = "",
+        idempotency_key: str | None = None,
+        full_refund: bool = False,
     ) -> dict[str, Any]:
+        _ = reason
         base = self._api_base()
+        idem_key = (idempotency_key or "").strip() or uuid.uuid4().hex
+        refund_body: dict[str, Any] = {} if full_refund else {"amount": round(amount_cents / 100.0, 2)}
         data = _request_json(
             "POST",
             f"{base}/v1/payments/{gateway_payment_id}/refunds",
-            headers=self._headers(f"ref_{gateway_payment_id}_{amount_cents}"),
-            json_body={"amount": round(amount_cents / 100.0, 2)},
+            headers=self._headers(idem_key),
+            json_body=refund_body,
         )
+        refund_status = str(data.get("status") or "").strip().lower()
+        if refund_status in ("rejected", "cancelled", "failed"):
+            raise PaymentGatewayError(
+                f"Estorno recusado pelo Mercado Pago (status: {refund_status}).",
+                code="REFUND_REJECTED",
+                http_status=400,
+            )
         return {
             "gateway": self.gateway_name,
             "gateway_payment_id": gateway_payment_id,
             "gateway_refund_id": str(data.get("id") or ""),
-            "status": "succeeded" if data.get("status") in (None, "approved") else "failed",
+            "status": "succeeded" if refund_status in ("", "approved") else "failed",
             "amount_cents": amount_cents,
         }
 
@@ -718,15 +910,14 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         payload = _parse_json_bytes(raw_body)
         q = query_params or {}
         data_obj = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        data_id = (
-            q.get("data.id")
-            or q.get("id")
-            or data_obj.get("id")
-            or payload.get("id")
-            or ""
-        )
-        data_id_str = str(data_id).lower()
-        manifest = f"id:{data_id_str};request-id:{x_req_id};ts:{ts_str};"
+        data_id = q.get("data.id") or q.get("id") or data_obj.get("id") or ""
+        parts: list[str] = []
+        if data_id:
+            parts.append(f"id:{str(data_id).lower()}")
+        if x_req_id:
+            parts.append(f"request-id:{x_req_id}")
+        parts.append(f"ts:{ts_str}")
+        manifest = ";".join(parts) + ";"
         expected_hex = hmac.new(
             secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256
         ).hexdigest().lower()
@@ -734,14 +925,31 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         if not hmac.compare_digest(v1_hex, expected_hex):
             raise WebhookSignatureError("Assinatura HMAC Mercado Pago inválida.")
 
-        event_type = str(payload.get("action") or payload.get("type") or "payment.updated")
+        topic = str(payload.get("type") or q.get("type") or q.get("topic") or "").strip().lower()
+        action = str(payload.get("action") or "").strip().lower()
+        event_type = str(payload.get("action") or payload.get("type") or topic or "payment.updated")
         raw_status = payload.get("status") or data_obj.get("status")
         amount_cents = payload.get("amount_cents")
         public_id = payload.get("external_reference") or data_obj.get("external_reference")
         resolved_gw_pid = str(data_id or "")
 
-        is_payment_event = event_type.startswith("payment") or bool(data_id)
-        if not raw_status and is_payment_event and data_id:
+        is_payment_event = (
+            (topic == "payment")
+            or action.startswith("payment.")
+            or (not topic and not action)
+        )
+        if not is_payment_event:
+            return {
+                "verified": True,
+                "event_id": _fallback_event_id(raw_body, payload.get("id"), x_req_id),
+                "event_type": event_type,
+                "gateway_payment_id": resolved_gw_pid,
+                "public_id": str(public_id) if public_id else None,
+                "mapped_status": "ignored",
+                "amount_cents": amount_cents,
+            }
+
+        if not raw_status and data_id:
             payment_data = _request_json(
                 "GET",
                 f"{self._api_base()}/v1/payments/{data_id}",
@@ -891,9 +1099,11 @@ class StripeAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         method: str,
         simulate_outcome: str = "paid",
+        gateway_reference: str | None = None,
+        public_id: str | None = None,
     ) -> dict[str, Any]:
         # Nunca confia em simulate_outcome em gateways reais: consulta sempre a API.
-        _ = (method, simulate_outcome)
+        _ = (method, simulate_outcome, gateway_reference, public_id)
         if not gateway_payment_id or not str(gateway_payment_id).strip():
             raise PaymentGatewayError(
                 "gateway_payment_id ausente para confirmação no Stripe.",
@@ -938,7 +1148,10 @@ class StripeAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         amount_cents: int,
         reason: str = "",
+        idempotency_key: str | None = None,
+        full_refund: bool = False,
     ) -> dict[str, Any]:
+        _ = (idempotency_key, full_refund)
         if not gateway_payment_id or not str(gateway_payment_id).strip():
             raise PaymentGatewayError(
                 "gateway_payment_id ausente para estorno no Stripe.",
@@ -1176,9 +1389,11 @@ class PagSeguroAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         method: str,
         simulate_outcome: str = "paid",
+        gateway_reference: str | None = None,
+        public_id: str | None = None,
     ) -> dict[str, Any]:
         # Nunca confia em simulate_outcome em gateways reais: consulta sempre a API.
-        _ = (method, simulate_outcome)
+        _ = (method, simulate_outcome, gateway_reference, public_id)
         if not gateway_payment_id or not str(gateway_payment_id).strip():
             raise PaymentGatewayError(
                 "gateway_payment_id ausente para confirmação no PagSeguro.",
@@ -1222,8 +1437,10 @@ class PagSeguroAdapter(BasePaymentAdapter):
         gateway_payment_id: str,
         amount_cents: int,
         reason: str = "",
+        idempotency_key: str | None = None,
+        full_refund: bool = False,
     ) -> dict[str, Any]:
-        _ = reason
+        _ = (reason, idempotency_key, full_refund)
         if not gateway_payment_id or not str(gateway_payment_id).strip():
             raise PaymentGatewayError(
                 "gateway_payment_id ausente para estorno no PagSeguro.",

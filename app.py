@@ -155,11 +155,11 @@ def add_performance_and_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://www.mercadopago.com https://sdk.mercadopago.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.tailwindcss.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https: blob:; "
-        "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org; "
+        "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org https://api.mercadopago.com https://www.mercadopago.com; "
         "base-uri 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'"
     )
 
@@ -3320,13 +3320,39 @@ def create_payment_intent():
             status_code, body = idem_payload
             return jsonify(body), status_code
 
+        service_row = conn.execute(
+            'SELECT titulo, descricao, categoria FROM services WHERE id = ?',
+            (_row_get(order, 'servico_id'),)
+        ).fetchone()
+        item_title = _row_get(service_row, 'titulo', '') or f"Pedido PertoJá #{order_id}"
+        item_description = _row_get(service_row, 'descricao', '') or f"Serviço contratado via PertoJá (Pedido #{order_id})"
+
         public_id = f"pay_{secrets.token_hex(12)}"
-        return_url = str(data.get('return_url') or '').strip() or f"/pedido.html?order_id={order_id}"
+        raw_return = str(data.get('return_url') or '').strip()
+        if not raw_return or raw_return.startswith('/'):
+            rel_path = raw_return if raw_return.startswith('/') else f"/pedido.html?order_id={order_id}"
+            base_url = os.environ.get('PAYMENT_RETURN_BASE_URL', '').strip().rstrip('/')
+            if not base_url:
+                req_root = (request.url_root or '').strip().rstrip('/')
+                if req_root.startswith('https://') and 'localhost' not in req_root and '127.0.0.1' not in req_root:
+                    base_url = req_root
+            return_url = f"{base_url}{rel_path}" if base_url else rel_path
+        else:
+            return_url = raw_return
+
+        payer_email = str(_row_get(user, 'email', '') or '').strip() or 'pagamentos@pertoja.com.br'
         payer = {
             'id': user['id'],
-            'email': _row_get(user, 'email', ''),
+            'email': payer_email,
             'name': _row_get(user, 'nome', ''),
-            'cpf': _row_get(user, 'cpf', ''),
+            'cpf': str(data.get('cpf') or _row_get(user, 'cpf', '') or ''),
+            'telefone': _row_get(user, 'telefone', ''),
+            'cep': _row_get(user, 'cep', '') or _row_get(order, 'cep_cliente', ''),
+            'endereco': _row_get(user, 'endereco', '') or _row_get(order, 'endereco_cliente', ''),
+            'numero': _row_get(user, 'numero', '') or _row_get(order, 'numero_cliente', ''),
+            'bairro': _row_get(user, 'bairro', '') or _row_get(order, 'bairro_cliente', ''),
+            'cidade': _row_get(user, 'cidade', '') or _row_get(order, 'cidade_cliente', ''),
+            'estado': _row_get(user, 'estado', '') or _row_get(order, 'estado_cliente', ''),
         }
 
         try:
@@ -3341,7 +3367,14 @@ def create_payment_intent():
                 payer=payer,
                 return_url=return_url,
                 payment_method_token=payment_method_token,
-                metadata={'order_id': order_id, 'user_id': user['id']},
+                metadata={
+                    'order_id': order_id,
+                    'user_id': user['id'],
+                    'item_id': str(_row_get(order, 'servico_id') or order_id),
+                    'item_title': item_title,
+                    'item_description': item_description,
+                    'category_id': 'services',
+                },
             )
         except GatewayNotConfiguredError as exc:
             return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
@@ -3518,6 +3551,8 @@ def confirm_payment_intent(payment_ref):
                 gateway_payment_id=tx['gateway_payment_id'],
                 method=tx['method'],
                 simulate_outcome=simulate_outcome,
+                gateway_reference=_row_get(tx, 'gateway_reference'),
+                public_id=tx['public_id'],
             )
         except GatewayNotConfiguredError as exc:
             return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
@@ -3667,12 +3702,15 @@ def refund_payment(payment_ref):
             conn.rollback()
             return jsonify({'error': 'Saldo insuficiente ou estorno concorrente em andamento.'}), 409
 
+        refund_public_id = f"ref_{secrets.token_hex(12)}"
         try:
             adapter = get_payment_adapter(tx['gateway'])
             ref_res = adapter.refund_payment(
                 gateway_payment_id=tx['gateway_payment_id'],
                 amount_cents=requested_cents,
                 reason=reason,
+                idempotency_key=refund_public_id,
+                full_refund=(requested_cents == int(tx['amount_cents']) and int(_row_get(tx, 'refunded_cents', 0) or 0) == 0),
             )
         except GatewayNotConfiguredError as exc:
             conn.rollback()
@@ -3680,6 +3718,10 @@ def refund_payment(payment_ref):
         except PaymentGatewayError as exc:
             conn.rollback()
             return jsonify({'error': str(exc), 'code': exc.code}), exc.http_status
+
+        if ref_res.get('status') != 'succeeded':
+            conn.rollback()
+            return jsonify({'error': 'Estorno não foi aprovado pelo gateway.', 'code': 'REFUND_FAILED'}), 502
 
         refreshed_tx = conn.execute(
             'SELECT refunded_cents, amount_cents FROM payment_transactions WHERE id = ?',
@@ -3689,7 +3731,6 @@ def refund_payment(payment_ref):
         is_full = total_refunded >= int(refreshed_tx['amount_cents'])
         new_tx_status = 'refunded' if is_full else 'partially_refunded'
         new_escrow_status = 'estornado_total' if is_full else 'estornado_parcial'
-        refund_public_id = f"ref_{secrets.token_hex(12)}"
         gateway_refund_id = ref_res.get('gateway_refund_id')
 
         cursor.execute('''
@@ -3822,8 +3863,26 @@ def payment_gateway_webhook(gateway=None):
             conn.commit()
             return jsonify({'status': 'ignored', 'event_id': event_id}), 200
 
+        if mapped_status == 'ignored':
+            conn.execute('''
+                UPDATE payment_webhooks
+                SET processing_status = 'ignored', processed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (webhook_id,))
+            conn.commit()
+            return jsonify({'status': 'ignored', 'event_id': event_id}), 200
+
         order = conn.execute('SELECT * FROM orders WHERE id = ?', (tx['order_id'],)).fetchone()
         if mapped_status == 'paid' and order:
+            event_amount_cents = event.get('amount_cents')
+            if event_amount_cents is not None and int(event_amount_cents) < int(tx['amount_cents']):
+                conn.execute('''
+                    UPDATE payment_webhooks
+                    SET processing_status = 'ignored', error_message = 'Underpayment mismatch', processed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (webhook_id,))
+                conn.commit()
+                return jsonify({'status': 'amount_mismatch_ignored', 'event_id': event_id}), 200
             if gateway_payment_id and str(gateway_payment_id) != str(_row_get(tx, 'gateway_payment_id') or ''):
                 fallback_ref = _row_get(tx, 'gateway_reference') or gateway_reference or _row_get(tx, 'gateway_payment_id')
                 conn.execute('''

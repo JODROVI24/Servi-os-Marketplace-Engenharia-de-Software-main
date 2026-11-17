@@ -1134,6 +1134,348 @@ class TestPaymentsSystem(unittest.TestCase):
         self.assertEqual(res_pci.status_code, 400)
         self.assertEqual(json.loads(res_pci.data).get('code'), 'PCI_VIOLATION')
 
+    # ---------------- 9. Mercado Pago Official Alignment Regression Tests (#151-#158) ----------------
+
+    def test_25_mercadopago_checkout_pro_preference_payload_and_sandbox_url(self):
+        self._login('cliente@pertoja.com')
+        order_id = self._create_order(self.client, metodo_pagamento='cartao', valor_total=150.00)
+        pref_resp = {
+            'id': '123456-pref-uuid-25',
+            'init_point': 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=123456-pref-uuid-25',
+            'sandbox_init_point': 'https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=123456-pref-uuid-25',
+        }
+
+        with patch.dict(os.environ, {
+            'MERCADOPAGO_ACCESS_TOKEN': 'TEST-mp-tok-25',
+            'PAYMENT_RETURN_BASE_URL': 'https://pertoja.com.br',
+            'MERCADOPAGO_NOTIFICATION_URL': '',
+        }, clear=False):
+            mock_pref = MagicMock(status_code=201, text=json.dumps(pref_resp))
+            mock_pref.json.return_value = pref_resp
+            with patch('payment_adapters.requests.request', return_value=mock_pref) as mock_req:
+                res = self.client.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'cartao',
+                    'return_url': f'/pedido.html?order_id={order_id}',
+                })
+                self.assertEqual(res.status_code, 201, res.data)
+                data = json.loads(res.data)
+                self.assertEqual(data['checkout_url'], pref_resp['sandbox_init_point'])
+
+                req_kwargs = mock_req.call_args.kwargs
+                self.assertTrue(req_kwargs['url'].endswith('/checkout/preferences'))
+                sent_body = req_kwargs['json']
+                expected_return = f'https://pertoja.com.br/pedido.html?order_id={order_id}'
+                self.assertEqual(sent_body['back_urls'], {
+                    'success': expected_return,
+                    'failure': expected_return,
+                    'pending': expected_return,
+                })
+                self.assertEqual(sent_body['auto_return'], 'approved')
+                self.assertEqual(
+                    sent_body['notification_url'],
+                    'https://pertoja.com.br/api/webhooks/payments/mercadopago',
+                )
+                self.assertEqual(sent_body['statement_descriptor'], 'PERTOJA')
+                item0 = sent_body['items'][0]
+                self.assertTrue(item0['id'])
+                self.assertTrue(item0['description'])
+                self.assertEqual(item0['category_id'], 'services')
+
+    def test_26_mercadopago_checkout_pro_confirm_searches_external_reference(self):
+        self._login('cliente@pertoja.com')
+        order_id = self._create_order(self.client, metodo_pagamento='cartao', valor_total=150.00)
+        pref_resp = {
+            'id': '999888-pref-uuid-26',
+            'init_point': 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=999888-pref-uuid-26',
+        }
+
+        with patch.dict(os.environ, {'MERCADOPAGO_ACCESS_TOKEN': 'APP_USR-tok-26'}, clear=False):
+            mock_pref = MagicMock(status_code=201, text=json.dumps(pref_resp))
+            mock_pref.json.return_value = pref_resp
+            with patch('payment_adapters.requests.request', return_value=mock_pref):
+                res_i = self.client.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'cartao',
+                })
+                self.assertEqual(res_i.status_code, 201)
+                pay_id = json.loads(res_i.data)['payment_id']
+
+            search_resp = {
+                'results': [{
+                    'id': 987654321,
+                    'status': 'approved',
+                    'date_approved': '2026-11-17T20:00:00.000-03:00',
+                    'external_reference': pay_id,
+                }]
+            }
+            mock_search = MagicMock(status_code=200, text=json.dumps(search_resp))
+            mock_search.json.return_value = search_resp
+            with patch('payment_adapters.requests.request', return_value=mock_search) as mock_req:
+                res_c = self.client.post(f'/api/payments/{pay_id}/confirm', json={})
+                self.assertEqual(res_c.status_code, 200, res_c.data)
+                c_data = json.loads(res_c.data)
+                self.assertEqual(c_data['status'], 'escrow_held')
+                called_url = mock_req.call_args.kwargs['url']
+                self.assertIn('/v1/payments/search', called_url)
+                self.assertIn(f'external_reference={pay_id}', called_url)
+
+        conn = database.get_db_connection()
+        try:
+            tx_row = conn.execute(
+                'SELECT status, gateway_payment_id FROM payment_transactions WHERE public_id = ?',
+                (pay_id,),
+            ).fetchone()
+            self.assertEqual(tx_row['status'], 'escrow_held')
+            self.assertEqual(tx_row['gateway_payment_id'], '987654321')
+            ord_row = conn.execute('SELECT pago, escrow_status FROM orders WHERE id = ?', (order_id,)).fetchone()
+            self.assertEqual(ord_row['pago'], 1)
+            self.assertEqual(ord_row['escrow_status'], 'retido')
+        finally:
+            conn.close()
+
+    def test_27_mercadopago_boleto_validation_payload_and_digitable_line(self):
+        client_bol, user_bol = self._create_user_and_login(
+            'Cliente Boleto', f'boleto_{int(time.time() * 1000)}@pertoja.com'
+        )
+        order_id = self._create_order(client_bol, metodo_pagamento='boleto', valor_total=150.00)
+
+        with patch.dict(os.environ, {'MERCADOPAGO_ACCESS_TOKEN': 'APP_USR-tok-27'}, clear=False):
+            # Sem CPF/endereço -> 400 limpo sem chamar o gateway
+            with patch('payment_adapters.requests.request') as mock_req:
+                res_missing = client_bol.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'boleto',
+                })
+                self.assertEqual(res_missing.status_code, 400)
+                self.assertEqual(json.loads(res_missing.data).get('code'), 'MISSING_PAYER_DATA')
+                self.assertEqual(mock_req.call_count, 0)
+
+            # Preenche CPF e endereço completo do usuário
+            conn = database.get_db_connection()
+            try:
+                conn.execute(
+                    '''
+                    UPDATE users
+                    SET cpf = ?, cep = ?, endereco = ?, numero = ?, bairro = ?, cidade = ?, estado = ?
+                    WHERE id = ?
+                    ''',
+                    ('123.456.789-01', '01310-100', 'Av Paulista', '1000', 'Bela Vista', 'São Paulo', 'sp', user_bol['id']),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            digitable = '23793.38128 60000.000003 00000.000406 1 99990000015000'
+            mp_boleto_resp = {
+                'id': 55443322,
+                'status': 'pending',
+                'date_of_expiration': '2026-11-20T23:59:59.000-03:00',
+                'barcode': {'content': '23791999900000150003381260000000003000000040'},
+                'transaction_details': {
+                    'digitable_line': digitable,
+                    'external_resource_url': 'https://www.mercadopago.com.br/payments/55443322/ticket',
+                },
+            }
+            mock_bol = MagicMock(status_code=201, text=json.dumps(mp_boleto_resp))
+            mock_bol.json.return_value = mp_boleto_resp
+            with patch('payment_adapters.requests.request', return_value=mock_bol) as mock_req:
+                res_ok = client_bol.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'boleto',
+                })
+                self.assertEqual(res_ok.status_code, 201, res_ok.data)
+                out = json.loads(res_ok.data)
+                self.assertEqual(out['boleto_digitable_line'], digitable)
+
+                sent_body = mock_req.call_args.kwargs['json']
+                self.assertEqual(sent_body['payment_method_id'], 'bolbradesco')
+                self.assertTrue(sent_body.get('date_of_expiration'))
+                self.assertEqual(sent_body['payer']['identification'], {'type': 'CPF', 'number': '12345678901'})
+                self.assertEqual(sent_body['payer']['address'], {
+                    'zip_code': '01310100',
+                    'street_name': 'Av Paulista',
+                    'street_number': '1000',
+                    'neighborhood': 'Bela Vista',
+                    'city': 'São Paulo',
+                    'federal_unit': 'SP',
+                })
+
+    def test_28_mercadopago_webhook_v2_ms_ts_missing_data_id_non_payment_and_underpayment(self):
+        self._login('cliente@pertoja.com')
+        order_id = self._create_order(self.client, metodo_pagamento='cartao', valor_total=150.00)
+        pref_resp = {
+            'id': 'pref_mp_28',
+            'init_point': 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref_mp_28',
+        }
+        secret = 'mp_wh_secret_28'
+
+        with patch.dict(os.environ, {
+            'MERCADOPAGO_ACCESS_TOKEN': 'APP_USR-tok-28',
+            'MERCADOPAGO_WEBHOOK_SECRET': secret,
+        }, clear=False):
+            mock_pref = MagicMock(status_code=201, text=json.dumps(pref_resp))
+            mock_pref.json.return_value = pref_resp
+            with patch('payment_adapters.requests.request', return_value=mock_pref):
+                res_i = self.client.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'cartao',
+                })
+                self.assertEqual(res_i.status_code, 201)
+                pay_id = json.loads(res_i.data)['payment_id']
+
+            conn = database.get_db_connection()
+            try:
+                tx_amount_cents = conn.execute(
+                    'SELECT amount_cents FROM payment_transactions WHERE public_id = ?',
+                    (pay_id,),
+                ).fetchone()['amount_cents']
+            finally:
+                conn.close()
+
+            # 1) 13-digit ms ts + missing data.id (não usa payload['id']) + tópico não-pagamento -> 200 ignored
+            ts_ms = str(int(time.time() * 1000))
+            self.assertEqual(len(ts_ms), 13)
+            req_id_1 = 'mp-req-28-a'
+            manifest_1 = f'request-id:{req_id_1};ts:{ts_ms};'.encode('utf-8')
+            sig_1 = hmac.new(secret.encode('utf-8'), manifest_1, hashlib.sha256).hexdigest()
+            body_1 = json.dumps({
+                'id': 'evt_top_level_only_28',
+                'type': 'merchant_order',
+                'action': 'merchant_order.updated',
+            }).encode('utf-8')
+
+            with patch('payment_adapters.requests.request') as mock_req:
+                res_non_pay = app.test_client().post(
+                    '/api/webhooks/payments/mercadopago',
+                    data=body_1,
+                    content_type='application/json',
+                    headers={'x-signature': f'ts={ts_ms},v1={sig_1}', 'x-request-id': req_id_1},
+                )
+                self.assertEqual(res_non_pay.status_code, 200, res_non_pay.data)
+                self.assertEqual(json.loads(res_non_pay.data)['status'], 'ignored')
+                self.assertEqual(mock_req.call_count, 0)
+
+            # 2) Underpayment (amount_cents < tx.amount_cents) com 13-digit ms ts -> 200 amount_mismatch_ignored sem liquidar pedido
+            req_id_2 = 'mp-req-28-b'
+            data_id = '777888999'
+            manifest_2 = f'id:{data_id};request-id:{req_id_2};ts:{ts_ms};'.encode('utf-8')
+            sig_2 = hmac.new(secret.encode('utf-8'), manifest_2, hashlib.sha256).hexdigest()
+            body_2 = json.dumps({
+                'id': 'evt_underpay_28',
+                'type': 'payment',
+                'action': 'payment.updated',
+                'data': {'id': data_id},
+            }).encode('utf-8')
+
+            under_amount = round((tx_amount_cents - 500) / 100.0, 2)
+            mp_get_under = {
+                'id': int(data_id),
+                'status': 'approved',
+                'transaction_amount': under_amount,
+                'external_reference': pay_id,
+            }
+            mock_get = MagicMock(status_code=200, text=json.dumps(mp_get_under))
+            mock_get.json.return_value = mp_get_under
+            with patch('payment_adapters.requests.request', return_value=mock_get):
+                res_under = app.test_client().post(
+                    f'/api/webhooks/payments/mercadopago?data.id={data_id}',
+                    data=body_2,
+                    content_type='application/json',
+                    headers={'x-signature': f'ts={ts_ms},v1={sig_2}', 'x-request-id': req_id_2},
+                )
+                self.assertEqual(res_under.status_code, 200, res_under.data)
+                self.assertEqual(json.loads(res_under.data)['status'], 'amount_mismatch_ignored')
+
+        conn = database.get_db_connection()
+        try:
+            ord_row = conn.execute('SELECT pago FROM orders WHERE id = ?', (order_id,)).fetchone()
+            self.assertEqual(ord_row['pago'], 0)
+            tx_row = conn.execute('SELECT status FROM payment_transactions WHERE public_id = ?', (pay_id,)).fetchone()
+            self.assertNotEqual(tx_row['status'], 'escrow_held')
+        finally:
+            conn.close()
+
+    def test_29_mercadopago_refund_idempotency_full_empty_body_and_rejected_rollback(self):
+        self._login('cliente@pertoja.com')
+        order_id = self._create_order(self.client, metodo_pagamento='pix', valor_total=150.00)
+        mp_pix_resp = {
+            'id': 555666777,
+            'status': 'pending',
+            'point_of_interaction': {'transaction_data': {'qr_code': '000201MP29', 'qr_code_base64': 'iVBORw0KGgo='}},
+        }
+
+        with patch.dict(os.environ, {'MERCADOPAGO_ACCESS_TOKEN': 'APP_USR-tok-29'}, clear=False):
+            mock_create = MagicMock(status_code=201, text=json.dumps(mp_pix_resp))
+            mock_create.json.return_value = mp_pix_resp
+            with patch('payment_adapters.requests.request', return_value=mock_create):
+                res_i = self.client.post('/api/payments/intents', json={
+                    'order_id': order_id,
+                    'gateway': 'mercadopago',
+                    'method': 'pix',
+                })
+                self.assertEqual(res_i.status_code, 201)
+                pay_id = json.loads(res_i.data)['payment_id']
+
+            mock_confirm = MagicMock(status_code=200, text=json.dumps({'id': 555666777, 'status': 'approved'}))
+            mock_confirm.json.return_value = {'id': 555666777, 'status': 'approved'}
+            with patch('payment_adapters.requests.request', return_value=mock_confirm):
+                self.assertEqual(self.client.post(f'/api/payments/{pay_id}/confirm', json={}).status_code, 200)
+
+            # 1) Status não-aprovado no refund (in_process -> status='failed') faz rollback da reserva e retorna 502
+            mock_inproc = MagicMock(status_code=201, text=json.dumps({'id': 'ref_inproc_29', 'status': 'in_process'}))
+            mock_inproc.json.return_value = {'id': 'ref_inproc_29', 'status': 'in_process'}
+            with patch('payment_adapters.requests.request', return_value=mock_inproc):
+                res_502 = self.client.post(f'/api/payments/{pay_id}/refund', json={})
+                self.assertEqual(res_502.status_code, 502)
+
+            # 2) Status 'rejected' no MP também faz rollback da reserva (não persiste refunded_cents)
+            mock_rej = MagicMock(status_code=201, text=json.dumps({'id': 'ref_rej_29', 'status': 'rejected'}))
+            mock_rej.json.return_value = {'id': 'ref_rej_29', 'status': 'rejected'}
+            with patch('payment_adapters.requests.request', return_value=mock_rej):
+                res_rej = self.client.post(f'/api/payments/{pay_id}/refund', json={})
+                self.assertEqual(res_rej.status_code, 400)
+                self.assertEqual(json.loads(res_rej.data).get('code'), 'REFUND_REJECTED')
+
+            conn = database.get_db_connection()
+            try:
+                tx_mid = conn.execute(
+                    'SELECT refunded_cents, amount_cents, status FROM payment_transactions WHERE public_id = ?',
+                    (pay_id,),
+                ).fetchone()
+                self.assertEqual(tx_mid['refunded_cents'], 0)
+                self.assertEqual(tx_mid['status'], 'escrow_held')
+            finally:
+                conn.close()
+
+            # 3) Refund total aprovado envia {} ao MP e usa refund_public_id único em X-Idempotency-Key
+            mock_ok = MagicMock(status_code=201, text=json.dumps({'id': 'ref_ok_29', 'status': 'approved'}))
+            mock_ok.json.return_value = {'id': 'ref_ok_29', 'status': 'approved'}
+            with patch('payment_adapters.requests.request', return_value=mock_ok) as mock_req:
+                res_ok = self.client.post(f'/api/payments/{pay_id}/refund', json={})
+                self.assertEqual(res_ok.status_code, 200, res_ok.data)
+                ok_data = json.loads(res_ok.data)
+                req_kwargs = mock_req.call_args.kwargs
+                self.assertEqual(req_kwargs['json'], {})
+                self.assertEqual(req_kwargs['headers']['X-Idempotency-Key'], ok_data['refund_id'])
+                self.assertTrue(ok_data['refund_id'].startswith('ref_'))
+
+        conn = database.get_db_connection()
+        try:
+            tx_end = conn.execute(
+                'SELECT refunded_cents, amount_cents, status FROM payment_transactions WHERE public_id = ?',
+                (pay_id,),
+            ).fetchone()
+            self.assertEqual(tx_end['refunded_cents'], tx_end['amount_cents'])
+            self.assertEqual(tx_end['status'], 'refunded')
+        finally:
+            conn.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1667,7 +1667,17 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
       const pixCode = String(data.pix_qr_code || '');
       const qrWrapper = document.createElement('div');
       qrWrapper.className = 'p-3 rounded-xl bg-white border border-perto-road text-center space-y-2';
-      qrWrapper.appendChild(criarSvgQrDeterministico(pixCode));
+      const rawB64 = typeof data.pix_qr_base64 === 'string' ? data.pix_qr_base64.trim() : '';
+      if (rawB64 && /^[A-Za-z0-9+/=\s]+$/.test(rawB64)) {
+        const cleanB64 = rawB64.replace(/\s+/g, '');
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${cleanB64}`;
+        img.alt = 'QR Code PIX';
+        img.className = 'w-44 h-44 mx-auto rounded-lg';
+        qrWrapper.appendChild(img);
+      } else {
+        qrWrapper.appendChild(criarSvgQrDeterministico(pixCode));
+      }
 
       const lbl = document.createElement('label');
       lbl.className = 'block text-left text-[11px] font-bold text-perto-ink uppercase tracking-wider mt-2';
@@ -1722,7 +1732,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
       const bolBox = document.createElement('div');
       bolBox.className = 'p-3.5 rounded-xl bg-white border border-perto-road space-y-2.5';
 
-      const digitable = String(data.boleto_digitable_line || '');
+      const digitable = String(data.boleto_digitable_line || data.boleto_barcode || '');
       const lbl = document.createElement('label');
       lbl.className = 'block text-[11px] font-bold text-perto-ink uppercase tracking-wider';
       lbl.setAttribute('for', 'checkoutBoletoLinha');
@@ -2658,6 +2668,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     try { localStorage.removeItem('pertoja_active_order_id'); } catch (e) {}
   }
+  const mpReturnKeys = ['payment_id', 'collection_id', 'collection_status', 'status', 'preference_id'];
+  const hasMpReturnParams = Boolean(orderIdURL) && mpReturnKeys.some((k) => urlParamsInit.has(k));
+  if (hasMpReturnParams) {
+    const mpStatusHint = String(urlParamsInit.get('collection_status') || urlParamsInit.get('status') || '').toLowerCase();
+    if (mpStatusHint === 'approved') {
+      toast('Retorno do Mercado Pago recebido. Sincronizando confirmação do pagamento...');
+    } else if (['rejected', 'cancelled', 'failure'].includes(mpStatusHint)) {
+      toast('Retorno do Mercado Pago recebido. Verificando status do pagamento...');
+    } else {
+      toast('Verificando status do pagamento no servidor...');
+    }
+    try {
+      const ordRes = await fetch(`/api/payments/order/${encodeURIComponent(orderIdURL)}`);
+      if (ordRes.ok) {
+        const ordData = await ordRes.json().catch(() => ({}));
+        const txs = Array.isArray(ordData.transactions) ? ordData.transactions : [];
+        const pendingCardTx = txs.find((tx) => {
+          if (!tx) return false;
+          const st = String(tx.status || '').toLowerCase();
+          const gw = String(tx.gateway || '').toLowerCase();
+          const met = String(tx.method || '').toLowerCase();
+          return met === 'cartao' && gw !== 'sandbox' && (st === 'pending' || st === 'requires_action');
+        });
+        if (pendingCardTx && !['rejected', 'cancelled', 'failure'].includes(mpStatusHint)) {
+          const txPaymentId = pendingCardTx.payment_id || pendingCardTx.id;
+          if (txPaymentId) {
+            const confRes = await fetch(`/api/payments/${encodeURIComponent(txPaymentId)}/confirm`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': gerarIdempotencyKey()
+              },
+              body: JSON.stringify({})
+            });
+            if (confRes.ok) {
+              const confData = await confRes.json().catch(() => ({}));
+              const syncedStatus = String(confData.status || '').toLowerCase();
+              if (['paid', 'escrow_held', 'released'].includes(syncedStatus)) {
+                toast('Pagamento confirmado e protegido em Escrow!');
+              } else if (['failed', 'cancelled', 'expired'].includes(syncedStatus)) {
+                toast('Pagamento não aprovado no provedor. Você pode tentar novamente.');
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
   const targetOrderId = orderIdURL || sessionStorage.getItem('pertoja_active_order_id');
   if (targetOrderId) {
     await carregarPedidoAtivoPorId(targetOrderId);
