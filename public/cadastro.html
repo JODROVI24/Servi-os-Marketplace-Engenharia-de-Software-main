@@ -410,6 +410,36 @@
     const emailParam = urlParams.get('email');
     const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
 
+    function sanitizarRedirectInterno(raw, fallback = 'portal-cliente.html') {
+      if (typeof raw !== 'string' || !raw) return fallback;
+      if (/^[\s\u0000-\u001F\u007F]/.test(raw) || /[\u0000-\u001F\u007F\\]/.test(raw)) {
+        return fallback;
+      }
+      if (/^(javascript|data|vbscript):/i.test(raw) || raw.startsWith('//')) {
+        return fallback;
+      }
+      try {
+        const url = new URL(raw, window.location.origin);
+        if (url.origin !== window.location.origin) return fallback;
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return fallback;
+        const paginasPermitidas = new Set([
+          '/index.html', '/index',
+          '/pedido.html', '/pedido',
+          '/portal-cliente.html', '/portal-cliente',
+          '/portal-prestador.html', '/portal-prestador',
+          '/como-funciona.html', '/como-funciona',
+          '/cadastro.html', '/cadastro',
+          '/sobre-nos.html', '/sobre-nos',
+          '/termos.html', '/termos',
+          '/privacidade.html', '/privacidade'
+        ]);
+        if (!paginasPermitidas.has(url.pathname)) return fallback;
+        return url.pathname + url.search + url.hash;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
     let etapaAtualPrestador = 1;
 
     if (redirectParam || hasPendingOrder) {
@@ -418,7 +448,7 @@
 
       const linkLogin = document.getElementById('linkParaLogin');
       if (linkLogin) {
-        const dest = redirectParam || 'pedido.html';
+        const dest = redirectParam ? sanitizarRedirectInterno(redirectParam, 'pedido.html') : 'pedido.html';
         linkLogin.href = `login.html?redirect=${encodeURIComponent(dest)}${hasPendingOrder ? '&pending_order=true' : ''}`;
       }
     }
@@ -608,7 +638,7 @@
         estado: document.getElementById('estado').value,
         lat: document.getElementById('lat').value ? parseFloat(document.getElementById('lat').value) : null,
         lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null,
-        aceite_termos: true,
+        aceite_termos: Boolean(aceiteEl.checked),
         versao_termos: '2026.1'
       };
 
@@ -668,9 +698,9 @@
         if (tipo === 'prestador') {
           window.location.href = 'portal-prestador.html';
         } else {
-          // Validação defensiva contra open-redirect
-          if (redirectParam && !redirectParam.startsWith('//') && !redirectParam.includes('://')) {
-            window.location.href = redirectParam;
+          // Validação estrita contra open-redirect e pseudo-esquemas
+          if (redirectParam) {
+            window.location.href = sanitizarRedirectInterno(redirectParam, 'portal-cliente.html');
           } else if (hasPendingOrder) {
             window.location.href = 'pedido.html?restore_order=true';
           } else {

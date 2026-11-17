@@ -338,14 +338,14 @@ function renderList() {
        </div>
      </div>
      <div class="mt-2.5 flex justify-end">
-       <button type="button" class="btn btn-requisitar" data-req="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button>
+       <button type="button" class="btn btn-requisitar" data-req="${Number(p.id)}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button>
      </div>
     </div>`;
   }).join('') : `
      <div class="empty-state-card" role="status" aria-live="polite">
        <p class="empty-title">Nenhum serviço encontrado nesta área</p>
        <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de ${radius} km. Experimente expandir o raio de busca.</p>
-       <button type="button" class="btn" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;" onclick="const r = document.getElementById('raio'); if(r){ r.value = 15; r.dispatchEvent(new Event('input')); }">
+       <button type="button" class="btn" data-action="expand-radius" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;">
          Expandir raio para 15 km
        </button>
      </div>`;
@@ -397,7 +397,7 @@ function renderMap(posAtual) {
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}${p.localizacao_aproximada ? ' (região aproximada)' : ''}</div>
         ${p.localizacao_aproximada ? '<div style="color: #4b6073; font-size: 0.72rem; margin-bottom: 4px;">🔒 Localização aproximada na vitrine para proteção de privacidade</div>' : ''}
         <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
-        <button type="button" class="btn btn-requisitar" data-req-popup="${p.id}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? `onclick="window.request(${p.id})"` : 'disabled'}>
+        <button type="button" class="btn btn-requisitar" data-request-id="${Number(p.id)}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? '' : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
         </button>
       </div>
@@ -652,7 +652,14 @@ function exibirModalAuthObrigatoria(pendingOrder) {
 
 // Banner e Restauração de Pedido Pendente Pós-autenticação
 async function verificarERestaurarPedidoPendente() {
-  const rawPending = sessionStorage.getItem('pertoja_pending_order') || localStorage.getItem('pertoja_pending_order');
+  const legacyPending = localStorage.getItem('pertoja_pending_order');
+  if (legacyPending) {
+    if (!sessionStorage.getItem('pertoja_pending_order')) {
+      try { sessionStorage.setItem('pertoja_pending_order', legacyPending); } catch (e) {}
+    }
+    try { localStorage.removeItem('pertoja_pending_order'); } catch (e) {}
+  }
+  const rawPending = sessionStorage.getItem('pertoja_pending_order');
   if (!rawPending) return;
 
   let pending;
@@ -822,6 +829,14 @@ function atualizarUIStatusPedido(pedidoApi, best) {
     atualizarCodigoConfirmacao(pedidoApi.codigo_confirmacao);
   }
   const status = (pedidoApi.status || 'solicitado').toLowerCase();
+  const metodoPg = String(pedidoApi.metodo_pagamento || '').toLowerCase();
+  const precisaPagar = !pedidoApi.pago && (
+    status === 'finalizado' ||
+    ((metodoPg === 'pix' || metodoPg === 'cartao') && ['solicitado', 'confirmado', 'em_transito', 'em_execucao'].includes(status))
+  );
+  if ($('#pay')) $('#pay').hidden = !precisaPagar;
+  const avisoPg = precisaPagar ? ' <span class="font-semibold text-amber-700">Pagamento pendente — conclua pelo botão Pagar.</span>' : '';
+
   const stepIdx = mapStatusToStep(status);
   renderSteps(stepIdx);
   atualizarPaineisSegurancaPedido(status, pedidoApi);
@@ -830,10 +845,13 @@ function atualizarUIStatusPedido(pedidoApi, best) {
   }
 
   if (status === 'solicitado') {
-    info(`Aguardando confirmação de <b>${escapeHtml(best.n)}</b> para <b>${escapeHtml(best.s)}</b>…`);
+    info(`Aguardando confirmação de <b>${escapeHtml(best.n)}</b> para <b>${escapeHtml(best.s)}</b>…${avisoPg}`);
   } else if (status === 'confirmado') {
-    info(`<b>${escapeHtml(best.n)}</b> confirmou o atendimento e está se preparando para sair.`);
+    info(`<b>${escapeHtml(best.n)}</b> confirmou o atendimento e está se preparando para sair.${avisoPg}`);
   } else if (status === 'em_transito') {
+    if (precisaPagar) {
+      info(`<b>${escapeHtml(best.n)}</b> está a caminho.${avisoPg}`);
+    }
     if (!order.drivingStarted) {
       order.drivingStarted = true;
       toast(`${best.n} iniciou o deslocamento até seu endereço.`);
@@ -843,20 +861,21 @@ function atualizarUIStatusPedido(pedidoApi, best) {
     clearAllSimulationTimers();
     order.pos = { lat: centerLat, lng: centerLng };
     renderMap(order.pos);
-    info(`<b>${escapeHtml(best.n)}</b> está no local executando o serviço.`);
+    info(`<b>${escapeHtml(best.n)}</b> está no local executando o serviço.${avisoPg}`);
   } else if (status === 'finalizado') {
     clearAllSimulationTimers();
     pararPollingPedido();
     order.pos = { lat: centerLat, lng: centerLng };
     renderMap(order.pos);
-    info('Ordem de serviço concluída com sucesso!');
-    if ($('#pay')) $('#pay').hidden = Boolean(pedidoApi.pago);
+    info(`Ordem de serviço concluída com sucesso!${avisoPg}`);
+    if ($('#pay')) $('#pay').hidden = !precisaPagar;
     if ($('#novo')) $('#novo').hidden = false;
     const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
     if (btnAvaliar) btnAvaliar.hidden = Boolean(pedidoApi.ja_avaliado);
   } else if (status === 'cancelado') {
     clearAllSimulationTimers();
     pararPollingPedido();
+    sessionStorage.removeItem('pertoja_active_order_id');
     localStorage.removeItem('pertoja_active_order_id');
     info(`Pedido cancelado.${pedidoApi.motivo_cancelamento ? ' Motivo: ' + escapeHtml(pedidoApi.motivo_cancelamento) : ''}`);
     if ($('#pay')) $('#pay').hidden = true;
@@ -932,7 +951,10 @@ function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
   best.a = false;
 
   if (orderDbId) {
-    try { localStorage.setItem('pertoja_active_order_id', String(orderDbId)); } catch (e) {}
+    try {
+      sessionStorage.setItem('pertoja_active_order_id', String(orderDbId));
+      localStorage.removeItem('pertoja_active_order_id');
+    } catch (e) {}
   }
 
   if ($('#painel-lista')) $('#painel-lista').hidden = true;
@@ -1044,11 +1066,17 @@ function abrirModalConfirmarPedido(sel, user) {
       return;
     }
     const btnEnviar = document.getElementById('btnEnviarConfirmacao');
-    btnEnviar.disabled = true;
-
     const metodoPagamento = document.getElementById('confMetodoPagamento').value;
     const modalidade = modInput.value;
-    const agendadoPara = modalidade === 'agendado' ? document.getElementById('confAgendadoPara').value : '';
+    const agendadoInput = document.getElementById('confAgendadoPara');
+    const agendadoPara = modalidade === 'agendado' ? (agendadoInput ? agendadoInput.value.trim() : '') : '';
+    if (modalidade === 'agendado' && !agendadoPara) {
+      toast('Informe a data e hora do agendamento.');
+      if (agendadoInput) agendadoInput.focus();
+      return;
+    }
+    btnEnviar.disabled = true;
+
     const payload = {
       servico_id: sel.service_id || sel.id,
       lat: centerLat,
@@ -1064,7 +1092,7 @@ function abrirModalConfirmarPedido(sel, user) {
       metodo_pagamento: metodoPagamento,
       modalidade,
       agendado_para: agendadoPara || null,
-      aceite_termos: true
+      aceite_termos: Boolean(chkAceite && chkAceite.checked)
     };
 
     try {
@@ -1086,21 +1114,37 @@ function abrirModalConfirmarPedido(sel, user) {
       }
 
       const orderDbId = data.order_id;
+      let payOk = true;
+      let payErrorMsg = '';
       if (metodoPagamento === 'pix' || metodoPagamento === 'cartao') {
         try {
-          await fetch(`/api/orders/${orderDbId}/pay`, {
+          const resPay = await fetch(`/api/orders/${orderDbId}/pay`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ escrow_hold: true, metodo_pagamento: metodoPagamento })
           });
-        } catch (errPay) {}
+          if (!resPay.ok) {
+            payOk = false;
+            const errPayData = await resPay.json().catch(() => ({}));
+            payErrorMsg = errPayData.error || `Falha ao reter pagamento em Escrow (HTTP ${resPay.status}). Tente novamente pelo botão Pagar.`;
+          }
+        } catch (errPay) {
+          payOk = false;
+          payErrorMsg = 'Erro de rede ao reter pagamento em Escrow. Tente novamente pelo botão Pagar.';
+        }
       }
 
       sessionStorage.removeItem('pertoja_pending_order');
       localStorage.removeItem('pertoja_pending_order');
       fechar();
-      toast('Pedido confirmado! Acompanhe o status em tempo real.');
       iniciarTrackingPedido(orderDbId, sel, data);
+      if (!payOk) {
+        if ($('#pay')) $('#pay').hidden = false;
+        toast(payErrorMsg);
+        info(escapeHtml(payErrorMsg));
+      } else {
+        toast('Pedido confirmado! Acompanhe o status em tempo real.');
+      }
     } catch (err) {
       toast('Erro de conexão com o servidor ao registrar pedido.');
     } finally {
@@ -1135,7 +1179,7 @@ async function request(id) {
     };
     try {
       sessionStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
-      localStorage.setItem('pertoja_pending_order', JSON.stringify(pendingOrder));
+      localStorage.removeItem('pertoja_pending_order');
     } catch (e) {}
 
     exibirModalAuthObrigatoria(pendingOrder);
@@ -1430,13 +1474,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  if ($('#list')) {
-    $('#list').onclick = e => {
-      const btn = e.target.closest('.btn-requisitar[data-req]');
+  const listContainer = $('#list');
+  if (listContainer) {
+    listContainer.addEventListener('click', (e) => {
+      const expandBtn = e.target.closest('[data-action="expand-radius"]');
+      if (expandBtn) {
+        const r = document.getElementById('raio');
+        if (r) {
+          r.value = 15;
+          r.dispatchEvent(new Event('input'));
+        }
+        return;
+      }
+      const btn = e.target.closest('.btn-requisitar[data-req], .btn-requisitar[data-request-id]');
       if (!btn) return;
-      const id = btn.dataset.req;
+      const id = btn.dataset.req || btn.dataset.requestId;
       if (id && !busy) request(+id);
-    };
+    });
+  }
+
+  const mapContainer = document.getElementById('map');
+  if (mapContainer) {
+    mapContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-requisitar[data-request-id]');
+      if (!btn || btn.disabled) return;
+      const id = btn.dataset.requestId;
+      if (id && !busy) request(+id);
+    });
   }
 
   if ($('#pay')) {
@@ -1451,7 +1515,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (order && order.db_id) {
           const res = await fetch(`/api/orders/${order.db_id}/pay`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              escrow_hold: Boolean(currentOrderData && currentOrderData.status !== 'finalizado'),
+              metodo_pagamento: (currentOrderData && currentOrderData.metodo_pagamento) || 'escrow'
+            })
           });
           if (res.status === 429 || res.status >= 500) {
             exibirAlertaRetry(res.status);
@@ -1501,6 +1569,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('#novo').onclick = async () => {
       clearAllSimulationTimers();
       pararPollingPedido();
+      sessionStorage.removeItem('pertoja_active_order_id');
       localStorage.removeItem('pertoja_active_order_id');
       busy = false;
       order = null;
@@ -1666,11 +1735,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('formSosPedido').onsubmit = async (e) => {
       e.preventDefault();
       if (!order || !order.db_id) return;
+      const descEl = document.getElementById('sosDescricao');
+      const descricao = (descEl ? descEl.value : '').trim();
+      if (descricao.length < 10) {
+        toast('Descreva a ocorrência com pelo menos 10 caracteres.');
+        if (descEl) descEl.focus();
+        return;
+      }
+      const denunciar_contraparte = Boolean(document.getElementById('sosDenunciarContraparte').checked);
+      if (denunciar_contraparte) {
+        const ok = window.confirm('ATENÇÃO: Denunciar a contraparte acionará suspensão cautelar imediata da conta denunciada. Deseja confirmar esta denúncia?');
+        if (!ok) return;
+      }
       const btnConf = document.getElementById('btnConfirmarSos');
       btnConf.disabled = true;
       try {
-        const descricao = (document.getElementById('sosDescricao').value || '').trim();
-        const denunciar_contraparte = Boolean(document.getElementById('sosDenunciarContraparte').checked);
         const res = await fetch(`/api/orders/${order.db_id}/sos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1734,8 +1813,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.onclick = ativarGeolocalizacaoGPS;
   });
 
-  // Carrega pedido ativo via ?order_id= ou localStorage (PA-02)
-  const targetOrderId = orderIdURL || localStorage.getItem('pertoja_active_order_id');
+  // Carrega pedido ativo via ?order_id= ou sessionStorage (PA-02)
+  const legacyActiveId = localStorage.getItem('pertoja_active_order_id');
+  if (legacyActiveId) {
+    if (!sessionStorage.getItem('pertoja_active_order_id')) {
+      try { sessionStorage.setItem('pertoja_active_order_id', legacyActiveId); } catch (e) {}
+    }
+    try { localStorage.removeItem('pertoja_active_order_id'); } catch (e) {}
+  }
+  const targetOrderId = orderIdURL || sessionStorage.getItem('pertoja_active_order_id');
   if (targetOrderId) {
     await carregarPedidoAtivoPorId(targetOrderId);
   }

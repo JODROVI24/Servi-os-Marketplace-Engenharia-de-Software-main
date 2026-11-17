@@ -946,18 +946,18 @@ class TestMarketplaceFull(unittest.TestCase):
             'codigo_confirmacao': order_data['codigo_confirmacao']
         }).status_code, 200)
         self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
-        res_pay = self.client.post(f'/api/orders/{order_id}/pay', json={})
+        res_pay = self.client.post(f'/api/orders/{order_id}/confirm-completion')
         self.assertEqual(res_pay.status_code, 200)
         self.assertEqual(json.loads(res_pay.data)['status'], 'finalizado')
 
         # 7. Avaliação válida retorna 201 e atualiza média e total
         res_rev = self.client.post(f'/api/orders/{order_id}/review', json={
-            'nota': 4.5,
+            'nota': 4,
             'comentario': 'Excelente serviço!'
         })
         self.assertEqual(res_rev.status_code, 201)
         rev_data = json.loads(res_rev.data)
-        self.assertEqual(rev_data['avaliacao_media'], 4.5)
+        self.assertEqual(rev_data['avaliacao_media'], 4.0)
         self.assertEqual(rev_data['total_avaliacoes'], 1)
 
         # 8. Avaliação duplicada retorna 409
@@ -1207,9 +1207,12 @@ class TestMarketplaceFull(unittest.TestCase):
         res_reg = self.client.patch(f'/api/orders/{o1_id}/status', json={'status': 'solicitado'})
         self.assertEqual(res_reg.status_code, 400)
 
-        # Abertura de disputa
+        # Abertura de disputa (exige pedido confirmado ou posterior)
         res_o2 = self.client.post('/api/orders', json={'servico_id': 1})
         o2_id = json.loads(res_o2.data)['order_id']
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o2_id}/status', json={'status': 'confirmado'})
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
         res_disp = self.client.post(f'/api/orders/{o2_id}/dispute', json={
             'motivo': 'Serviço incompleto',
             'descricao': 'Faltou finalizar a instalação.'
@@ -1249,8 +1252,11 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertNotIn('senha_hash', exp_data['user'])
         self.assertIn('consents', exp_data)
 
-        # Cria pedido e abre disputa -> DELETE /api/profile deve retornar 409
+        # Cria pedido, confirma e abre disputa -> DELETE /api/profile deve retornar 409
         o_id = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)['order_id']
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
+        self.client.post('/api/auth/login', json={'email': 'lgpd_user@pertoja.com', 'senha': 'password123'})
         self.client.post(f'/api/orders/{o_id}/dispute', json={'motivo': 'Teste bloqueio LGPD'})
         res_del_block = self.client.delete('/api/profile')
         self.assertEqual(res_del_block.status_code, 409)
@@ -1340,8 +1346,9 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(res_pub_route.status_code, 200)
         self.assertNotIn('codigo_confirmacao', json.loads(res_pub_route.data))
 
-        # Prestador aciona SOS denunciando cliente -> cliente fica suspenso_cautelar
+        # Prestador confirma pedido e aciona SOS denunciando cliente -> cliente fica suspenso_cautelar
         self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
         res_sos = self.client.post(f'/api/orders/{o_id}/sos', json={
             'descricao': 'Comportamento inadequado no local',
             'denunciar_contraparte': True
@@ -1480,6 +1487,9 @@ class TestMarketplaceFull(unittest.TestCase):
         conn.close()
         self.assertIsNotNone(consent)
 
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
         self.client.post(f'/api/orders/{o_id}/dispute', json={'motivo': 'Divergência'})
         res_pay_disp = self.client.post(f'/api/orders/{o_id}/pay', json={})
         self.assertEqual(res_pay_disp.status_code, 400)
@@ -1791,6 +1801,7 @@ class TestMarketplaceFull(unittest.TestCase):
 
         res_hom = self.client.post('/api/kyc/verify', json={
             'tier': 0,
+            'kyc_documento_tipo': 'RG',
             'cpf': '12345678901',
             'homonimo': True
         })
@@ -1878,6 +1889,482 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(self.client.post(f'/api/orders/{o_id}/sos', json={'descricao': 'Teste'}).status_code, 400)
         self.assertEqual(self.client.post(f'/api/orders/{o_id}/messages', json={'mensagem': 'Oi'}).status_code, 400)
         self.assertEqual(self.client.get(f'/api/orders/{o_id}/messages').status_code, 200)
+
+    def test_53_security_headers_csp_hsts_cache_and_csrf_origin(self):
+        res_home = self.client.get('/')
+        self.assertEqual(res_home.status_code, 200)
+        self.assertIn('max-age=63072000', res_home.headers.get('Strict-Transport-Security', ''))
+        csp = res_home.headers.get('Content-Security-Policy', '')
+        self.assertIn("base-uri 'self'", csp)
+        self.assertIn("frame-ancestors 'self'", csp)
+        self.assertIn("object-src 'none'", csp)
+        self.assertIn("form-action 'self'", csp)
+        self.assertIn('https://brasilapi.com.br', csp)
+        self.assertIn('private', res_home.headers.get('Cache-Control', ''))
+        self.assertNotIn('public', res_home.headers.get('Cache-Control', ''))
+        res_home.close()
+
+        res_portal = self.client.get('/portal-cliente.html')
+        self.assertEqual(res_portal.status_code, 200)
+        self.assertIn('no-store', res_portal.headers.get('Cache-Control', ''))
+        res_portal.close()
+
+        # Cross-origin and Origin: null CSRF check on mutations
+        res_csrf = self.client.post(
+            '/api/auth/login',
+            json={'email': 'cliente@pertoja.com', 'senha': '123456'},
+            headers={'Origin': 'https://attacker.example'}
+        )
+        self.assertEqual(res_csrf.status_code, 403)
+
+        res_null_origin = self.client.post(
+            '/api/auth/login',
+            json={'email': 'cliente@pertoja.com', 'senha': '123456'},
+            headers={'Origin': 'null'}
+        )
+        self.assertEqual(res_null_origin.status_code, 403)
+
+        res_ref = self.client.post(
+            '/api/auth/login',
+            json={'email': 'cliente@pertoja.com', 'senha': '123456'},
+            headers={'Referer': 'https://attacker.example/phish'}
+        )
+        self.assertEqual(res_ref.status_code, 403)
+
+        # vercel.json headers check
+        with open(os.path.join(REPO_ROOT, 'vercel.json'), 'r', encoding='utf-8') as f:
+            vj = json.load(f)
+        self.assertIn('headers', vj)
+        self.assertGreaterEqual(len(vj['headers']), 2)
+
+    def test_54_secret_key_production_and_error_redaction(self):
+        import app as app_mod
+        from unittest.mock import patch
+
+        with patch.dict(os.environ, {'VERCEL': '1', 'SECRET_KEY': '', 'DATABASE_URL': '', 'POSTGRES_URL': '', 'POSTGRES_URL_NON_POOLING': ''}, clear=False):
+            os.environ.pop('SECRET_KEY', None)
+            os.environ.pop('REQUIRE_SECRET_KEY', None)
+            sk = app_mod._resolve_secret_key()
+            self.assertNotEqual(sk, 'pertoja-dev-local-secret-key-2026')
+            self.assertEqual(len(sk), 64)
+
+        # api/index.py 500 error must not expose traceback or detail
+        import api.index as idx_mod
+        orig_dir = idx_mod.marketplace_dir
+        try:
+            idx_mod.marketplace_dir = '/nonexistent/dir/for/redaction'
+            err_app = idx_mod._init_marketplace_app()
+            res = err_app.test_client().get('/api/health')
+            self.assertEqual(res.status_code, 500)
+            body = json.loads(res.data)
+            self.assertNotIn('traceback', body)
+            self.assertNotIn('detail', body)
+        finally:
+            idx_mod.marketplace_dir = orig_dir
+
+        # /api/health must not leak str(err)
+        with patch('database.get_db_connection', side_effect=RuntimeError('secret-pg-password-leak')):
+            res_h = self.client.get('/api/health')
+            self.assertEqual(res_h.status_code, 503)
+            h_body = json.loads(res_h.data)
+            self.assertEqual(h_body['database'], 'unavailable')
+            self.assertNotIn('secret-pg-password-leak', res_h.data.decode('utf-8'))
+
+    def test_55_proxy_ip_spoofing_and_rate_limit_coverage(self):
+        import app as app_mod
+        with app.test_request_context('/api/auth/login', headers={'X-Forwarded-For': '1.2.3.4, 198.51.100.77'}):
+            self.assertEqual(app_mod._get_client_ip(), '198.51.100.77')
+        with app.test_request_context('/api/auth/login', headers={'X-Real-IP': '203.0.113.10', 'X-Forwarded-For': '1.2.3.4'}):
+            self.assertEqual(app_mod._get_client_ip(), '203.0.113.10')
+        with app.test_request_context('/api/auth/login', headers={'X-Vercel-Forwarded-For': '192.0.2.55', 'X-Real-IP': '203.0.113.10'}):
+            self.assertEqual(app_mod._get_client_ip(), '192.0.2.55')
+
+        # Verify rate limit wrappers exist on critical endpoints
+        for ep in ('verify_kyc', 'create_order', 'update_order_status', 'trigger_order_sos', 'open_order_dispute', 'order_messages'):
+            fn = app.view_functions[ep]
+            self.assertTrue(hasattr(fn, '__wrapped__'), f"Endpoint {ep} missing @rate_limit decorator")
+
+    def test_56_session_version_reset_password_and_account_restrictions(self):
+        import database
+        self.client.post('/api/auth/register', json={
+            'nome': 'Session User',
+            'email': 'sess_ver@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'cliente',
+            'aceite_termos': True
+        })
+        # Save session cookie in a second test client
+        c2 = app.test_client()
+        c2.post('/api/auth/login', json={'email': 'sess_ver@pertoja.com', 'senha': 'password123'})
+        self.assertTrue(json.loads(c2.get('/api/auth/me').data)['authenticated'])
+
+        # Generate reset token directly and call reset-password
+        conn = database.get_db_connection()
+        u = conn.execute("SELECT id FROM users WHERE email = ?", ('sess_ver@pertoja.com',)).fetchone()
+        import hashlib, time as _t
+        raw_tok = 'tok_sess_ver_123'
+        tok_hash = hashlib.sha256(raw_tok.encode('utf-8')).hexdigest()
+        conn.execute("INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)", (tok_hash, u['id'], _t.time() + 600))
+        conn.execute("INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)", ('other_pending_tok', u['id'], _t.time() + 600))
+        conn.commit()
+        conn.close()
+
+        res_rst = self.client.post('/api/auth/reset-password', json={'token': raw_tok, 'nova_senha': 'newpassword123'})
+        self.assertEqual(res_rst.status_code, 200)
+
+        # Old session in c2 must be invalidated due to session_version bump
+        self.assertFalse(json.loads(c2.get('/api/auth/me').data)['authenticated'])
+
+        # Pending token must be marked used
+        conn = database.get_db_connection()
+        other_row = conn.execute("SELECT used FROM password_reset_tokens WHERE token = 'other_pending_tok'").fetchone()
+        conn.close()
+        self.assertEqual(other_row['used'], 1)
+
+        # suspenso_cautelar restrictions
+        conn = database.get_db_connection()
+        conn.execute("UPDATE users SET status_conta = 'suspenso_cautelar' WHERE id = ?", (u['id'],))
+        conn.commit()
+        conn.close()
+
+        c2.post('/api/auth/login', json={'email': 'sess_ver@pertoja.com', 'senha': 'newpassword123'})
+        self.assertEqual(c2.post('/api/kyc/verify', json={'kyc_documento_tipo': 'RG', 'selfie_verificada': True}).status_code, 403)
+        self.assertEqual(c2.post('/api/orders', json={'servico_id': 1}).status_code, 403)
+        self.assertEqual(c2.post('/api/account/appeal', json={'motivo': 'Recurso legítimo'}).status_code, 201)
+
+        # bloqueado cannot login and active session is invalidated
+        conn = database.get_db_connection()
+        conn.execute("UPDATE users SET status_conta = 'bloqueado' WHERE id = ?", (u['id'],))
+        conn.commit()
+        conn.close()
+        self.assertFalse(json.loads(c2.get('/api/auth/me').data)['authenticated'])
+        res_blk_login = c2.post('/api/auth/login', json={'email': 'sess_ver@pertoja.com', 'senha': 'newpassword123'})
+        self.assertEqual(res_blk_login.status_code, 403)
+
+    def test_57_lgpd_full_wipe_and_consent_enforcement(self):
+        import database
+        self.client.post('/api/auth/register', json={
+            'nome': 'No Consent User',
+            'email': 'noconsent@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Limpeza',
+            'preco_inicial': 90.0,
+            'cpf': '12345678901',
+            'bairro': 'Moema',
+            'cidade': 'São Paulo',
+            'estado': 'SP'
+        })
+        conn = database.get_db_connection()
+        u = conn.execute("SELECT id FROM users WHERE email = ?", ('noconsent@pertoja.com',)).fetchone()
+        c_row = conn.execute("SELECT id FROM user_consents WHERE user_id = ?", (u['id'],)).fetchone()
+        conn.close()
+        self.assertIsNone(c_row)
+
+        res_del = self.client.delete('/api/profile')
+        self.assertEqual(res_del.status_code, 200)
+
+        conn = database.get_db_connection()
+        u_after = conn.execute("SELECT * FROM users WHERE id = ?", (u['id'],)).fetchone()
+        s_after = conn.execute("SELECT * FROM services WHERE prestador_id = ?", (u['id'],)).fetchone()
+        conn.close()
+        self.assertEqual(u_after['status_conta'], 'anonimizado')
+        self.assertIsNone(u_after['bairro'])
+        self.assertIsNone(u_after['cidade'])
+        self.assertIsNone(u_after['lat'])
+        self.assertIsNone(u_after['cpf'])
+        self.assertIsNone(s_after['endereco'])
+        self.assertIsNone(s_after['lat'])
+        self.assertEqual(s_after['ativo'], 0)
+
+    def test_58_kyc_hardening_and_prof_reg_validation(self):
+        # Invalid registro_profissional on register -> 400
+        res_bad_reg = self.client.post('/api/auth/register', json={
+            'nome': 'Bad Reg',
+            'email': 'badreg@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Elétrica',
+            'registro_profissional': 'FAKE-123'
+        })
+        self.assertEqual(res_bad_reg.status_code, 400)
+
+        self.client.post('/api/auth/register', json={
+            'nome': 'KYC Test',
+            'email': 'kyctest@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Limpeza'
+        })
+        # Empty body -> 400
+        self.assertEqual(self.client.post('/api/kyc/verify', json={}).status_code, 400)
+        # Missing selfie_verificada -> 400
+        self.assertEqual(self.client.post('/api/kyc/verify', json={'kyc_documento_tipo': 'RG'}).status_code, 400)
+        # Tier 2 without registro_profissional stays Tier 1
+        res_t1 = self.client.post('/api/kyc/verify', json={'kyc_documento_tipo': 'CNH', 'selfie_verificada': True, 'tier': 2})
+        self.assertEqual(res_t1.status_code, 200)
+        self.assertEqual(json.loads(res_t1.data)['kyc_tier'], 1)
+        # Homonimo puts in em_revisao and subsequent verify is blocked (403)
+        res_hom = self.client.post('/api/kyc/verify', json={'kyc_documento_tipo': 'RG', 'selfie_verificada': True, 'homonimo': True})
+        self.assertEqual(res_hom.status_code, 200)
+        self.assertEqual(json.loads(res_hom.data)['kyc_status'], 'em_revisao')
+        self.assertEqual(self.client.post('/api/kyc/verify', json={'kyc_documento_tipo': 'RG', 'selfie_verificada': True}).status_code, 403)
+
+    def test_59_sos_anti_griefing_and_inactive_provider_order_block(self):
+        import database
+        self.client.post('/api/auth/register', json={
+            'nome': 'Prestador Alvo',
+            'email': 'alvo_sos@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Limpeza',
+            'preco_inicial': 100.0
+        })
+        svc_id = json.loads(self.client.get('/api/my-services').data)[0]['id']
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        o_id = json.loads(self.client.post('/api/orders', json={'servico_id': svc_id}).data)['order_id']
+
+        # SOS in 'solicitado' must NOT suspend counterpart
+        res_sos = self.client.post(f'/api/orders/{o_id}/sos', json={
+            'descricao': 'Tentativa de griefing em solicitado',
+            'denunciar_contraparte': True
+        })
+        self.assertEqual(res_sos.status_code, 201)
+        sos_data = json.loads(res_sos.data)
+        self.assertFalse(sos_data['contraparte_suspensa'])
+        self.assertEqual(sos_data['status'], 'moderacao')
+
+        # Inactive/suspended provider cannot be hired
+        conn = database.get_db_connection()
+        conn.execute("UPDATE users SET status_conta = 'suspenso_cautelar' WHERE email = ?", ('alvo_sos@pertoja.com',))
+        conn.commit()
+        conn.close()
+        res_hire = self.client.post('/api/orders', json={'servico_id': svc_id})
+        self.assertEqual(res_hire.status_code, 403)
+
+    def test_60_numeric_bounds_coords_and_service_put_hardening(self):
+        # NaN / Inf / negative / bool in GET /api/services
+        self.assertEqual(self.client.get('/api/services?lat=nan').status_code, 400)
+        self.assertEqual(self.client.get('/api/services?lng=inf').status_code, 400)
+        self.assertEqual(self.client.get('/api/services?radius=-5').status_code, 400)
+
+        self.client.post('/api/auth/register', json={
+            'nome': 'Tier1 Bounds',
+            'email': 'tier1_bounds@pertoja.com',
+            'senha': 'password123',
+            'tipo': 'prestador',
+            'categoria': 'Limpeza',
+            'preco_inicial': 100.0
+        })
+        for bad_price in (True, -10, 0, 99999999, 'nan'):
+            res_bad = self.client.post('/api/services', json={
+                'titulo': 'Teste Preço',
+                'categoria': 'Limpeza',
+                'preco': bad_price
+            })
+            self.assertEqual(res_bad.status_code, 400)
+
+        svc_id = json.loads(self.client.get('/api/my-services').data)[0]['id']
+        res_ws = self.client.put(f'/api/services/{svc_id}', json={'titulo': '   ', 'preco': 100.0})
+        self.assertEqual(res_ws.status_code, 400)
+        res_tier = self.client.put(f'/api/services/{svc_id}', json={'exige_kyc_tier2': True, 'preco': 100.0})
+        self.assertEqual(res_tier.status_code, 403)
+
+    def test_61_escrow_idempotency_pay_confirm_status_and_disputes(self):
+        import database
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        o_data = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)
+        o_id = o_data['order_id']
+
+        # Double pay blocked with 409
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/pay', json={'escrow_hold': True}).status_code, 200)
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/pay', json={'escrow_hold': True}).status_code, 409)
+
+        # Dispute in solicitado -> 400
+        o2_id = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)['order_id']
+        self.assertEqual(self.client.post(f'/api/orders/{o2_id}/dispute', json={'motivo': 'Cedo'}).status_code, 400)
+
+        # Advance o_id to em_execucao
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_transito'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_execucao', 'codigo_confirmacao': o_data['codigo_confirmacao']})
+
+        # Client cancel in em_execucao with pago=1 -> 400 (requires /dispute)
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        self.assertEqual(self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'cancelado', 'motivo': 'Desisti'}).status_code, 400)
+
+        # Double confirm-completion -> 200 then 409
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/confirm-completion').status_code, 200)
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/confirm-completion').status_code, 409)
+
+        conn = database.get_db_connection()
+        rel_cnt = conn.execute("SELECT COUNT(*) AS c FROM escrow_ledger WHERE order_id = ? AND tipo_evento = 'escrow_release'", (o_id,)).fetchone()['c']
+        conn.close()
+        self.assertEqual(rel_cnt, 1)
+
+    def test_62_reviews_integer_unique_reply_contest_and_seed_toggle(self):
+        import database
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        o_data = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)
+        o_id = o_data['order_id']
+
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_transito'})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_execucao', 'codigo_confirmacao': o_data['codigo_confirmacao']})
+        self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'finalizado'})
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        for bad_nota in (4.5, True, 0, 6):
+            self.assertEqual(self.client.post(f'/api/orders/{o_id}/review', json={'nota': bad_nota}).status_code, 400)
+
+        res_r1 = self.client.post(f'/api/orders/{o_id}/review', json={'nota': 5, 'comentario': 'Ótimo'})
+        self.assertEqual(res_r1.status_code, 201)
+        rev_id = json.loads(res_r1.data)['review_id']
+
+        # Reply before reveal -> 403
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/reply', json={'replica': 'Cedo'}).status_code, 403)
+
+        # Provider reviews -> reveals both -> reply once 200, second reply 409
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/review', json={'nota': 5}).status_code, 201)
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/reply', json={'replica': 'Obrigado!'}).status_code, 200)
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/reply', json={'replica': 'Editado'}).status_code, 409)
+
+        # Contest once 200, second contest 409
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/contest', json={'motivo': 'Motivo 1'}).status_code, 200)
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/contest', json={'motivo': 'Motivo 2'}).status_code, 409)
+
+        # ENABLE_DEMO_SEED=0 skips seeding
+        import tempfile
+        from unittest.mock import patch
+        fd, tmp_db = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        orig_db = database.DB_PATH
+        try:
+            database.DB_PATH = tmp_db
+            with patch.dict(os.environ, {'MARKETPLACE_DB': tmp_db, 'ENABLE_DEMO_SEED': '0'}):
+                database.init_db()
+                conn = database.get_db_connection()
+                cnt = conn.execute('SELECT COUNT(*) AS c FROM users').fetchone()['c']
+                conn.close()
+                self.assertEqual(cnt, 0)
+        finally:
+            database.DB_PATH = orig_db
+            if os.path.exists(tmp_db):
+                os.remove(tmp_db)
+
+    def test_63_achados_backend_e_contrato_orders(self):
+        import database
+
+        # 1. Pagamento pós-finalizado com pago=0 e escrow_status='pendente' -> libera atomicamente e bloqueia 2o /pay
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        o_data = json.loads(self.client.post('/api/orders', json={'servico_id': 1, 'metodo_pagamento': 'escrow'}).data)
+        o_id = o_data['order_id']
+
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.assertEqual(self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'confirmado'}).status_code, 200)
+        self.assertEqual(self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'em_transito'}).status_code, 200)
+        self.assertEqual(self.client.patch(f'/api/orders/{o_id}/status', json={
+            'status': 'em_execucao',
+            'codigo_confirmacao': o_data['codigo_confirmacao']
+        }).status_code, 200)
+        self.assertEqual(self.client.patch(f'/api/orders/{o_id}/status', json={'status': 'finalizado'}).status_code, 200)
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_pay_fin = self.client.post(f'/api/orders/{o_id}/pay', json={'escrow_hold': True, 'metodo_pagamento': 'escrow'})
+        self.assertEqual(res_pay_fin.status_code, 200)
+        pay_fin_body = json.loads(res_pay_fin.data)
+        self.assertTrue(pay_fin_body['pago'])
+        self.assertEqual(pay_fin_body['status'], 'finalizado')
+        self.assertEqual(pay_fin_body['escrow_status'], 'liberado')
+        # Duplo pagamento bloqueado com 409
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/pay', json={}).status_code, 409)
+
+        # 2. Rejeição de 'em_disputa' via PATCH /api/orders/<id>/status
+        o2_data = json.loads(self.client.post('/api/orders', json={'servico_id': 1}).data)
+        o2_id = o2_data['order_id']
+        res_disp_patch = self.client.patch(f'/api/orders/{o2_id}/status', json={'status': 'em_disputa'})
+        self.assertEqual(res_disp_patch.status_code, 400)
+        self.assertIn('/dispute', json.loads(res_disp_patch.data)['error'])
+
+        # 3. Revogação de cookie legado sem 'session_version' e valor inválido
+        with self.client.session_transaction() as sess:
+            user_id = sess['user_id']
+            sess.pop('session_version', None)
+        self.assertEqual(self.client.get('/api/profile').status_code, 200)
+
+        conn = database.get_db_connection()
+        conn.execute('UPDATE users SET session_version = session_version + 1 WHERE id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.client.get('/api/profile').status_code, 401)
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        with self.client.session_transaction() as sess:
+            sess['session_version'] = 'invalido'
+        self.assertEqual(self.client.get('/api/profile').status_code, 401)
+
+        # 4. _csrf_origin_check com host IPv6 literal ([::1]:5000)
+        res_ipv6 = self.client.post(
+            '/api/auth/logout',
+            headers={'Host': '[::1]:5000', 'Origin': 'http://[::1]:5000'}
+        )
+        self.assertEqual(res_ipv6.status_code, 200)
+
+        # 5. contest_review double-blind (403 antes da revelação) + campos cliente_review_replied/contestada em GET /api/orders
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_rev = self.client.post(f'/api/orders/{o_id}/review', json={'nota': 4, 'comentario': 'Bom'})
+        self.assertEqual(res_rev.status_code, 201)
+        rev_id = json.loads(res_rev.data)['review_id']
+
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        # Antes de revelar: contestação retorna 403 e GET /api/orders não expõe review
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/contest', json={'motivo': 'Cedo'}).status_code, 403)
+        orders_pre = json.loads(self.client.get('/api/orders').data)
+        o_pre = next(x for x in orders_pre if x['order_id'] == o_id)
+        self.assertIsNone(o_pre['cliente_review_id'])
+        self.assertFalse(o_pre['cliente_review_replied'])
+        self.assertFalse(o_pre['cliente_review_contestada'])
+
+        # Prestador avalia -> revela -> flags iniciam False, mudam para True após reply e contest
+        self.assertEqual(self.client.post(f'/api/orders/{o_id}/review', json={'nota': 5}).status_code, 201)
+        orders_mid = json.loads(self.client.get('/api/orders').data)
+        o_mid = next(x for x in orders_mid if x['order_id'] == o_id)
+        self.assertEqual(o_mid['cliente_review_id'], rev_id)
+        self.assertFalse(o_mid['cliente_review_replied'])
+        self.assertFalse(o_mid['cliente_review_contestada'])
+
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/reply', json={'replica': 'Valeu'}).status_code, 200)
+        self.assertEqual(self.client.post(f'/api/reviews/{rev_id}/contest', json={'motivo': 'Injusto'}).status_code, 200)
+        orders_post = json.loads(self.client.get('/api/orders').data)
+        o_post = next(x for x in orders_post if x['order_id'] == o_id)
+        self.assertTrue(o_post['cliente_review_replied'])
+        self.assertTrue(o_post['cliente_review_contestada'])
+
+        # 6. SOS com denunciar_contraparte em usuário já 'bloqueado' não sobrescreve para 'suspenso_cautelar'
+        self.assertEqual(self.client.patch(f'/api/orders/{o2_id}/status', json={'status': 'confirmado'}).status_code, 200)
+        conn = database.get_db_connection()
+        carlos_id = conn.execute("SELECT id FROM users WHERE email = 'carlos@pertoja.com'").fetchone()['id']
+        conn.execute("UPDATE users SET status_conta = 'bloqueado' WHERE id = ?", (carlos_id,))
+        conn.commit()
+        conn.close()
+
+        self.client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        res_sos = self.client.post(f'/api/orders/{o2_id}/sos', json={
+            'descricao': 'Emergência de teste SOS',
+            'denunciar_contraparte': True
+        })
+        self.assertEqual(res_sos.status_code, 201)
+
+        conn = database.get_db_connection()
+        status_final = conn.execute('SELECT status_conta FROM users WHERE id = ?', (carlos_id,)).fetchone()['status_conta']
+        conn.execute("UPDATE users SET status_conta = 'ativo' WHERE id = ?", (carlos_id,))
+        conn.commit()
+        conn.close()
+        self.assertEqual(status_final, 'bloqueado')
 
 if __name__ == '__main__':
     unittest.main()

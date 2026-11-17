@@ -41,8 +41,8 @@
   </script>
 
   <!-- Leaflet CSS & JS com defer -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
   <!-- Google Fonts & Material Symbols com preconnect e display=swap -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -536,7 +536,7 @@
       <form id="formSosPedido" class="space-y-3">
         <div class="campo-form">
           <label for="sosDescricao" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva o ocorrido</label>
-          <textarea id="sosDescricao" rows="3" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança..."></textarea>
+          <textarea id="sosDescricao" rows="3" required minlength="10" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança (mínimo 10 caracteres)..."></textarea>
         </div>
         <label for="sosDenunciarContraparte" class="flex items-start gap-2 text-xs text-perto-ink cursor-pointer">
           <input type="checkbox" id="sosDenunciarContraparte" class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">

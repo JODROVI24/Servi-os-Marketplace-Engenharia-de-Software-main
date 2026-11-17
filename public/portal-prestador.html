@@ -355,6 +355,12 @@
               <label for="kycRegProfPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Registro Profissional (opcional)</label>
               <input type="text" id="kycRegProfPerfil" placeholder="CREA / CFT / CRT / NR-10" class="input-form text-sm font-medium">
             </div>
+            <div class="sm:col-span-3">
+              <label for="kycSelfieCheck" class="flex items-start gap-2 text-xs text-perto-ink cursor-pointer">
+                <input type="checkbox" id="kycSelfieCheck" checked required class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">
+                <span>Confirmo a realização da <b>prova de vida (selfie com documento)</b> e a veracidade das informações enviadas.</span>
+              </label>
+            </div>
             <div class="sm:col-span-3 flex justify-end">
               <button type="submit" class="btn2 px-5 py-2.5 rounded-full text-xs font-extrabold inline-flex items-center gap-1.5">
                 <span class="material-symbols-outlined text-sm">shield</span>
@@ -544,9 +550,10 @@
           <label for="pinExecucaoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">PIN de 4 dígitos</label>
           <input type="text" id="pinExecucaoInput" inputmode="numeric" pattern="\d{4}" maxlength="4" minlength="4" required placeholder="0000" class="input-form text-lg font-mono font-black tracking-widest text-center">
         </div>
+        <p id="pinExecucaoFeedback" class="hidden text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2" role="alert"></p>
         <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
           <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalPinExecucao()">Cancelar</button>
-          <button type="submit" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Validar PIN e Iniciar</button>
+          <button type="submit" id="btnSubmitPinExecucao" class="btn px-6 py-2.5 rounded-full text-xs font-extrabold text-perto-ink">Validar PIN e Iniciar</button>
         </div>
       </form>
     </div>
@@ -587,11 +594,11 @@
         </p>
         <div class="campo-form">
           <label for="sosMotivoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva a ocorrência</label>
-          <textarea id="sosMotivoInput" rows="3" required minlength="3" placeholder="Descreva brevemente o ocorrido..." class="input-form text-sm font-medium"></textarea>
+          <textarea id="sosMotivoInput" rows="3" required minlength="10" placeholder="Descreva brevemente o ocorrido (mínimo 10 caracteres)..." class="input-form text-sm font-medium"></textarea>
         </div>
         <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
           <button type="button" class="btn-neutral px-5 py-2.5 rounded-full text-xs font-bold" onclick="fecharModalSos()">Cancelar</button>
-          <button type="submit" class="btn-danger-soft px-6 py-2.5 rounded-full text-xs font-extrabold">Confirmar SOS</button>
+          <button type="submit" id="btnConfirmarSosPrestador" class="btn-danger-soft px-6 py-2.5 rounded-full text-xs font-extrabold">Confirmar SOS</button>
         </div>
       </form>
     </div>
@@ -1076,11 +1083,11 @@
               <span class="tag ${s.ativo ? '' : 'off'}">${s.ativo ? 'Ativo' : 'Pausado'}</span>
             </div>
             <div class="flex flex-wrap gap-2 mt-3 justify-end">
-              <button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="alternarAtivoServico(${Number(s.id)}, ${!s.ativo})">
+              <button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="toggle-service" data-service-id="${Number(s.id)}" data-next-ativo="${!s.ativo}">
                 ${s.ativo ? 'Pausar' : 'Ativar'}
               </button>
-              <button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="editarServico(${Number(s.id)})">✏️ Alterar Preço / Detalhes</button>
-              <button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="excluirServico(${Number(s.id)})">Excluir</button>
+              <button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="edit-service" data-service-id="${Number(s.id)}">✏️ Alterar Preço / Detalhes</button>
+              <button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="delete-service" data-service-id="${Number(s.id)}">Excluir</button>
             </div>
           </div>
         `;}).join('');
@@ -1260,21 +1267,21 @@
         const orderIdNum = Number(p.order_id);
         if (p.status === 'solicitado') {
           acoesHtml = `
-            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'confirmado')">Confirmar Atendimento</button>
-            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" onclick="abrirModalMotivoPedido(${orderIdNum})">Recusar</button>
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="confirmado">Confirmar Atendimento</button>
+            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${orderIdNum}">Recusar</button>
           `;
         } else if (p.status === 'confirmado') {
           acoesHtml = `
-            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'em_transito')">A Caminho</button>
-            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" onclick="abrirModalMotivoPedido(${orderIdNum})">Cancelar</button>
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="em_transito">A Caminho</button>
+            <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${orderIdNum}">Cancelar</button>
           `;
         } else if (p.status === 'em_transito') {
           acoesHtml = `
-            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="abrirModalPinExecucao(${orderIdNum})">Iniciar Execução</button>
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="pin" data-order-id="${orderIdNum}">Iniciar Execução</button>
           `;
         } else if (p.status === 'em_execucao') {
           acoesHtml = `
-            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" onclick="alterarStatusPedido(${orderIdNum}, 'finalizado')">Finalizar Serviço</button>
+            <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="finalizado">Finalizar Serviço</button>
           `;
         } else {
           acoesHtml = `<span class="text-xs font-semibold text-perto-ink/70">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
@@ -1282,27 +1289,29 @@
 
         const acoesContextuais = [];
         if (['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(p.status)) {
-          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalChat(${orderIdNum}, '${escapeHtml(String(p.status || ''))}')">Chat Protegido</button>`);
+          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="chat" data-order-id="${orderIdNum}" data-order-status="${escapeHtml(String(p.status || ''))}">Chat Protegido</button>`);
         }
-        if (p.status === 'em_transito' || p.status === 'em_execucao') {
-          acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalSos(${orderIdNum})">SOS Emergência</button>`);
+        if (['confirmado', 'em_transito', 'em_execucao'].includes(p.status)) {
+          acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="sos" data-order-id="${orderIdNum}">SOS Emergência</button>`);
         }
-        if (['em_execucao', 'finalizado', 'cancelado'].includes(p.status)) {
-          acoesContextuais.push(`<button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalDisputa(${orderIdNum})">Abrir Disputa</button>`);
+        if (['confirmado', 'em_transito', 'em_execucao', 'finalizado'].includes(p.status)) {
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="disputa" data-order-id="${orderIdNum}">Abrir Disputa</button>`);
         }
         if (p.status === 'em_disputa') {
           acoesContextuais.push(`<span class="dispute-badge">Em Disputa</span>`);
         }
         if (p.status === 'finalizado' && !p.ja_avaliado) {
-          acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" onclick="abrirModalAvaliar(${orderIdNum})"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
+          acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" data-action="avaliar" data-order-id="${orderIdNum}"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
         }
         if (p.status === 'finalizado') {
-          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalVerReviewsPrestador(${orderIdNum})">Ver Avaliações</button>`);
+          acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="ver-reviews" data-order-id="${orderIdNum}">Ver Avaliações</button>`);
         }
         const reviewIdNum = Number(p.cliente_review_id || p.review_id || 0);
         if (reviewIdNum > 0) {
-          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'reply')">Responder Avaliação</button>`);
-          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="abrirModalReviewAcao(${reviewIdNum}, 'contest')">Contestar Avaliação</button>`);
+          const jaReplicada = Boolean(p.cliente_review_replied);
+          const jaContestada = Boolean(p.cliente_review_contestada);
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-reply" data-review-id="${reviewIdNum}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>`);
+          acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-contest" data-review-id="${reviewIdNum}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>`);
         }
 
         const escrowSt = String(p.escrow_status || '').toLowerCase();
@@ -1406,7 +1415,11 @@
       fecharModalMotivoPedido();
     };
 
+    let ultimoStatusHttpCode = 0;
+    let ultimoStatusErroMsg = '';
     async function alterarStatusPedido(orderId, status, motivo = null, codigoConfirmacao = null) {
+      ultimoStatusHttpCode = 0;
+      ultimoStatusErroMsg = '';
       try {
         const body = { status };
         if (motivo) body.motivo = motivo;
@@ -1416,17 +1429,20 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
+        ultimoStatusHttpCode = res.status;
         if (res.ok) {
           toast(`Status atualizado para: ${status}`);
           await carregarPedidos();
           return true;
         } else {
           const err = await res.json().catch(() => ({}));
-          toast(err.error || 'Erro ao atualizar chamado.');
+          ultimoStatusErroMsg = err.error || 'Erro ao atualizar chamado.';
+          toast(ultimoStatusErroMsg);
           return false;
         }
       } catch (e) {
-        toast('Erro de conexão.');
+        ultimoStatusErroMsg = 'Erro de conexão.';
+        toast(ultimoStatusErroMsg);
         return false;
       }
     }
@@ -1510,6 +1526,13 @@
     function abrirModalPinExecucao(orderId) {
       document.getElementById('formPinExecucao').reset();
       document.getElementById('pinOrderId').value = orderId;
+      const fb = document.getElementById('pinExecucaoFeedback');
+      if (fb) {
+        fb.textContent = '';
+        fb.classList.add('hidden');
+      }
+      const btnSubmit = document.getElementById('btnSubmitPinExecucao');
+      if (btnSubmit) btnSubmit.disabled = false;
       abrirModalAcessivel('modalPinExecucao', 'pinExecucaoInput');
     }
     function fecharModalPinExecucao() { fecharModalAcessivel('modalPinExecucao'); }
@@ -1517,13 +1540,38 @@
     document.getElementById('formPinExecucao').onsubmit = async (e) => {
       e.preventDefault();
       const orderId = document.getElementById('pinOrderId').value;
-      const pin = (document.getElementById('pinExecucaoInput').value || '').trim();
+      const pinInput = document.getElementById('pinExecucaoInput');
+      const pin = (pinInput.value || '').trim();
       if (!/^\d{4}$/.test(pin)) {
         toast('Informe exatamente 4 dígitos numéricos.');
         return;
       }
-      const ok = await alterarStatusPedido(orderId, 'em_execucao', null, pin);
-      if (ok) fecharModalPinExecucao();
+      const btnSubmit = document.getElementById('btnSubmitPinExecucao');
+      const fb = document.getElementById('pinExecucaoFeedback');
+      if (fb) {
+        fb.textContent = '';
+        fb.classList.add('hidden');
+      }
+      if (btnSubmit) btnSubmit.disabled = true;
+      try {
+        const ok = await alterarStatusPedido(orderId, 'em_execucao', null, pin);
+        if (ok) {
+          fecharModalPinExecucao();
+        } else {
+          pinInput.value = '';
+          pinInput.focus();
+          if (fb) {
+            if (ultimoStatusHttpCode === 429) {
+              fb.textContent = ultimoStatusErroMsg || 'Limite de tentativas de PIN atingido (HTTP 429). Aguarde antes de tentar novamente.';
+            } else {
+              fb.textContent = ultimoStatusErroMsg || 'PIN inválido. Tente novamente.';
+            }
+            fb.classList.remove('hidden');
+          }
+        }
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+      }
     };
 
     // ET-08 & ET-15: Chat Protegido
@@ -1616,7 +1664,15 @@
     document.getElementById('formSosPedido').onsubmit = async (e) => {
       e.preventDefault();
       const orderId = document.getElementById('sosOrderId').value;
-      const motivo = (document.getElementById('sosMotivoInput').value || '').trim();
+      const motivoEl = document.getElementById('sosMotivoInput');
+      const motivo = (motivoEl.value || '').trim();
+      if (motivo.length < 10) {
+        toast('Descreva a ocorrência com pelo menos 10 caracteres.');
+        motivoEl.focus();
+        return;
+      }
+      const btnSos = document.getElementById('btnConfirmarSosPrestador');
+      if (btnSos) btnSos.disabled = true;
       try {
         const res = await fetch(`/api/orders/${orderId}/sos`, {
           method: 'POST',
@@ -1632,6 +1688,8 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSos) btnSos.disabled = false;
       }
     };
 
@@ -1745,11 +1803,18 @@
         const minha = data.minha_avaliacao;
         const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_cliente || data.review_recebida || null;
         const oculta = Boolean(data.oculta_double_blind);
+        const renderStatusModeracao = (stMod) => {
+          const mod = String(stMod || '').trim();
+          if (!mod || mod.toLowerCase() === 'publicada') return '';
+          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">Status: ${escapeHtml(mod)}</div>`;
+        };
         const minhaHtml = minha
           ? `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
               <div class="font-bold text-perto-ink mb-1">Sua avaliação ao cliente (${escapeHtml(String(minha.nota || 5))} ★)</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
+              ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
+              ${renderStatusModeracao(minha.status_moderacao)}
             </div>
           `
           : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não avaliou este cliente.</div>`;
@@ -1764,14 +1829,19 @@
           `;
         } else if (contraparte) {
           const revId = Number(contraparte.id || 0);
+          const jaReplicada = Boolean(contraparte.replied_at || contraparte.replica);
+          const statusModContra = String(contraparte.status_moderacao || '').toLowerCase();
+          const jaContestada = Boolean(contraparte.contestada) || ['contestada', 'em_revisao'].includes(statusModContra);
           contraHtml = `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
               <div class="font-bold text-perto-ink">Avaliação do cliente (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
+              ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Sua réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
+              ${renderStatusModeracao(contraparte.status_moderacao)}
               ${revId > 0 ? `
                 <div class="flex flex-wrap gap-2 pt-2 border-t border-perto-road">
-                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador(); abrirModalReviewAcao(${revId}, 'reply')">Responder Avaliação</button>
-                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador(); abrirModalReviewAcao(${revId}, 'contest')">Contestar Avaliação</button>
+                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-reply" data-review-id="${revId}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>
+                  <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-contest" data-review-id="${revId}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>
                 </div>
               ` : ''}
             </div>
@@ -1805,6 +1875,8 @@
       const isContest = modo === 'contest';
       const url = isContest ? `/api/reviews/${reviewId}/contest` : `/api/reviews/${reviewId}/reply`;
       const payload = isContest ? { motivo: texto } : { replica: texto };
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      if (btnSubmit) btnSubmit.disabled = true;
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -1821,16 +1893,28 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
       }
     };
 
     // ET-09: Verificação KYC
     document.getElementById('formKycVerify').onsubmit = async (e) => {
       e.preventDefault();
+      const selfieCheck = document.getElementById('kycSelfieCheck');
+      if (!selfieCheck || !selfieCheck.checked) {
+        toast('Confirme a prova de vida (selfie com documento) para enviar a verificação KYC.');
+        if (selfieCheck) selfieCheck.focus();
+        return;
+      }
       const documento_tipo = document.getElementById('kycDocTipoPerfil').value;
       const cpf = (document.getElementById('kycCpfInput')?.value || '').trim();
       const registro_profissional = (document.getElementById('kycRegProfPerfil').value || '').trim();
-      const payload = { kyc_documento_tipo: documento_tipo, registro_profissional };
+      const payload = {
+        kyc_documento_tipo: documento_tipo,
+        registro_profissional,
+        selfie_verificada: Boolean(selfieCheck && selfieCheck.checked)
+      };
       if (cpf) payload.cpf = cpf;
       try {
         const res = await fetch('/api/kyc/verify', {
@@ -1909,6 +1993,14 @@
       try {
         const res = await fetch('/api/profile', { method: 'DELETE' });
         if (res.ok) {
+          try {
+            ['pertoja_pending_order', 'pertoja_active_order_id', 'pertoja_search_loc'].forEach((k) => {
+              localStorage.removeItem(k);
+              sessionStorage.removeItem(k);
+            });
+            localStorage.clear();
+            sessionStorage.clear();
+          } catch (errStorage) {}
           toast('Conta anonimizada/excluída conforme LGPD.');
           fecharModalExcluirConta();
           setTimeout(() => { window.location.href = 'index.html'; }, 800);
@@ -2052,6 +2144,74 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+      const listaServicosEl = document.getElementById('listaServicos');
+      if (listaServicosEl) {
+        listaServicosEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action][data-service-id]');
+          if (!btn) return;
+          const serviceId = Number(btn.dataset.serviceId);
+          if (!Number.isFinite(serviceId) || serviceId <= 0) return;
+          const action = btn.dataset.action;
+          if (action === 'toggle-service') {
+            alternarAtivoServico(serviceId, btn.dataset.nextAtivo === 'true');
+          } else if (action === 'edit-service') {
+            editarServico(serviceId);
+          } else if (action === 'delete-service') {
+            excluirServico(serviceId);
+          }
+        });
+      }
+
+      const listaPedidosEl = document.getElementById('listaPedidosRecebidos');
+      if (listaPedidosEl) {
+        listaPedidosEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const action = btn.dataset.action;
+          const orderId = Number(btn.dataset.orderId);
+          const reviewId = Number(btn.dataset.reviewId);
+          if (action === 'status' && Number.isFinite(orderId) && orderId > 0) {
+            alterarStatusPedido(orderId, btn.dataset.status || '');
+          } else if (action === 'motivo' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalMotivoPedido(orderId);
+          } else if (action === 'pin' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalPinExecucao(orderId);
+          } else if (action === 'chat' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalChat(orderId, btn.dataset.orderStatus || '');
+          } else if (action === 'sos' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalSos(orderId);
+          } else if (action === 'disputa' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalDisputa(orderId);
+          } else if (action === 'avaliar' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalAvaliar(orderId);
+          } else if (action === 'ver-reviews' && Number.isFinite(orderId) && orderId > 0) {
+            abrirModalVerReviewsPrestador(orderId);
+          } else if (action === 'review-reply' && Number.isFinite(reviewId) && reviewId > 0) {
+            abrirModalReviewAcao(reviewId, 'reply');
+          } else if (action === 'review-contest' && Number.isFinite(reviewId) && reviewId > 0) {
+            abrirModalReviewAcao(reviewId, 'contest');
+          }
+        });
+      }
+
+      const verReviewsEl = document.getElementById('verReviewsPrestadorConteudo');
+      if (verReviewsEl) {
+        verReviewsEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action][data-review-id]');
+          if (!btn || btn.disabled) return;
+          const reviewId = Number(btn.dataset.reviewId);
+          if (!Number.isFinite(reviewId) || reviewId <= 0) return;
+          const action = btn.dataset.action;
+          if (action === 'modal-review-reply') {
+            fecharModalVerReviewsPrestador();
+            abrirModalReviewAcao(reviewId, 'reply');
+          } else if (action === 'modal-review-contest') {
+            fecharModalVerReviewsPrestador();
+            abrirModalReviewAcao(reviewId, 'contest');
+          }
+        });
+      }
+
       carregarPainel();
       // Polling em segundo plano para novos chamados a cada 20 segundos
       setInterval(carregarPedidos, 20000);

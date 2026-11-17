@@ -93,9 +93,7 @@ def _init_marketplace_app():
         @err_app.route('/', methods=['GET', 'POST'])
         def vercel_import_error(subpath=''):
             return jsonify({
-                'error': 'Falha na inicialização da função Serverless no Vercel',
-                'detail': err_detail,
-                'traceback': err_tb
+                'error': 'Erro interno ao inicializar o serviço.'
             }), 500
         return err_app
 

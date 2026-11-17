@@ -478,6 +478,7 @@ CREATE TABLE IF NOT EXISTS users (
     registro_profissional TEXT,
     cpf TEXT,
     status_conta TEXT DEFAULT 'ativo',
+    session_version INTEGER DEFAULT 1,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -695,6 +696,7 @@ CREATE TABLE IF NOT EXISTS users (
     registro_profissional TEXT,
     cpf TEXT,
     status_conta TEXT DEFAULT 'ativo',
+    session_version INTEGER DEFAULT 1,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -997,6 +999,7 @@ def _ensure_columns(conn, cursor, engine):
             ('registro_profissional', 'TEXT'),
             ('cpf', 'TEXT'),
             ('status_conta', "TEXT DEFAULT 'ativo'"),
+            ('session_version', 'INTEGER DEFAULT 1'),
         ],
         'orders': [
             ('complemento_cliente', 'TEXT'),
@@ -1182,42 +1185,43 @@ def init_db():
         # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
         run_migrations(conn=conn, dry_run=False)
 
-        # Seed inicial e sincronização completa dos prestadores
-        cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
-        if not cursor.fetchone():
-            pwd_hash = generate_password_hash('123456')
-            cursor.execute('''
-                INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng)
-                VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                'Ana Paula Silva', 'cliente@pertoja.com', pwd_hash, '(11) 98765-4321',
-                'Cliente residencial em busca de serviços locais de alta qualidade.',
-                '01402-000', 'Alameda Santos', '800', 'Cerqueira César', 'São Paulo', 'SP',
-                -23.5680, -46.6530
-            ))
-            conn.commit()
-
         # Remove cache legado (podia associar endereço completo ao centro da cidade/bairro)
         cursor.execute("DELETE FROM geocode_cache WHERE origem IN ('nominatim', 'seed')")
         conn.commit()
 
-        sincronizar_todos_prestadores(conn)
+        # Seed inicial e sincronização completa dos prestadores (condicionado a ENABLE_DEMO_SEED)
+        if os.environ.get('ENABLE_DEMO_SEED', '1') != '0':
+            cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
+            if not cursor.fetchone():
+                pwd_hash = generate_password_hash('123456')
+                cursor.execute('''
+                    INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng)
+                    VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    'Ana Paula Silva', 'cliente@pertoja.com', pwd_hash, '(11) 98765-4321',
+                    'Cliente residencial em busca de serviços locais de alta qualidade.',
+                    '01402-000', 'Alameda Santos', '800', 'Cerqueira César', 'São Paulo', 'SP',
+                    -23.5680, -46.6530
+                ))
+                conn.commit()
 
-        # Migração defensiva ET-09: garante Tier 2 e registro profissional para prestadores seed de Elétrica/Encanamento
-        cursor.execute('''
-            UPDATE users
-            SET kyc_tier = 2,
-                registro_profissional = COALESCE(registro_profissional, 'CFT/CREA-SEED')
-            WHERE tipo = 'prestador'
-              AND email LIKE '%@pertoja.com'
-              AND COALESCE(kyc_tier, 1) < 2
-              AND EXISTS (
-                  SELECT 1 FROM services s
-                  WHERE s.prestador_id = users.id
-                    AND s.categoria IN ('Elétrica', 'Encanamento')
-              )
-        ''')
-        conn.commit()
+            sincronizar_todos_prestadores(conn)
+
+            # Migração defensiva ET-09: garante Tier 2 e registro profissional para prestadores seed de Elétrica/Encanamento
+            cursor.execute('''
+                UPDATE users
+                SET kyc_tier = 2,
+                    registro_profissional = COALESCE(registro_profissional, 'CFT/CREA-SEED')
+                WHERE tipo = 'prestador'
+                  AND email LIKE '%@pertoja.com'
+                  AND COALESCE(kyc_tier, 1) < 2
+                  AND EXISTS (
+                      SELECT 1 FROM services s
+                      WHERE s.prestador_id = users.id
+                        AND s.categoria IN ('Elétrica', 'Encanamento')
+                  )
+            ''')
+            conn.commit()
     finally:
         if engine == 'postgresql':
             try:

@@ -410,7 +410,7 @@
         <input type="hidden" id="sosClienteOrderId">
         <div class="campo-form">
           <label for="sosClienteDescricao" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva o ocorrido</label>
-          <textarea id="sosClienteDescricao" rows="3" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança..."></textarea>
+          <textarea id="sosClienteDescricao" rows="3" required minlength="10" class="input-form text-xs" placeholder="Informe detalhes para registro de segurança (mínimo 10 caracteres)..."></textarea>
         </div>
         <label for="sosClienteDenunciar" class="flex items-start gap-2 text-xs text-perto-ink cursor-pointer">
           <input type="checkbox" id="sosClienteDenunciar" class="mt-0.5 rounded text-perto-sea focus:ring-perto-sea">
@@ -806,9 +806,9 @@
             ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
             : '';
           const podeChat = ['confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(st);
-          const podeSos = ['em_transito', 'em_execucao'].includes(st);
+          const podeSos = ['confirmado', 'em_transito', 'em_execucao'].includes(st);
           const podeConcluir = st === 'em_execucao';
-          const podeDisputa = (st === 'em_execucao' || st === 'finalizado') && !emDisputa;
+          const podeDisputa = ['confirmado', 'em_transito', 'em_execucao', 'finalizado'].includes(st) && !emDisputa;
           const podeVerReviews = st === 'finalizado';
 
           return `
@@ -1137,11 +1137,18 @@
         const minha = data.minha_avaliacao;
         const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_prestador || data.review_recebida || null;
         const oculta = Boolean(data.oculta_double_blind);
+        const renderStatusModeracao = (stMod) => {
+          const mod = String(stMod || '').trim();
+          if (!mod || mod.toLowerCase() === 'publicada') return '';
+          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">Status: ${escapeHtml(mod)}</div>`;
+        };
         const minhaHtml = minha
           ? `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
               <div class="font-bold text-perto-ink mb-1">Sua avaliação (${escapeHtml(String(minha.nota || 5))} ★)</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
+              ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
+              ${renderStatusModeracao(minha.status_moderacao)}
             </div>
           `
           : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não enviou sua avaliação para este pedido.</div>`;
@@ -1156,16 +1163,22 @@
           `;
         } else if (contraparte) {
           const revId = Number(contraparte.id || 0);
+          const statusModContra = String(contraparte.status_moderacao || '').toLowerCase();
+          const jaContestada = Boolean(contraparte.contestada) || ['contestada', 'em_revisao'].includes(statusModContra);
           contraHtml = `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
               <div class="font-bold text-perto-ink">Avaliação do profissional (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
-              ${revId > 0 ? `
+              ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
+              ${renderStatusModeracao(contraparte.status_moderacao)}
+              ${revId > 0 ? (jaContestada
+                ? `<div class="pt-2 border-t border-perto-road text-xs font-semibold text-perto-ink/70">Avaliação já contestada e em análise de moderação.</div>`
+                : `
                 <form id="formContestarReviewCliente" class="pt-2 border-t border-perto-road flex gap-2">
                   <input type="text" id="inputMotivoContestReviewCliente" required minlength="3" placeholder="Motivo para contestar avaliação..." class="input-form text-xs flex-1">
-                  <button type="submit" class="btn2 px-3 py-1.5 rounded-full text-xs font-bold shrink-0">Contestar</button>
+                  <button type="submit" id="btnSubmitContestReviewCliente" class="btn2 px-3 py-1.5 rounded-full text-xs font-bold shrink-0">Contestar</button>
                 </form>
-              ` : ''}
+              `) : ''}
             </div>
           `;
         } else {
@@ -1179,6 +1192,8 @@
             ev.preventDefault();
             const motivo = (document.getElementById('inputMotivoContestReviewCliente').value || '').trim();
             if (!motivo) return;
+            const btnSubmit = document.getElementById('btnSubmitContestReviewCliente');
+            if (btnSubmit) btnSubmit.disabled = true;
             try {
               const r = await fetch(`/api/reviews/${contraparte.id}/contest`, {
                 method: 'POST',
@@ -1194,6 +1209,8 @@
               }
             } catch (err) {
               toast('Erro de comunicação ao contestar avaliação.');
+            } finally {
+              if (btnSubmit) btnSubmit.disabled = false;
             }
           };
         }
@@ -1249,11 +1266,21 @@
     document.getElementById('formSosCliente').onsubmit = async (e) => {
       e.preventDefault();
       const orderId = document.getElementById('sosClienteOrderId').value;
+      const descEl = document.getElementById('sosClienteDescricao');
+      const descricao = descEl.value.trim();
+      if (descricao.length < 10) {
+        toast('Descreva a ocorrência com pelo menos 10 caracteres.');
+        descEl.focus();
+        return;
+      }
+      const denunciar_contraparte = Boolean(document.getElementById('sosClienteDenunciar').checked);
+      if (denunciar_contraparte) {
+        const ok = window.confirm('ATENÇÃO: Denunciar a contraparte acionará suspensão cautelar imediata da conta denunciada. Deseja confirmar esta denúncia?');
+        if (!ok) return;
+      }
       const btn = document.getElementById('btnConfirmarSosCliente');
       btn.disabled = true;
       try {
-        const descricao = document.getElementById('sosClienteDescricao').value.trim();
-        const denunciar_contraparte = Boolean(document.getElementById('sosClienteDenunciar').checked);
         const res = await fetch(`/api/orders/${orderId}/sos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1309,6 +1336,10 @@
         const data = await res.json();
         if (res.ok) {
           try {
+            ['pertoja_pending_order', 'pertoja_active_order_id', 'pertoja_search_loc'].forEach((k) => {
+              localStorage.removeItem(k);
+              sessionStorage.removeItem(k);
+            });
             localStorage.clear();
             sessionStorage.clear();
           } catch (e) {}

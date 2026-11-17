@@ -55,6 +55,10 @@ async function atualizarNavegacao() {
       try {
         await fetch('/api/auth/logout', { method: 'POST' });
       } catch (err) {}
+      ['pertoja_pending_order', 'pertoja_active_order_id', 'pertoja_search_loc'].forEach((k) => {
+        try { localStorage.removeItem(k); } catch (_) {}
+        try { sessionStorage.removeItem(k); } catch (_) {}
+      });
       window.location.href = 'index.html';
     };
     nav.appendChild(logoutLink);
