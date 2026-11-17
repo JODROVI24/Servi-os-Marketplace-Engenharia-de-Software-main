@@ -881,6 +881,94 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- === Payment & Admin (Migration 007) ===
+CREATE TABLE IF NOT EXISTS payment_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    gateway_token TEXT NOT NULL UNIQUE,
+    brand TEXT,
+    last4 TEXT,
+    exp_month INTEGER,
+    exp_year INTEGER,
+    is_default INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (user_id, gateway_token)
+);
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    payment_method TEXT NOT NULL CHECK(payment_method IN ('cartao', 'boleto', 'pix', 'transferencia')),
+    payment_token_id INTEGER,
+    config TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (payment_token_id) REFERENCES payment_tokens(id) ON DELETE SET NULL,
+    UNIQUE (user_id, payment_method)
+);
+
+CREATE TABLE IF NOT EXISTS payment_webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('stripe', 'pagseguro', 'mercadopago')),
+    endpoint_name TEXT NOT NULL,
+    signing_secret TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_hash TEXT NOT NULL UNIQUE,
+    controller TEXT NOT NULL,
+    action TEXT NOT NULL,
+    user_id INTEGER,
+    response_data TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    payment_id INTEGER NOT NULL,
+    method TEXT NOT NULL CHECK(method IN ('cartao', 'boleto', 'pix', 'transferencia')),
+    gateway TEXT,
+    gateway_payment_id TEXT,
+    gateway_status TEXT,
+    gateway_event TEXT,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'authorized', 'captured', 'failed', 'refunded', 'disputed')),
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'BRL',
+    fee REAL DEFAULT 0,
+    net_amount REAL NOT NULL,
+    idempotency_key_id INTEGER,
+    source_ip TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (payment_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (idempotency_key_id) REFERENCES idempotency_keys(id) ON DELETE SET NULL,
+    CHECK (amount >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS payment_payment_refs (
+    payment_id INTEGER PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    payment_method TEXT,
+    status_initial TEXT,
+    status_final TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (payment_id) REFERENCES payment_transactions(id) ON DELETE CASCADE
+);
 '''
 
 
