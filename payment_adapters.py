@@ -37,7 +37,20 @@ def verify_webhook_signature(payload, signature, secret):
     if not secret or not signature:
         return False
     expected = create_hmac_signature(payload, secret)
-    return hmac.compare_digest(expected, signature)
+    if expected and hmac.compare_digest(expected, signature):
+        return True
+    # Suporte ao formato Stripe "t=<timestamp>,v1=<hmac>"
+    parts = {}
+    for item in str(signature).split(','):
+        if '=' in item:
+            k, v = item.split('=', 1)
+            parts[k.strip()] = v.strip()
+    if 't' in parts and 'v1' in parts:
+        signed_payload = f"{parts['t']}.{payload}"
+        expected_v1 = create_hmac_signature(signed_payload, secret)
+        if expected_v1 and hmac.compare_digest(expected_v1, parts['v1']):
+            return True
+    return False
 
 
 class GatewayAdapter:
@@ -76,8 +89,8 @@ class StripeAdapter(GatewayAdapter):
     """Stripe payment gateway adapter."""
 
     def __init__(self):
-        self.secret_key = STRIPE_SECRET_KEY
-        self.webhook_secret = STRIPE_WEBHOOK_SECRET
+        self.secret_key = os.environ.get('STRIPE_SECRET_KEY', '') or STRIPE_SECRET_KEY
+        self.webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '') or STRIPE_WEBHOOK_SECRET
         self.base_url = 'https://api.stripe.com/v1'
         self.charges_url = f'{self.base_url}/charges'
 
@@ -201,8 +214,8 @@ class StripeAdapter(GatewayAdapter):
 
     def validate_webhook(self, payload, signature):
         """Validate Stripe webhook signature."""
-        if not self.webhook_secret:
-            return True  # Skip verification in dev mode
+        if not self.webhook_secret or not signature:
+            return False
         try:
             return verify_webhook_signature(payload, signature, self.webhook_secret)
         except Exception:
@@ -215,7 +228,7 @@ class StripeAdapter(GatewayAdapter):
             'gateway_id': gateway_response.get('id'),
             'status': gateway_response.get('status'),
             'created': gateway_response.get('created'),
-            'success': gateway_response.get('status') == 'chargeable'
+            'success': gateway_response.get('status') in ('succeeded', 'paid', 'chargeable')
         }
 
 
@@ -223,8 +236,9 @@ class PagSeguroAdapter(GatewayAdapter):
     """PagSeguro payment gateway adapter."""
 
     def __init__(self):
-        self.token = PAGSEGURO_TOKEN
-        self.client_id = PAGSEGURO_CLIENT_ID
+        self.token = os.environ.get('PAGSEGURO_TOKEN', '') or PAGSEGURO_TOKEN
+        self.client_id = os.environ.get('PAGSEGURO_CLIENT_ID', '') or PAGSEGURO_CLIENT_ID
+        self.webhook_secret = os.environ.get('PAGSEGURO_WEBHOOK_SECRET', '')
         self.base_url = 'https://api.pagseguro.com/v2'
 
     def create_charge(self, user_id, amount, currency='BRL', metadata=None):
@@ -237,7 +251,7 @@ class PagSeguroAdapter(GatewayAdapter):
 
         headers = {
             'Content-Type': 'application/json',
-            'Authentication': f'Bearer {self.token}'
+            'Authorization': f'Bearer {self.token}'
         }
 
         payload = {
@@ -301,7 +315,7 @@ class PagSeguroAdapter(GatewayAdapter):
 
         headers = {
             'Content-Type': 'application/json',
-            'Authentication': f'Bearer {self.token}'
+            'Authorization': f'Bearer {self.token}'
         }
 
         try:
@@ -329,7 +343,7 @@ class PagSeguroAdapter(GatewayAdapter):
 
         headers = {
             'Content-Type': 'application/json',
-            'Authentication': f'Bearer {self.token}'
+            'Authorization': f'Bearer {self.token}'
         }
 
         data = {'amount': amount} if amount else {}
@@ -352,12 +366,14 @@ class PagSeguroAdapter(GatewayAdapter):
             return {'error': str(e), 'code': 'UNKNOWN_ERROR'}
 
     def validate_webhook(self, payload, signature):
-        """Validate PagSeguro webhook signature."""
-        # PagSeguro uses a different signature scheme (X-Signature header)
-        # This is a simplified version; production should verify against PagSeguro docs
-        if not self.client_id:
-            return True
-        return True  # Placeholder - implement full verification in production
+        """Validate PagSeguro webhook signature using HMAC-SHA256."""
+        secret = self.webhook_secret or self.token
+        if not secret or not signature:
+            return False
+        try:
+            return verify_webhook_signature(payload, signature, secret)
+        except Exception:
+            return False
 
     def format_gateway_response(self, gateway_response):
         """Format response for internal use."""
@@ -379,7 +395,8 @@ class MercadoPagoAdapter(GatewayAdapter):
     """
 
     def __init__(self):
-        self.access_token = MERCADOPAGO_ACCESS_TOKEN
+        self.access_token = os.environ.get('MERCADOPAGO_ACCESS_TOKEN', '') or MERCADOPAGO_ACCESS_TOKEN
+        self.webhook_secret = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET', '')
         self.base_url = 'https://api.mercadopago.com/v1'
         # Checkout Pro Orders API endpoint
         self.orders_url = 'https://api.mercadopago.com/v1/orders'
@@ -620,23 +637,24 @@ class MercadoPagoAdapter(GatewayAdapter):
             return {'error': str(e), 'code': 'UNKNOWN_ERROR'}
 
     def validate_webhook(self, payload, signature):
-        """Validate Mercado Pago webhook signature.
-
-        Mercado Pago uses the X-Signature header with the format:
-        'type=NOTIFICATION_TYPE, timestamp=TIMESTAMP, token=TOKEN, signature=SIGNATURE'
-
-        Args:
-            payload: The raw webhook payload.
-            signature: The X-Signature header value.
-
-        Returns:
-            bool: True if valid, False otherwise.
-        """
-        if not self.access_token:
-            return True  # Skip verification in dev mode
-        # Placeholder - implement full verification against Mercado Pago docs
-        # in production (see https://www.mercadopago.com.br/developers/pt/docs/notifications/payment/notifications)
-        return True
+        """Validate Mercado Pago webhook signature using HMAC-SHA256."""
+        secret = self.webhook_secret or self.access_token
+        if not secret or not signature:
+            return False
+        try:
+            if verify_webhook_signature(payload, signature, secret):
+                return True
+            # Formato X-Signature do Mercado Pago: ts=...,v1=...
+            parts = {}
+            for item in str(signature).split(','):
+                if '=' in item:
+                    k, v = item.split('=', 1)
+                    parts[k.strip()] = v.strip()
+            if 'v1' in parts and verify_webhook_signature(payload, parts['v1'], secret):
+                return True
+            return False
+        except Exception:
+            return False
 
     def format_gateway_response(self, gateway_response):
         """Format response for internal use."""
@@ -656,18 +674,15 @@ class MercadoPagoAdapter(GatewayAdapter):
 GATEWAY_ADAPTERS = {}
 
 def get_gateway_adapter(gateway='stripe'):
-    """Factory to get payment gateway adapter."""
-    if gateway not in GATEWAY_ADAPTERS:
-        if gateway == 'stripe':
-            GATEWAY_ADAPTERS[gateway] = StripeAdapter()
-        elif gateway == 'pagseguro':
-            GATEWAY_ADAPTERS[gateway] = PagSeguroAdapter()
-        elif gateway == 'mercadopago':
-            GATEWAY_ADAPTERS[gateway] = MercadoPagoAdapter()
-        else:
-            raise ValueError(f'Unknown gateway: {gateway}')
-    
-    return GATEWAY_ADAPTERS[gateway]
+    """Factory to get a fresh payment gateway adapter instance."""
+    if gateway == 'stripe':
+        return StripeAdapter()
+    elif gateway == 'pagseguro':
+        return PagSeguroAdapter()
+    elif gateway == 'mercadopago':
+        return MercadoPagoAdapter()
+    else:
+        raise ValueError(f'Unknown gateway: {gateway}')
 
 
 # Convenience functions for direct use

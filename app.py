@@ -2,14 +2,17 @@ import os
 import sys
 import re
 import math
+import csv
+import io
 import secrets
 import hashlib
 import hmac
+import requests
 from flask import Flask, request, jsonify, session, send_from_directory, make_response, Response
 import json
 import gzip
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlparse
 from payment_adapters import get_gateway_adapter
@@ -159,7 +162,7 @@ def add_performance_and_security_headers(response):
         response.headers['Cache-Control'] = 'public, max-age=604800, stale-while-revalidate=86400'
     elif path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    elif any(seg in path for seg in ('/portal-cliente', '/portal-prestador', '/login', '/cadastro')):
+    elif any(seg in path for seg in ('/portal-cliente', '/portal-prestador', '/login', '/cadastro', '/admin')):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     else:
         response.headers['Cache-Control'] = 'private, no-cache, must-revalidate'
@@ -2864,19 +2867,49 @@ def order_messages(order_id):
 
 # =================== Endpoints de Pagamento (Frente A) ===================
 
-def require_role(role):
-    """Decorator para rotas que exigem papel (role) específico do usuário."""
+ALLOWED_PAYMENT_METHODS = ('cartao', 'boleto', 'pix', 'transferencia')
+ALLOWED_PAYMENT_GATEWAYS = ('stripe', 'pagseguro', 'mercadopago')
+
+
+def require_role(*roles):
+    """Decorator para rotas que exigem um dos papéis (roles) especificados."""
+    allowed = {str(r).strip().lower() for r in roles}
+
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             user = get_current_user()
             if not user:
                 return jsonify({'error': 'Autenticação obrigatória.'}), 401
-            if role == 'admin' and user.get('tipo') != 'admin':
+            blocked = _require_active_account(user)
+            if blocked is not None:
+                return blocked
+            user_tipo = str(_row_get(user, 'tipo', '')).strip().lower()
+            if allowed and user_tipo not in allowed:
                 return jsonify({'error': 'Acesso restrito a administradores.'}), 403
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+def _safe_order_clause(allowed_columns, default_column, default_dir='DESC'):
+    """Resolve ORDER BY seguro via whitelist explícita de colunas e direção."""
+    req_col = (request.args.get('order_by') or '').strip().lower()
+    req_dir = (request.args.get('order_dir') or default_dir).strip().upper()
+    col_sql = allowed_columns.get(req_col, default_column)
+    dir_sql = 'ASC' if req_dir == 'ASC' else 'DESC'
+    return f" ORDER BY {col_sql} {dir_sql} "
+
+
+def _sanitize_csv_cell(val):
+    """Neutraliza CSV/Formula Injection (CWE-1236) ao exportar relatórios."""
+    if val is None:
+        return ''
+    s = str(val)
+    if s and s.lstrip()[0:1] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + s
+    return s
+
 
 @app.route('/api/payments', methods=['POST'])
 @rate_limit(20, 60)
@@ -2886,89 +2919,177 @@ def create_payment():
     if not user:
         return jsonify({'error': 'Autenticação obrigatória.'}), 401
 
-    if user['tipo'] != 'cliente':
+    blocked = _require_active_account(user)
+    if blocked is not None:
+        return blocked
+
+    if _row_get(user, 'tipo') != 'cliente':
         return jsonify({'error': 'Apenas clientes podem realizar pagamentos.', 'code': 'FORBIDDEN'}), 403
 
     data = request.get_json(silent=True) or {}
-    amount = data.get('amount')
-    method = data.get('method', 'pix')
-    gateway = data.get('gateway', 'stripe')
-    idempotency_key = data.get('idempotency_key')
-
-    if amount is None or amount <= 0:
+    amount = parse_positive_price(data.get('amount'))
+    if amount is None:
         return jsonify({'error': 'Valor de pagamento inválido.'}), 400
+
+    method = str(data.get('method') or 'pix').strip().lower()
+    if method not in ALLOWED_PAYMENT_METHODS:
+        return jsonify({'error': 'Método de pagamento inválido.'}), 400
+
+    gateway = str(data.get('gateway') or 'stripe').strip().lower()
+    if gateway not in ALLOWED_PAYMENT_GATEWAYS:
+        return jsonify({'error': 'Gateway de pagamento inválido.'}), 400
+
+    raw_order_id = data.get('order_id')
+    order_id = None
+    if raw_order_id is not None and raw_order_id != '':
+        try:
+            order_id = int(raw_order_id)
+            if order_id <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return jsonify({'error': 'order_id inválido.'}), 400
+
+    idempotency_key = (
+        request.headers.get('Idempotency-Key')
+        or data.get('idempotency_key')
+        or ''
+    )
+    idempotency_key = str(idempotency_key).strip() or None
 
     conn = get_db_connection()
     try:
-        # Generate idempotency key if not provided
+        if order_id is not None:
+            order = conn.execute('SELECT id, cliente_id FROM orders WHERE id = ?', (order_id,)).fetchone()
+            if not order:
+                return jsonify({'error': 'Pedido não encontrado.'}), 404
+            if order['cliente_id'] != user['id']:
+                return jsonify({'error': 'Sem permissão para pagar este pedido.'}), 403
+
+        now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_iso = now_dt.strftime('%Y-%m-%d %H:%M:%S')
+        expires_iso = (now_dt + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+
         if idempotency_key:
-            key_hash = hashlib.sha256(idempotency_key.encode('utf-8')).hexdigest()
+            key_hash = hashlib.sha256(f"{user['id']}:{idempotency_key}".encode('utf-8')).hexdigest()
+            existing = conn.execute(
+                'SELECT response_data FROM idempotency_keys WHERE request_hash = ? AND expires_at > ?',
+                (key_hash, now_iso)
+            ).fetchone()
+            if existing and existing['response_data']:
+                return jsonify(json.loads(existing['response_data'])), 200
         else:
-            key_hash = secrets.token_urlsafe(32)
-            idempotency_key = key_hash
+            key_hash = hashlib.sha256(f"{user['id']}:{secrets.token_hex(24)}".encode('utf-8')).hexdigest()
 
-        # Validate idempotency
-        existing = conn.execute(
-            'SELECT response_data FROM idempotency_keys WHERE request_hash = ? AND expires_at > ?',
-            (key_hash, int(time.time()) + 3600)
-        ).fetchone()
-        if existing:
-            return jsonify(json.loads(existing['response_data'])), 200
-
-        # Create payment records
         cur = conn.cursor()
-        cur.execute('''
-            INSERT INTO payment_tokens (user_id, gateway_token, brand, last4, is_default, created_at)
-            VALUES (?, 'gateway_token_' + ?, 'credit_card', '4242', 1, CURRENT_TIMESTAMP)
-        ''', (user['id'], secrets.token_urlsafe(16)[:4]))
-        token_id = cur.lastrowid
+        token_id = None
+        if method == 'cartao' or data.get('gateway_token'):
+            gw_token = str(data.get('gateway_token') or f'tok_{secrets.token_hex(12)}').strip()
+            brand = str(data.get('brand') or 'card').strip()[:30]
+            raw_last4 = re.sub(r'\D', '', str(data.get('last4') or ''))
+            last4 = raw_last4[-4:] if len(raw_last4) >= 4 else None
+            cur.execute('''
+                INSERT INTO payment_tokens (user_id, gateway_token, brand, last4, is_default, created_at)
+                VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT (gateway_token) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+            ''', (user['id'], gw_token, brand, last4))
+            if cur.lastrowid:
+                token_id = cur.lastrowid
+            else:
+                tok_row = conn.execute('SELECT id FROM payment_tokens WHERE gateway_token = ?', (gw_token,)).fetchone()
+                token_id = tok_row['id'] if tok_row else None
 
         cur.execute('''
-            INSERT INTO payment_methods (user_id, payment_method, payment_token_id, is_active, created_at)
-            VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+            INSERT INTO payment_methods (user_id, payment_method, payment_token_id, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, payment_method) DO UPDATE SET
+                payment_token_id = COALESCE(excluded.payment_token_id, payment_methods.payment_token_id),
+                is_active = 1,
+                updated_at = CURRENT_TIMESTAMP
         ''', (user['id'], method, token_id))
-        method_id = cur.lastrowid
 
-        # Process payment through gateway
-        from payment_adapters import get_gateway_adapter, create_charge
         adapter = get_gateway_adapter(gateway)
-        gw_response = adapter.create_charge(user['id'], amount, method=method)
+        gw_response = adapter.create_charge(
+            user['id'],
+            amount,
+            metadata={'method': method, 'order_id': order_id}
+        )
 
-        # Create payment transaction record
-        status = gw_response.get('status', 'pending') if isinstance(gw_response, dict) else 'pending'
-        amount_cents = int(round(amount * 100))
+        if isinstance(gw_response, dict) and gw_response.get('code') == 'MISSING_CREDENTIALS':
+            if os.environ.get('ALLOW_SANDBOX_PAYMENTS', '1') == '0':
+                conn.rollback()
+                return jsonify({'error': 'Gateway de pagamento não configurado.'}), 503
+            gw_response = {
+                'id': f'sandbox_{gateway}_{secrets.token_hex(8)}',
+                'status': 'captured' if method == 'cartao' else 'pending',
+                'sandbox': True,
+            }
+        elif isinstance(gw_response, dict) and gw_response.get('error'):
+            conn.rollback()
+            return jsonify({'error': 'Falha na comunicação com o gateway de pagamento.'}), 502
+
+        raw_status = (gw_response.get('status') if isinstance(gw_response, dict) else None) or 'pending'
+        status_map = {
+            'succeeded': 'captured',
+            'approved': 'captured',
+            'paid': 'captured',
+            'captured': 'captured',
+            'authorized': 'authorized',
+            'failed': 'failed',
+            'refunded': 'refunded',
+        }
+        status = status_map.get(str(raw_status).lower(), 'pending')
+        gateway_payment_id = str(gw_response.get('id') or '') if isinstance(gw_response, dict) else ''
+        fee = round(amount * 0.08, 2)
+        net_amount = round(amount - fee, 2)
 
         cur.execute('''
-            INSERT INTO payment_transactions (order_id, payment_id, method, gateway, status, amount, net_amount, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (None, token_id, method, gateway, status, amount_cents, amount_cents))
-        txn_id = cur.lastrowid
+            INSERT INTO idempotency_keys (request_hash, controller, action, user_id, response_data, expires_at)
+            VALUES (?, 'payments', 'create', ?, NULL, ?)
+            ON CONFLICT (request_hash) DO UPDATE SET expires_at = excluded.expires_at
+        ''', (key_hash, user['id'], expires_iso))
+        idem_id = cur.lastrowid
+        if not idem_id:
+            idem_row = conn.execute('SELECT id FROM idempotency_keys WHERE request_hash = ?', (key_hash,)).fetchone()
+            idem_id = idem_row['id'] if idem_row else None
 
-        conn.commit()
+        cur.execute('''
+            INSERT INTO payment_transactions (
+                user_id, order_id, payment_id, method, gateway, gateway_payment_id,
+                gateway_status, status, amount, currency, fee, net_amount,
+                idempotency_key_id, source_ip, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'BRL', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ''', (
+            user['id'], order_id, token_id, method, gateway, gateway_payment_id or None,
+            raw_status, status, amount, fee, net_amount, idem_id, _hash_ip(_get_client_ip())
+        ))
+        txn_id = cur.lastrowid
 
         response_data = {
             'id': txn_id,
+            'order_id': order_id,
             'method': method,
             'gateway': gateway,
             'status': status,
             'amount': amount,
+            'fee': fee,
+            'net_amount': net_amount,
             'currency': 'BRL',
-            'gateway_id': gw_response.get('id') if isinstance(gw_response, dict) else None,
-            'success': status in ('captured', 'approved', 'paid')
+            'gateway_id': gateway_payment_id or None,
+            'success': status == 'captured'
         }
 
-        # Store idempotency response
-        cur.execute('''
-            INSERT INTO idempotency_keys (request_hash, controller, action, user_id, response_data, expires_at)
-            VALUES (?, 'payments', 'create', ?, ?, datetime('now', '+1 hour'))
-        ''', (key_hash, user['id'], json.dumps(response_data)))
+        cur.execute(
+            'UPDATE idempotency_keys SET response_data = ? WHERE request_hash = ?',
+            (json.dumps(response_data), key_hash)
+        )
         conn.commit()
-
         return jsonify(response_data), 201
 
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao processar pagamento.', 'details': str(e)}), 500
+        print(f"[create_payment] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao processar pagamento.'}), 500
     finally:
         conn.close()
 
@@ -2989,10 +3110,23 @@ def get_payment_status_route(payment_id):
         if not txn:
             return jsonify({'error': 'Transação não encontrada.'}), 404
 
-        if txn['user_id'] not in (user['id'], user['tipo'] == 'prestador'):
+        is_admin = str(_row_get(user, 'tipo', '')).lower() == 'admin'
+        is_owner = _row_get(txn, 'user_id') == user['id']
+        is_order_party = False
+        order_id = _row_get(txn, 'order_id')
+        if order_id:
+            ord_row = conn.execute(
+                'SELECT cliente_id, prestador_id FROM orders WHERE id = ?', (order_id,)
+            ).fetchone()
+            if ord_row and user['id'] in (ord_row['cliente_id'], ord_row['prestador_id']):
+                is_order_party = True
+
+        if not (is_admin or is_owner or is_order_party):
             return jsonify({'error': 'Sem permissão para consultar esta transação.'}), 403
 
-        return jsonify(dict(txn)), 200
+        result = dict(txn)
+        result.pop('source_ip', None)
+        return jsonify(result), 200
     finally:
         conn.close()
 
@@ -3000,15 +3134,26 @@ def get_payment_status_route(payment_id):
 @app.route('/api/payments/<int:payment_id>/refund', methods=['POST'])
 @rate_limit(10, 60)
 def refund_payment_route(payment_id):
-    """Reembolsa um pagamento."""
+    """Reembolsa um pagamento (restrito ao prestador do pedido ou admin)."""
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Autenticação obrigatória.'}), 401
 
-    if user['tipo'] != 'prestador':
-        return jsonify({'error': 'Apenas prestadores podem reembolsar.'}), 403
+    blocked = _require_active_account(user)
+    if blocked is not None:
+        return blocked
 
-    amount = request.json.get('amount') if request.json else None
+    user_tipo = str(_row_get(user, 'tipo', '')).lower()
+    if user_tipo not in ('prestador', 'admin'):
+        return jsonify({'error': 'Apenas prestadores autorizados ou administradores podem reembolsar.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw_amount = data.get('amount')
+    refund_amount = None
+    if raw_amount is not None:
+        refund_amount = parse_positive_price(raw_amount)
+        if refund_amount is None:
+            return jsonify({'error': 'Valor de reembolso inválido.'}), 400
 
     conn = get_db_connection()
     try:
@@ -3018,14 +3163,51 @@ def refund_payment_route(payment_id):
         if not txn:
             return jsonify({'error': 'Transação não encontrada.'}), 404
 
+        order_id = _row_get(txn, 'order_id')
+        if user_tipo != 'admin':
+            if not order_id:
+                return jsonify({'error': 'Sem permissão para reembolsar esta transação.'}), 403
+            ord_row = conn.execute('SELECT prestador_id FROM orders WHERE id = ?', (order_id,)).fetchone()
+            if not ord_row or ord_row['prestador_id'] != user['id']:
+                return jsonify({'error': 'Sem permissão para reembolsar esta transação.'}), 403
+
         if txn['status'] not in ('captured', 'completed'):
             return jsonify({'error': 'Pagamento não está capturado para reembolso.'}), 400
 
+        if refund_amount is not None and refund_amount > float(txn['amount'] or 0):
+            return jsonify({'error': 'Valor de reembolso superior ao valor pago.'}), 400
+
+        gw_id = _row_get(txn, 'gateway_payment_id')
+        gateway_name = _row_get(txn, 'gateway')
+        if gw_id and not str(gw_id).startswith('sandbox_') and gateway_name in ALLOWED_PAYMENT_GATEWAYS:
+            adapter = get_gateway_adapter(gateway_name)
+            gw_res = adapter.refund(gw_id, int(round(refund_amount * 100)) if refund_amount else None)
+            if isinstance(gw_res, dict) and gw_res.get('error') and gw_res.get('code') != 'MISSING_CREDENTIALS':
+                return jsonify({'error': 'Falha ao solicitar estorno no gateway.'}), 502
+
+        cur = conn.cursor()
+        cur.execute('''
+            UPDATE payment_transactions
+            SET status = 'refunded', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status IN ('captured', 'completed')
+        ''', (payment_id,))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return jsonify({'error': 'Transação já reembolsada ou em estado incompatível.'}), 409
+
+        if order_id:
+            estorno_val = refund_amount if refund_amount is not None else float(txn['amount'] or 0)
+            _log_escrow_ledger(
+                conn, order_id, 'payment_refunded', estorno_val,
+                'estornado', f'Reembolso da transação #{payment_id}'
+            )
+
         conn.commit()
-        return jsonify({'message': 'Reembolso solicitado com sucesso.', 'payment_id': payment_id}), 200
-    except Exception as e:
+        return jsonify({'message': 'Reembolso registrado com sucesso.', 'payment_id': payment_id}), 200
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': str(e)}), 500
+        print(f"[refund_payment_route] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao processar reembolso.'}), 500
     finally:
         conn.close()
 
@@ -3033,39 +3215,69 @@ def refund_payment_route(payment_id):
 @app.route('/api/webhooks/payments', methods=['POST'])
 @rate_limit(60, 300)
 def payment_webhook():
-    """Webhook de pagamentos de gateways (Stripe, PagSeguro, Mercado Pago)."""
-    gateway = request.headers.get('X-Gateway', 'stripe')
-    payload = request.get_data(as_text=True)
-    signature = request.headers.get('X-Signature', '')
-    adapter = get_gateway_adapter(gateway)
+    """Webhook autenticado de pagamentos de gateways (Stripe, PagSeguro, Mercado Pago)."""
+    gateway = (request.headers.get('X-Gateway') or 'stripe').strip().lower()
+    if gateway not in ALLOWED_PAYMENT_GATEWAYS:
+        return jsonify({'error': 'Gateway inválido.'}), 400
 
+    payload = request.get_data(as_text=True) or ''
+    signature = (
+        request.headers.get('Stripe-Signature')
+        or request.headers.get('X-Signature')
+        or ''
+    ).strip()
+
+    adapter = get_gateway_adapter(gateway)
     if not adapter.validate_webhook(payload, signature):
         return jsonify({'error': 'Invalid signature'}), 401
 
     try:
-        data = request.get_json(silent=True) or {}
-        event = data.get('event', {})
-        event_type = data.get('type', data.get('event_type', 'payment.created'))
-        payment_id = str(data.get('id') or data.get('payment_id') or '')
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid payload'}), 400
 
-        if event_type == 'payment.created' or event_type == 'charge.succeeded':
+        event_type = str(data.get('type') or data.get('event_type') or 'payment.created')
+        gw_payment_id = None
+        if gateway == 'stripe':
+            gw_payment_id = data.get('data', {}).get('object', {}).get('id') or data.get('id')
+        else:
+            gw_payment_id = data.get('id') or data.get('payment_id')
+
+        new_gw_status = str(data.get('status') or '')
+        status_update = None
+        if event_type in ('payment.created', 'charge.succeeded', 'payment.captured') or new_gw_status.lower() in ('succeeded', 'approved', 'paid', 'captured'):
+            status_update = 'captured'
+        elif event_type in ('charge.refunded', 'payment.refunded') or new_gw_status.lower() == 'refunded':
+            status_update = 'refunded'
+        elif event_type in ('charge.failed', 'payment.failed') or new_gw_status.lower() in ('failed', 'rejected'):
+            status_update = 'failed'
+
+        if gw_payment_id:
             conn = get_db_connection()
             try:
-                # Extract transaction ID from webhook payload
-                txn_id = None
-                if gateway == 'stripe':
-                    txn_id = data.get('data', {}).get('object', {}).get('id')
-                elif gateway == 'pagseguro':
-                    txn_id = data.get('id')
-                elif gateway == 'mercadopago':
-                    txn_id = data.get('id')
-
-                if txn_id:
-                    conn.execute(
-                        'UPDATE payment_transactions SET gateway_status = ?, gateway_event = ? WHERE id = ?',
-                        (data.get('status'), event_type, txn_id)
+                gw_id_str = str(gw_payment_id).strip()
+                if status_update:
+                    cur = conn.execute(
+                        '''UPDATE payment_transactions
+                           SET gateway_status = ?, gateway_event = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                           WHERE gateway_payment_id = ?''',
+                        (new_gw_status or status_update, event_type, status_update, gw_id_str)
                     )
-                    conn.commit()
+                    if cur.rowcount == 0 and gw_id_str.isdigit():
+                        conn.execute(
+                            '''UPDATE payment_transactions
+                               SET gateway_status = ?, gateway_event = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                               WHERE id = ?''',
+                            (new_gw_status or status_update, event_type, status_update, int(gw_id_str))
+                        )
+                else:
+                    conn.execute(
+                        '''UPDATE payment_transactions
+                           SET gateway_status = ?, gateway_event = ?, updated_at = CURRENT_TIMESTAMP
+                           WHERE gateway_payment_id = ?''',
+                        (new_gw_status or None, event_type, gw_id_str)
+                    )
+                conn.commit()
             finally:
                 conn.close()
 
@@ -3084,6 +3296,19 @@ def admin_metrics():
     """Dashboard de métricas gerenciais."""
     conn = get_db_connection()
     try:
+        ord_bruto_row = conn.execute(
+            "SELECT COALESCE(SUM(preco_total), 0) AS s FROM orders WHERE pago = 1 OR status = 'finalizado'"
+        ).fetchone()
+        txn_row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS bruto, COALESCE(SUM(fee), 0) AS taxa, COALESCE(SUM(net_amount), 0) AS neto "
+            "FROM payment_transactions WHERE status = 'captured'"
+        ).fetchone()
+        bruto_txn = float(txn_row['bruto'] or 0.0) if txn_row else 0.0
+        bruto_orders = float(ord_bruto_row['s'] or 0.0) if ord_bruto_row else 0.0
+        bruto = bruto_txn if bruto_txn > 0 else bruto_orders
+        taxa = float(txn_row['taxa'] or 0.0) if bruto_txn > 0 else round(bruto * 0.08, 2)
+        neto = float(txn_row['neto'] or 0.0) if bruto_txn > 0 else round(bruto - taxa, 2)
+
         metrics = {
             'orders': {
                 'total': conn.execute('SELECT COUNT(*) as c FROM orders').fetchone()['c'],
@@ -3099,9 +3324,9 @@ def admin_metrics():
                 'reembolsos': conn.execute("SELECT COUNT(*) as c FROM payment_transactions WHERE status = 'refunded'").fetchone()['c']
             },
             'faturamento': {
-                'bruto': 0.0,
-                'neto': 0.0,
-                'taxa_plataforma': 0.0
+                'bruto': round(bruto, 2),
+                'neto': round(neto, 2),
+                'taxa_plataforma': round(taxa, 2)
             },
             'usuarios': {
                 'total': conn.execute('SELECT COUNT(*) as c FROM users').fetchone()['c'],
@@ -3119,35 +3344,47 @@ def admin_metrics():
 @require_role('admin')
 @rate_limit(10, 180)
 def admin_export():
-    """Exporta relatórios em CSV."""
+    """Exporta relatórios em CSV com prevenção contra CSV Injection."""
     report_type = request.args.get('type', 'orders')
-    format = request.args.get('format', 'csv')
+    fmt = request.args.get('format', 'csv')
 
-    if format != 'csv':
+    if fmt != 'csv':
         return jsonify({'error': 'Apenas CSV é suportado.'}), 400
 
     conn = get_db_connection()
     try:
         if report_type == 'orders':
-            rows = conn.execute('SELECT id, cliente_id, prestador_id, servico_id, status, preco_total, created_at FROM orders ORDER BY id DESC LIMIT 500').fetchall()
+            rows = conn.execute(
+                'SELECT id, cliente_id, prestador_id, servico_id, status, preco_total, criado_em AS created_at '
+                'FROM orders ORDER BY id DESC LIMIT 500'
+            ).fetchall()
             headers = ['id', 'cliente_id', 'prestador_id', 'servico_id', 'status', 'preco_total', 'created_at']
         elif report_type == 'payments':
-            rows = conn.execute('SELECT id, order_id, method, status, amount, created_at FROM payment_transactions ORDER BY id DESC LIMIT 500').fetchall()
+            rows = conn.execute(
+                'SELECT id, order_id, method, status, amount, created_at '
+                'FROM payment_transactions ORDER BY id DESC LIMIT 500'
+            ).fetchall()
             headers = ['id', 'order_id', 'method', 'status', 'amount', 'created_at']
         elif report_type == 'users':
-            rows = conn.execute('SELECT id, nome, email, tipo, status_conta, kyc_status FROM users ORDER BY id DESC LIMIT 500').fetchall()
+            rows = conn.execute(
+                'SELECT id, nome, email, tipo, status_conta, kyc_status FROM users ORDER BY id DESC LIMIT 500'
+            ).fetchall()
             headers = ['id', 'nome', 'email', 'tipo', 'status_conta', 'kyc_status']
+        elif report_type == 'metrics':
+            headers = ['metrica', 'valor']
+            rows = [
+                {'metrica': 'total_orders', 'valor': conn.execute('SELECT COUNT(*) AS c FROM orders').fetchone()['c']},
+                {'metrica': 'total_payments', 'valor': conn.execute('SELECT COUNT(*) AS c FROM payment_transactions').fetchone()['c']},
+                {'metrica': 'total_users', 'valor': conn.execute('SELECT COUNT(*) AS c FROM users').fetchone()['c']},
+            ]
         else:
             return jsonify({'error': 'Tipo de relatório inválido.'}), 400
 
-        # Convert to CSV
-        import csv
-        import io
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(headers)
         for row in rows:
-            writer.writerow([row.get(h, '') for h in headers])
+            writer.writerow([_sanitize_csv_cell(_row_get(row, h, '')) for h in headers])
 
         return Response(
             output.getvalue(),
@@ -3163,6 +3400,10 @@ def admin_export():
 @rate_limit(30, 180)
 def admin_get_users():
     """Lista usuários administrativos com filtros."""
+    allowed_order = {
+        'id': 'id', 'nome': 'nome', 'email': 'email',
+        'tipo': 'tipo', 'status_conta': 'status_conta', 'criado_em': 'criado_em'
+    }
     conn = get_db_connection()
     try:
         query = "SELECT id, nome, email, tipo, status_conta, kyc_status, criado_em FROM users WHERE 1=1"
@@ -3176,9 +3417,7 @@ def admin_get_users():
         if status:
             query += " AND status_conta = ?"
             params.append(status)
-        order_by = request.args.get('order_by', 'criado_em')
-        order_dir = request.args.get('order_dir', 'DESC')
-        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        query += _safe_order_clause(allowed_order, 'criado_em', 'DESC') + "LIMIT 100"
         rows = conn.execute(query, tuple(params)).fetchall()
         return jsonify([dict(r) for r in rows]), 200
     finally:
@@ -3195,8 +3434,8 @@ def admin_create_user():
         data = request.get_json(silent=True) or {}
         nome = str(data.get('nome') or '').strip()
         email = str(data.get('email') or '').strip().lower()
-        senha = str(data.get('senha') or '').strip()
-        tipo = str(data.get('tipo') or 'cliente').strip()
+        senha = str(data.get('senha') or '')
+        tipo = str(data.get('tipo') or 'cliente').strip().lower()
         telefone = str(data.get('telefone') or '').strip()
         bio = str(data.get('bio') or '').strip()
         cep = str(data.get('cep') or '').strip()
@@ -3205,13 +3444,16 @@ def admin_create_user():
         bairro = str(data.get('bairro') or '').strip()
         cidade = str(data.get('cidade') or '').strip()
         estado = str(data.get('estado') or '').strip()
-        lat = data.get('lat')
-        lng = data.get('lng')
+        lat = safe_coord(data.get('lat'), -23.5653, -90.0, 90.0)
+        lng = safe_coord(data.get('lng'), -46.6517, -180.0, 180.0)
 
         if not nome or not email or not senha:
             return jsonify({'error': 'Nome, email e senha são obrigatórios.'}), 400
 
-        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+        if len(senha) < 6:
+            return jsonify({'error': 'Senha deve possuir pelo menos 6 caracteres.'}), 400
+
+        if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
             return jsonify({'error': 'Email inválido.'}), 400
 
         if tipo not in ('cliente', 'prestador', 'admin', 'operador_financeiro'):
@@ -3223,11 +3465,16 @@ def admin_create_user():
         pwd_hash = generate_password_hash(senha)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng,
-                status_conta, kyc_status, session_version, criado_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo', 1, CURRENT_TIMESTAMP)
-        ''', (nome, email, pwd_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado,
-              lat, lng))
+            INSERT INTO users (
+                nome, email, senha_hash, tipo, telefone, bio, cep, endereco,
+                numero, bairro, cidade, estado, lat, lng,
+                status_conta, kyc_status, session_version, criado_em
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativo', 'aprovado', 1, CURRENT_TIMESTAMP)
+        ''', (
+            nome, email, pwd_hash, tipo, telefone, bio, cep, endereco,
+            numero, bairro, cidade, estado, lat, lng
+        ))
         user_id = cursor.lastrowid
         conn.commit()
 
@@ -3239,9 +3486,10 @@ def admin_create_user():
             'status_conta': 'ativo',
             'mensagem': 'Usuário criado com sucesso.'
         }), 201
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao criar usuário.', 'details': str(e)}), 500
+        print(f"[admin_create_user] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao criar usuário.'}), 500
     finally:
         conn.close()
 
@@ -3251,34 +3499,44 @@ def admin_create_user():
 @rate_limit(20, 180)
 def admin_update_user(user_id):
     """Atualiza um usuário administrativo."""
+    current_user = get_current_user()
+    if current_user and current_user['id'] == user_id:
+        return jsonify({'error': 'Não é possível atualizar seu próprio usuário por esta rota.'}), 403
+
     conn = get_db_connection()
     try:
         data = request.get_json(silent=True) or {}
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-        if not user:
+        target_user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not target_user:
             return jsonify({'error': 'Usuário não encontrado.'}), 404
 
-        if user['id'] == user_id:
-            return jsonify({'error': 'Não é possível atualizar seu próprio usuário.'}), 403
-
         update_fields = {}
+        bump_session = False
         if 'nome' in data:
             update_fields['nome'] = str(data['nome']).strip()
         if 'email' in data:
             new_email = str(data['email']).strip().lower()
+            if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', new_email):
+                return jsonify({'error': 'Email inválido.'}), 400
             if conn.execute('SELECT 1 FROM users WHERE email = ? AND id != ?', (new_email, user_id)).fetchone():
                 return jsonify({'error': 'Email já cadastrado.'}), 409
             update_fields['email'] = new_email
         if 'tipo' in data:
-            if data['tipo'] not in ('cliente', 'prestador', 'admin', 'operador_financeiro'):
+            new_tipo = str(data['tipo'] or '').strip().lower()
+            if new_tipo not in ('cliente', 'prestador', 'admin', 'operador_financeiro'):
                 return jsonify({'error': 'Tipo de usuário inválido.'}), 400
-            update_fields['tipo'] = data['tipo']
+            update_fields['tipo'] = new_tipo
+            bump_session = True
         if 'senha' in data and data['senha']:
-            update_fields['senha_hash'] = generate_password_hash(data['senha'])
+            if len(str(data['senha'])) < 6:
+                return jsonify({'error': 'Senha deve possuir pelo menos 6 caracteres.'}), 400
+            update_fields['senha_hash'] = generate_password_hash(str(data['senha']))
+            bump_session = True
         if 'status_conta' in data:
-            if data['status_conta'] not in ('ativo', 'suspenso', 'bloqueado'):
+            if data['status_conta'] not in ('ativo', 'suspenso', 'suspenso_cautelar', 'bloqueado'):
                 return jsonify({'error': 'Status inválido.'}), 400
             update_fields['status_conta'] = data['status_conta']
+            bump_session = True
         if 'kyc_status' in data:
             if data['kyc_status'] not in ('aprovado', 'pendente', 'reprovado'):
                 return jsonify({'error': 'Status KYC inválido.'}), 400
@@ -3300,9 +3558,12 @@ def admin_update_user(user_id):
         if 'estado' in data:
             update_fields['estado'] = str(data['estado']).strip()
         if 'lat' in data:
-            update_fields['lat'] = data['lat']
+            update_fields['lat'] = safe_coord(data['lat'], _row_get(target_user, 'lat', -23.5653), -90.0, 90.0)
         if 'lng' in data:
-            update_fields['lng'] = data['lng']
+            update_fields['lng'] = safe_coord(data['lng'], _row_get(target_user, 'lng', -46.6517), -180.0, 180.0)
+
+        if bump_session:
+            update_fields['session_version'] = int(_row_get(target_user, 'session_version', 1) or 1) + 1
 
         if update_fields:
             set_clause = ', '.join(f'{k} = ?' for k in update_fields)
@@ -3310,11 +3571,15 @@ def admin_update_user(user_id):
             conn.execute(f'UPDATE users SET {set_clause} WHERE id = ?', values)
         conn.commit()
 
-        updated = conn.execute('SELECT id, nome, email, tipo, status_conta, kyc_status, criado_em FROM users WHERE id = ?', (user_id,)).fetchone()
+        updated = conn.execute(
+            'SELECT id, nome, email, tipo, status_conta, kyc_status, criado_em FROM users WHERE id = ?',
+            (user_id,)
+        ).fetchone()
         return jsonify(dict(updated)), 200
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao atualizar usuário.', 'details': str(e)}), 500
+        print(f"[admin_update_user] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao atualizar usuário.'}), 500
     finally:
         conn.close()
 
@@ -3324,22 +3589,28 @@ def admin_update_user(user_id):
 @rate_limit(10, 120)
 def admin_delete_user(user_id):
     """Desativa um usuário administrativo."""
+    current_user = get_current_user()
+    if current_user and current_user['id'] == user_id:
+        return jsonify({'error': 'Não é possível excluir seu próprio usuário.'}), 403
+
     conn = get_db_connection()
     try:
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-        if not user:
+        target_user = conn.execute('SELECT id, session_version FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not target_user:
             return jsonify({'error': 'Usuário não encontrado.'}), 404
-        if user['id'] == user_id:
-            return jsonify({'error': 'Não é possível excluir seu próprio usuário.'}), 403
 
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET status_conta = ? WHERE id = ?', ('bloqueado', user_id))
+        new_sv = int(_row_get(target_user, 'session_version', 1) or 1) + 1
+        conn.execute(
+            'UPDATE users SET status_conta = ?, session_version = ? WHERE id = ?',
+            ('bloqueado', new_sv, user_id)
+        )
         conn.commit()
 
         return jsonify({'message': 'Usuário desativado com sucesso.'}), 200
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao desativar usuário.', 'details': str(e)}), 500
+        print(f"[admin_delete_user] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao desativar usuário.'}), 500
     finally:
         conn.close()
 
@@ -3351,6 +3622,10 @@ def admin_delete_user(user_id):
 @rate_limit(30, 180)
 def admin_get_services():
     """Lista serviços administrativos com filtros."""
+    allowed_order = {
+        'id': 's.id', 'titulo': 's.titulo', 'categoria': 's.categoria',
+        'preco': 's.preco', 'ativo': 's.ativo', 'criado_em': 's.criado_em'
+    }
     conn = get_db_connection()
     try:
         query = """
@@ -3371,12 +3646,10 @@ def admin_get_services():
             query += " AND s.categoria = ?"
             params.append(categoria)
         ativo = request.args.get('ativo')
-        if ativo:
+        if ativo is not None and ativo != '':
             query += " AND s.ativo = ?"
-            params.append(1 if ativo == 'true' else 0)
-        order_by = request.args.get('order_by', 'criado_em')
-        order_dir = request.args.get('order_dir', 'DESC')
-        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+            params.append(1 if str(ativo).lower() in ('true', '1') else 0)
+        query += _safe_order_clause(allowed_order, 's.criado_em', 'DESC') + "LIMIT 100"
         rows = conn.execute(query, tuple(params)).fetchall()
         return jsonify([dict(r) for r in rows]), 200
     finally:
@@ -3393,28 +3666,40 @@ def admin_create_service():
         data = request.get_json(silent=True) or {}
         titulo = str(data.get('titulo') or '').strip()
         categoria = str(data.get('categoria') or '').strip()
-        preco = data.get('preco')
-        prestador_id = data.get('prestador_id')
+        descricao = str(data.get('descricao') or '').strip()
+        preco = parse_positive_price(data.get('preco'))
+        try:
+            prestador_id = int(data.get('prestador_id'))
+        except (ValueError, TypeError):
+            prestador_id = 0
 
-        if not titulo or not categoria or preco is None or not prestador_id:
-            return jsonify({'error': 'Título, categoria, preço e prestador_id são obrigatórios.'}), 400
+        if not titulo or not categoria or preco is None or prestador_id <= 0:
+            return jsonify({'error': 'Título, categoria, preço válido e prestador_id são obrigatórios.'}), 400
 
-        if preco < 0:
-            return jsonify({'error': 'Preço deve ser >= 0.'}), 400
+        if categoria not in CATEGORIAS_PERMITIDAS:
+            return jsonify({'error': 'Categoria não permitida.'}), 400
+
+        prestador = conn.execute('SELECT id FROM users WHERE id = ?', (prestador_id,)).fetchone()
+        if not prestador:
+            return jsonify({'error': 'Prestador não encontrado.'}), 404
 
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, ativo, criado_em)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-        ''', (prestador_id, titulo, '', categoria, preco, '', '', '', '', '', ''))
+        ''', (prestador_id, titulo, descricao, categoria, preco, '', '', '', '', '', ''))
         service_id = cursor.lastrowid
         conn.commit()
 
-        service = conn.execute('SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?', (service_id,)).fetchone()
+        service = conn.execute(
+            'SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?',
+            (service_id,)
+        ).fetchone()
         return jsonify(dict(service)), 201
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao criar serviço.', 'details': str(e)}), 500
+        print(f"[admin_create_service] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao criar serviço.'}), 500
     finally:
         conn.close()
 
@@ -3431,29 +3716,42 @@ def admin_update_service(service_id):
         if not service:
             return jsonify({'error': 'Serviço não encontrado.'}), 404
 
+        update_fields = {}
         if 'titulo' in data:
-            service['titulo'] = str(data['titulo']).strip()
+            titulo = str(data['titulo'] or '').strip()
+            if not titulo:
+                return jsonify({'error': 'Título não pode ficar vazio.'}), 400
+            update_fields['titulo'] = titulo
         if 'categoria' in data:
-            service['categoria'] = str(data['categoria']).strip()
+            categoria = str(data['categoria'] or '').strip()
+            if categoria not in CATEGORIAS_PERMITIDAS:
+                return jsonify({'error': 'Categoria não permitida.'}), 400
+            update_fields['categoria'] = categoria
         if 'preco' in data:
-            if data['preco'] < 0:
-                return jsonify({'error': 'Preço deve ser >= 0.'}), 400
-            service['preco'] = data['preco']
+            preco = parse_positive_price(data['preco'])
+            if preco is None:
+                return jsonify({'error': 'Preço inválido.'}), 400
+            update_fields['preco'] = preco
         if 'ativo' in data:
-            service['ativo'] = 1 if data['ativo'] else 0
+            update_fields['ativo'] = 1 if data['ativo'] else 0
         if 'descricao' in data:
-            service['descricao'] = str(data['descricao'] or '')
+            update_fields['descricao'] = str(data['descricao'] or '').strip()
 
-        set_clause = ', '.join(f'{k} = ?' for k in service.keys() if k not in ('id',))
-        values = list(service.values()) + [service_id]
-        conn.execute(f'UPDATE services SET {set_clause} WHERE id = ?', values)
+        if update_fields:
+            set_clause = ', '.join(f'{k} = ?' for k in update_fields)
+            values = list(update_fields.values()) + [service_id]
+            conn.execute(f'UPDATE services SET {set_clause} WHERE id = ?', values)
         conn.commit()
 
-        updated = conn.execute('SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?', (service_id,)).fetchone()
+        updated = conn.execute(
+            'SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?',
+            (service_id,)
+        ).fetchone()
         return jsonify(dict(updated)), 200
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao atualizar serviço.', 'details': str(e)}), 500
+        print(f"[admin_update_service] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao atualizar serviço.'}), 500
     finally:
         conn.close()
 
@@ -3465,15 +3763,16 @@ def admin_delete_service(service_id):
     """Desativa (não exclui) um serviço administrativo."""
     conn = get_db_connection()
     try:
-        service = conn.execute('SELECT * FROM services WHERE id = ?', (service_id,)).fetchone()
+        service = conn.execute('SELECT id FROM services WHERE id = ?', (service_id,)).fetchone()
         if not service:
             return jsonify({'error': 'Serviço não encontrado.'}), 404
         conn.execute('UPDATE services SET ativo = 0 WHERE id = ?', (service_id,))
         conn.commit()
         return jsonify({'message': 'Serviço desativado com sucesso.'}), 200
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao desativar serviço.', 'details': str(e)}), 500
+        print(f"[admin_delete_service] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao desativar serviço.'}), 500
     finally:
         conn.close()
 
@@ -3485,6 +3784,10 @@ def admin_delete_service(service_id):
 @rate_limit(30, 180)
 def admin_get_orders():
     """Lista pedidos administrativos com filtros."""
+    allowed_order = {
+        'id': 'o.id', 'status': 'o.status', 'preco_total': 'o.preco_total',
+        'criado_em': 'o.criado_em', 'pago': 'o.pago'
+    }
     conn = get_db_connection()
     try:
         query = """
@@ -3505,15 +3808,19 @@ def admin_get_orders():
             params.append(status)
         cliente_id = request.args.get('cliente_id')
         if cliente_id:
+            try:
+                params.append(int(cliente_id))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'cliente_id inválido.'}), 400
             query += " AND o.cliente_id = ?"
-            params.append(int(cliente_id))
         prestador_id = request.args.get('prestador_id')
         if prestador_id:
+            try:
+                params.append(int(prestador_id))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'prestador_id inválido.'}), 400
             query += " AND o.prestador_id = ?"
-            params.append(int(prestador_id))
-        order_by = request.args.get('order_by', 'criado_em')
-        order_dir = request.args.get('order_dir', 'DESC')
-        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        query += _safe_order_clause(allowed_order, 'o.criado_em', 'DESC') + "LIMIT 100"
         rows = conn.execute(query, tuple(params)).fetchall()
         return jsonify([dict(r) for r in rows]), 200
     finally:
@@ -3533,15 +3840,19 @@ def admin_update_order(order_id):
             return jsonify({'error': 'Pedido não encontrado.'}), 404
 
         allowed_statuses = ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')
-        if 'status' in data and data['status'] in allowed_statuses:
-            conn.execute('UPDATE orders SET status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', (data['status'], order_id))
-            conn.commit()
+        new_status = data.get('status')
+        if new_status not in allowed_statuses:
+            return jsonify({'error': 'Status de pedido inválido.'}), 400
+
+        conn.execute('UPDATE orders SET status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', (new_status, order_id))
+        conn.commit()
 
         updated = conn.execute('SELECT id, status, preco_total, escrow_status, pago FROM orders WHERE id = ?', (order_id,)).fetchone()
         return jsonify(dict(updated)), 200
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao atualizar pedido.', 'details': str(e)}), 500
+        print(f"[admin_update_order] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao atualizar pedido.'}), 500
     finally:
         conn.close()
 
@@ -3553,7 +3864,7 @@ def admin_delete_order(order_id):
     """Cancela um pedido administrativo."""
     conn = get_db_connection()
     try:
-        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        order = conn.execute('SELECT id FROM orders WHERE id = ?', (order_id,)).fetchone()
         if not order:
             return jsonify({'error': 'Pedido não encontrado.'}), 404
 
@@ -3563,10 +3874,11 @@ def admin_delete_order(order_id):
         ''', (order_id,))
         conn.commit()
 
-        return jsonify({'message': 'Pedido cancelado com successo.'}), 200
-    except Exception as e:
+        return jsonify({'message': 'Pedido cancelado com sucesso.'}), 200
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao cancelar pedido.', 'details': str(e)}), 500
+        print(f"[admin_delete_order] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao cancelar pedido.'}), 500
     finally:
         conn.close()
 
@@ -3578,10 +3890,14 @@ def admin_delete_order(order_id):
 @rate_limit(30, 180)
 def admin_get_payments():
     """Lista transações de pagamento administrativas."""
+    allowed_order = {
+        'id': 'pt.id', 'status': 'pt.status', 'amount': 'pt.amount',
+        'method': 'pt.method', 'created_at': 'pt.created_at'
+    }
     conn = get_db_connection()
     try:
         query = """
-            SELECT pt.id, pt.order_id, pt.method, pt.gateway, pt.status, pt.amount,
+            SELECT pt.id, pt.user_id, pt.order_id, pt.method, pt.gateway, pt.status, pt.amount,
                    pt.currency, pt.gateway_status, pt.created_at
             FROM payment_transactions pt
             WHERE 1=1
@@ -3595,9 +3911,7 @@ def admin_get_payments():
         if method:
             query += " AND pt.method = ?"
             params.append(method)
-        order_by = request.args.get('order_by', 'created_at')
-        order_dir = request.args.get('order_dir', 'DESC')
-        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        query += _safe_order_clause(allowed_order, 'pt.created_at', 'DESC') + "LIMIT 100"
         rows = conn.execute(query, tuple(params)).fetchall()
         return jsonify([dict(r) for r in rows]), 200
     finally:
@@ -3608,7 +3922,7 @@ def admin_get_payments():
 @require_role('admin')
 @rate_limit(10, 120)
 def admin_approve_payment(payment_id):
-    """Aprova/transfere pagamento capturado."""
+    """Aprova/captura pagamento autorizado ou pendente."""
     conn = get_db_connection()
     try:
         txn = conn.execute('SELECT * FROM payment_transactions WHERE id = ?', (payment_id,)).fetchone()
@@ -3623,10 +3937,11 @@ def admin_approve_payment(payment_id):
         ''', (payment_id,))
         conn.commit()
 
-        return jsonify({'message': 'Pagamento aprovado e capturado com successo.', 'payment_id': payment_id}), 200
-    except Exception as e:
+        return jsonify({'message': 'Pagamento aprovado e capturado com sucesso.', 'payment_id': payment_id}), 200
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao aprovar pagamento.', 'details': str(e)}), 500
+        print(f"[admin_approve_payment] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao aprovar pagamento.'}), 500
     finally:
         conn.close()
 
@@ -3648,12 +3963,18 @@ def admin_refund_payment(payment_id):
             UPDATE payment_transactions SET status = 'refunded', updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', (payment_id,))
+        if _row_get(txn, 'order_id'):
+            _log_escrow_ledger(
+                conn, txn['order_id'], 'admin_payment_refund',
+                float(txn['amount'] or 0), 'estornado', f'Reembolso admin da transação #{payment_id}'
+            )
         conn.commit()
 
-        return jsonify({'message': 'Reembolso registrado com successo.', 'payment_id': payment_id}), 200
-    except Exception as e:
+        return jsonify({'message': 'Reembolso registrado com sucesso.', 'payment_id': payment_id}), 200
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao reembolsar.', 'details': str(e)}), 500
+        print(f"[admin_refund_payment] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao reembolsar pagamento.'}), 500
     finally:
         conn.close()
 
@@ -3669,13 +3990,16 @@ def admin_create_notification():
     try:
         data = request.get_json(silent=True) or {}
         mensagem = str(data.get('mensagem') or '').strip()[:500]
-        tipo = str(data.get('tipo') or 'info').strip()
-        destinatario_tipo = str(data.get('destinatario_tipo') or 'all').strip()
+        tipo = str(data.get('tipo') or 'info').strip().lower()
+        destinatario_tipo = str(data.get('destinatario_tipo') or 'all').strip().lower()
 
         if not mensagem:
             return jsonify({'error': 'Mensagem é obrigatória.'}), 400
+        if tipo not in ('info', 'warning', 'alert'):
+            return jsonify({'error': 'Tipo de notificação inválido.'}), 400
+        if destinatario_tipo not in ('all', 'cliente', 'prestador', 'admin'):
+            return jsonify({'error': 'Destinatário inválido.'}), 400
 
-        # Get current admin user ID
         current_user = get_current_user()
         if not current_user:
             return jsonify({'error': 'Autenticação obrigatória.'}), 401
@@ -3693,11 +4017,13 @@ def admin_create_notification():
             'id': notification_id,
             'mensagem': mensagem,
             'tipo': tipo,
+            'destinatario_tipo': destinatario_tipo,
             'status': 'enviada'
         }), 201
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Erro ao enviar notificação.', 'details': str(e)}), 500
+        print(f"[admin_create_notification] error: {exc}", file=sys.stderr)
+        return jsonify({'error': 'Erro ao enviar notificação.'}), 500
     finally:
         conn.close()
 

@@ -36,8 +36,12 @@ async function atualizarNavegacao() {
   authLinks.forEach(el => el.remove());
 
   if (user) {
-    const portalUrl = user.tipo === 'prestador' ? 'portal-prestador.html' : 'portal-cliente.html';
-    const portalNome = user.tipo === 'prestador' ? 'Painel Prestador' : 'Meu Portal';
+    const portalUrl = user.tipo === 'admin'
+      ? 'admin.html'
+      : (user.tipo === 'prestador' ? 'portal-prestador.html' : 'portal-cliente.html');
+    const portalNome = user.tipo === 'admin'
+      ? 'Painel Admin'
+      : (user.tipo === 'prestador' ? 'Painel Prestador' : 'Meu Portal');
     
     const portalLink = document.createElement('a');
     portalLink.href = portalUrl;

@@ -309,7 +309,13 @@ class PostgresCursorWrapper:
         needs_returning = False
         is_insert = upper_sql.startswith('INSERT INTO') or upper_sql.startswith('INSERT')
         has_returning = 'RETURNING' in upper_sql
-        is_no_id_table = any(t in upper_sql for t in ('GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS', 'PASSWORD_RESET_TOKENS'))
+        is_no_id_table = any(
+            t in upper_sql
+            for t in (
+                'GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS',
+                'PASSWORD_RESET_TOKENS', 'PAYMENT_PAYMENT_REFS'
+            )
+        )
 
         if is_insert and not has_returning and not is_no_id_table:
             needs_returning = True
@@ -343,7 +349,12 @@ class PostgresCursorWrapper:
     def executescript(self, script):
         statements = [s.strip() for s in script.split(';') if s.strip()]
         for stmt in statements:
-            self.execute(stmt)
+            non_comment_lines = [
+                line for line in stmt.splitlines()
+                if line.strip() and not line.strip().startswith('--')
+            ]
+            if non_comment_lines:
+                self.execute(stmt)
         return self
 
     def fetchone(self):
@@ -453,7 +464,7 @@ CREATE TABLE IF NOT EXISTS users (
     nome TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     senha_hash TEXT NOT NULL,
-    tipo TEXT CHECK(tipo IN ('cliente', 'prestador')) NOT NULL,
+    tipo TEXT CHECK(tipo IN ('cliente', 'prestador', 'admin', 'operador_financeiro')) NOT NULL,
     telefone TEXT,
     bio TEXT,
     foto_url TEXT,
@@ -663,6 +674,105 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- === Payment & Admin (Migration 007/008) ===
+CREATE TABLE IF NOT EXISTS payment_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    gateway_token TEXT NOT NULL UNIQUE,
+    brand TEXT,
+    last4 TEXT,
+    exp_month INTEGER,
+    exp_year INTEGER,
+    is_default INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (user_id, gateway_token)
+);
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    payment_method TEXT NOT NULL CHECK(payment_method IN ('cartao', 'boleto', 'pix', 'transferencia')),
+    payment_token_id INTEGER,
+    config TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (payment_token_id) REFERENCES payment_tokens(id) ON DELETE SET NULL,
+    UNIQUE (user_id, payment_method)
+);
+
+CREATE TABLE IF NOT EXISTS payment_webhooks (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    gateway TEXT NOT NULL CHECK(gateway IN ('stripe', 'pagseguro', 'mercadopago')),
+    endpoint_name TEXT NOT NULL,
+    signing_secret TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    id SERIAL PRIMARY KEY,
+    request_hash TEXT NOT NULL UNIQUE,
+    controller TEXT NOT NULL,
+    action TEXT NOT NULL,
+    user_id INTEGER,
+    response_data TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    order_id INTEGER,
+    payment_id INTEGER,
+    method TEXT NOT NULL CHECK(method IN ('cartao', 'boleto', 'pix', 'transferencia')),
+    gateway TEXT,
+    gateway_payment_id TEXT,
+    gateway_status TEXT,
+    gateway_event TEXT,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'authorized', 'captured', 'failed', 'refunded', 'disputed')),
+    amount DOUBLE PRECISION NOT NULL,
+    currency TEXT DEFAULT 'BRL',
+    fee DOUBLE PRECISION DEFAULT 0,
+    net_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+    idempotency_key_id INTEGER,
+    source_ip TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    FOREIGN KEY (idempotency_key_id) REFERENCES idempotency_keys(id) ON DELETE SET NULL,
+    CHECK (amount >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS payment_payment_refs (
+    payment_id INTEGER PRIMARY KEY,
+    order_id INTEGER,
+    payment_method TEXT,
+    status_initial TEXT,
+    status_final TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (payment_id) REFERENCES payment_transactions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    admin_id INTEGER,
+    tipo TEXT DEFAULT 'info',
+    mensagem TEXT NOT NULL,
+    destinatario_tipo TEXT DEFAULT 'all',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
+);
 '''
 
 SQLITE_SCHEMA_SQL = '''
@@ -671,7 +781,7 @@ CREATE TABLE IF NOT EXISTS users (
     nome TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     senha_hash TEXT NOT NULL,
-    tipo TEXT CHECK(tipo IN ('cliente', 'prestador')) NOT NULL,
+    tipo TEXT CHECK(tipo IN ('cliente', 'prestador', 'admin', 'operador_financeiro')) NOT NULL,
     telefone TEXT,
     bio TEXT,
     foto_url TEXT,
@@ -882,7 +992,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- === Payment & Admin (Migration 007) ===
+-- === Payment & Admin (Migration 007/008) ===
 CREATE TABLE IF NOT EXISTS payment_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -937,8 +1047,9 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 
 CREATE TABLE IF NOT EXISTS payment_transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL,
-    payment_id INTEGER NOT NULL,
+    user_id INTEGER,
+    order_id INTEGER,
+    payment_id INTEGER,
     method TEXT NOT NULL CHECK(method IN ('cartao', 'boleto', 'pix', 'transferencia')),
     gateway TEXT,
     gateway_payment_id TEXT,
@@ -948,26 +1059,36 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
     amount REAL NOT NULL,
     currency TEXT DEFAULT 'BRL',
     fee REAL DEFAULT 0,
-    net_amount REAL NOT NULL,
+    net_amount REAL NOT NULL DEFAULT 0,
     idempotency_key_id INTEGER,
     source_ip TEXT,
     user_agent TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    FOREIGN KEY (payment_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
     FOREIGN KEY (idempotency_key_id) REFERENCES idempotency_keys(id) ON DELETE SET NULL,
     CHECK (amount >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS payment_payment_refs (
     payment_id INTEGER PRIMARY KEY,
-    order_id INTEGER NOT NULL,
+    order_id INTEGER,
     payment_method TEXT,
     status_initial TEXT,
     status_final TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (payment_id) REFERENCES payment_transactions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER,
+    tipo TEXT DEFAULT 'info',
+    mensagem TEXT NOT NULL,
+    destinatario_tipo TEXT DEFAULT 'all',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
 );
 '''
 
@@ -1117,9 +1238,15 @@ def _ensure_columns(conn, cursor, engine):
             ('status_moderacao', "TEXT DEFAULT 'visivel'"),
             ('revealed_at', 'TIMESTAMP'),
         ],
+        'payment_transactions': [
+            ('user_id', 'INTEGER'),
+            ('gateway_payment_id', 'TEXT'),
+        ],
     }
 
     for table, cols in expected_columns.items():
+        if not _table_exists(cursor, table, engine):
+            continue
         if engine == 'postgresql':
             for col_name, col_def in cols:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_def}")
@@ -1136,6 +1263,169 @@ def _ensure_columns(conn, cursor, engine):
                 if col_name not in existing_cols:
                     cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
             conn.commit()
+
+
+def _ensure_users_tipo_check(conn, cursor, engine):
+    """Garante que a constraint CHECK de users.tipo aceite roles administrativos ('admin', 'operador_financeiro')."""
+    if engine == 'postgresql':
+        try:
+            row = cursor.execute(
+                "SELECT pg_get_constraintdef(oid) AS cdef FROM pg_constraint "
+                "WHERE conname = 'users_tipo_check' AND conrelid = 'users'::regclass"
+            ).fetchone()
+            cdef = row['cdef'] if row and hasattr(row, 'keys') and 'cdef' in row.keys() else (row[0] if row else '')
+            if cdef and "'admin'" in str(cdef):
+                return
+            cursor.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tipo_check")
+            cursor.execute(
+                "ALTER TABLE users ADD CONSTRAINT users_tipo_check "
+                "CHECK (tipo IN ('cliente', 'prestador', 'admin', 'operador_financeiro'))"
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return
+
+    row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+    ).fetchone()
+    if not row:
+        return
+    table_sql = row['sql'] if hasattr(row, 'keys') and 'sql' in row.keys() else row[0]
+    if not table_sql or "'admin'" in table_sql:
+        return
+
+    info_rows = cursor.execute("PRAGMA table_info(users)").fetchall()
+    existing_cols = []
+    for r in info_rows:
+        try:
+            existing_cols.append(r['name'])
+        except (KeyError, TypeError, IndexError):
+            existing_cols.append(r[1])
+    if not existing_cols:
+        return
+    cols_csv = ', '.join(existing_cols)
+
+    cursor.execute("PRAGMA foreign_keys = OFF;")
+    cursor.execute('''
+        CREATE TABLE users__new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            senha_hash TEXT NOT NULL,
+            tipo TEXT CHECK(tipo IN ('cliente', 'prestador', 'admin', 'operador_financeiro')) NOT NULL,
+            telefone TEXT,
+            bio TEXT,
+            foto_url TEXT,
+            cep TEXT,
+            endereco TEXT,
+            numero TEXT,
+            complemento TEXT,
+            bairro TEXT,
+            cidade TEXT,
+            estado TEXT,
+            lat REAL DEFAULT -23.5653,
+            lng REAL DEFAULT -46.6517,
+            avaliacao_media REAL DEFAULT 5.0,
+            total_avaliacoes INTEGER DEFAULT 0,
+            disponivel INTEGER DEFAULT 1,
+            plano TEXT DEFAULT 'basico',
+            kyc_tier INTEGER DEFAULT 1,
+            kyc_status TEXT DEFAULT 'aprovado',
+            kyc_documento_tipo TEXT DEFAULT 'RG',
+            kyc_provider_ref TEXT,
+            kyc_verified_at TIMESTAMP,
+            registro_profissional TEXT,
+            cpf TEXT,
+            status_conta TEXT DEFAULT 'ativo',
+            session_version INTEGER DEFAULT 1,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute(f"INSERT INTO users__new ({cols_csv}) SELECT {cols_csv} FROM users")
+    cursor.execute("DROP TABLE users")
+    cursor.execute("ALTER TABLE users__new RENAME TO users")
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    conn.commit()
+
+
+def _ensure_payment_transactions_schema(conn, cursor, engine):
+    """Garante compatibilidade em payment_transactions (order_id/payment_id opcionais e coluna user_id)."""
+    if not _table_exists(cursor, 'payment_transactions', engine):
+        return
+    if engine == 'postgresql':
+        try:
+            cursor.execute("ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS user_id INTEGER")
+            cursor.execute("ALTER TABLE payment_transactions ALTER COLUMN order_id DROP NOT NULL")
+            cursor.execute("ALTER TABLE payment_transactions ALTER COLUMN payment_id DROP NOT NULL")
+            cursor.execute("ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS payment_transactions_payment_id_fkey")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return
+
+    row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payment_transactions'"
+    ).fetchone()
+    if not row:
+        return
+    table_sql = row['sql'] if hasattr(row, 'keys') and 'sql' in row.keys() else row[0]
+    has_bad_fk = bool(re.search(r'FOREIGN\s+KEY\s*\(\s*payment_id\s*\)\s+REFERENCES\s+orders\s*\(\s*id\s*\)', table_sql or '', re.IGNORECASE))
+    has_not_null_order = bool(re.search(r'\border_id\s+INTEGER\s+NOT\s+NULL\b', table_sql or '', re.IGNORECASE))
+    if table_sql and not has_bad_fk and not has_not_null_order:
+        return
+
+    info_rows = cursor.execute("PRAGMA table_info(payment_transactions)").fetchall()
+    existing_cols = []
+    for r in info_rows:
+        try:
+            existing_cols.append(r['name'])
+        except (KeyError, TypeError, IndexError):
+            existing_cols.append(r[1])
+    target_cols = [c for c in existing_cols if c in (
+        'id', 'user_id', 'order_id', 'payment_id', 'method', 'gateway', 'gateway_payment_id',
+        'gateway_status', 'gateway_event', 'status', 'amount', 'currency', 'fee', 'net_amount',
+        'idempotency_key_id', 'source_ip', 'user_agent', 'created_at', 'updated_at'
+    )]
+    cols_csv = ', '.join(target_cols)
+
+    cursor.execute("PRAGMA foreign_keys = OFF;")
+    cursor.execute('''
+        CREATE TABLE payment_transactions__new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            order_id INTEGER,
+            payment_id INTEGER,
+            method TEXT NOT NULL CHECK(method IN ('cartao', 'boleto', 'pix', 'transferencia')),
+            gateway TEXT,
+            gateway_payment_id TEXT,
+            gateway_status TEXT,
+            gateway_event TEXT,
+            status TEXT NOT NULL CHECK(status IN ('pending', 'authorized', 'captured', 'failed', 'refunded', 'disputed')),
+            amount REAL NOT NULL,
+            currency TEXT DEFAULT 'BRL',
+            fee REAL DEFAULT 0,
+            net_amount REAL NOT NULL DEFAULT 0,
+            idempotency_key_id INTEGER,
+            source_ip TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+            FOREIGN KEY (idempotency_key_id) REFERENCES idempotency_keys(id) ON DELETE SET NULL,
+            CHECK (amount >= 0)
+        )
+    ''')
+    if cols_csv:
+        cursor.execute(f"INSERT INTO payment_transactions__new ({cols_csv}) SELECT {cols_csv} FROM payment_transactions")
+    cursor.execute("DROP TABLE payment_transactions")
+    cursor.execute("ALTER TABLE payment_transactions__new RENAME TO payment_transactions")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_user ON payment_transactions(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_order ON payment_transactions(order_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_gateway_id ON payment_transactions(gateway_payment_id)")
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    conn.commit()
 
 
 def _ensure_orders_status_check(conn, cursor, engine):
@@ -1267,11 +1557,16 @@ def init_db():
         # Garantia defensiva de colunas novas em bancos já existentes
         _ensure_columns(conn, cursor, engine)
 
-        # Garantia defensiva da constraint CHECK de orders.status ('em_disputa') em bancos pré-ET
+        # Garantia defensiva das constraints CHECK em bancos já existentes
         _ensure_orders_status_check(conn, cursor, engine)
+        _ensure_users_tipo_check(conn, cursor, engine)
 
         # Executa migrations versionadas pendentes (scripts/migrations/*.sql)
         run_migrations(conn=conn, dry_run=False)
+
+        # Garante colunas e esquema compatível após migrations
+        _ensure_columns(conn, cursor, engine)
+        _ensure_payment_transactions_schema(conn, cursor, engine)
 
         # Remove cache legado (podia associar endereço completo ao centro da cidade/bairro)
         cursor.execute("DELETE FROM geocode_cache WHERE origem IN ('nominatim', 'seed')")

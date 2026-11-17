@@ -59,7 +59,7 @@ class VercelPathNormalizerWSGI:
         # 3. Caso a Vercel tenha removido o prefixo /api ao despachar para a função
         elif not path.startswith('/api') and path.lstrip('/').split('/')[0] in (
             'auth', 'services', 'my-services', 'orders', 'reviews', 'profile', 'cep', 'geocode', 'health',
-            'kyc', 'account', 'provider', 'shared-route'
+            'kyc', 'account', 'provider', 'shared-route', 'payments', 'webhooks', 'admin'
         ):
             environ['PATH_INFO'] = '/api/' + path.lstrip('/')
 
