@@ -3158,6 +3158,564 @@ def admin_export():
         conn.close()
 
 
+@app.route('/api/admin/users', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_get_users():
+    """Lista usuários administrativos com filtros."""
+    conn = get_db_connection()
+    try:
+        query = "SELECT id, nome, email, tipo, status_conta, kyc_status, criado_em FROM users WHERE 1=1"
+        params = []
+        search = request.args.get('search')
+        if search:
+            query += " AND (nome LIKE ? OR email LIKE ?)"
+            like = f'%{search}%'
+            params.extend([like, like])
+        status = request.args.get('status')
+        if status:
+            query += " AND status_conta = ?"
+            params.append(status)
+        order_by = request.args.get('order_by', 'criado_em')
+        order_dir = request.args.get('order_dir', 'DESC')
+        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users', methods=['POST'])
+@require_role('admin')
+@rate_limit(20, 180)
+def admin_create_user():
+    """Cria um novo usuário administrativo."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        nome = str(data.get('nome') or '').strip()
+        email = str(data.get('email') or '').strip().lower()
+        senha = str(data.get('senha') or '').strip()
+        tipo = str(data.get('tipo') or 'cliente').strip()
+        telefone = str(data.get('telefone') or '').strip()
+        bio = str(data.get('bio') or '').strip()
+        cep = str(data.get('cep') or '').strip()
+        endereco = str(data.get('endereco') or '').strip()
+        numero = str(data.get('numero') or '').strip()
+        bairro = str(data.get('bairro') or '').strip()
+        cidade = str(data.get('cidade') or '').strip()
+        estado = str(data.get('estado') or '').strip()
+        lat = data.get('lat')
+        lng = data.get('lng')
+
+        if not nome or not email or not senha:
+            return jsonify({'error': 'Nome, email e senha são obrigatórios.'}), 400
+
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            return jsonify({'error': 'Email inválido.'}), 400
+
+        if tipo not in ('cliente', 'prestador', 'admin', 'operador_financeiro'):
+            return jsonify({'error': 'Tipo de usuário inválido.'}), 400
+
+        if conn.execute('SELECT 1 FROM users WHERE email = ?', (email,)).fetchone():
+            return jsonify({'error': 'Email já cadastrado.'}), 409
+
+        pwd_hash = generate_password_hash(senha)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng,
+                status_conta, kyc_status, session_version, criado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo', 1, CURRENT_TIMESTAMP)
+        ''', (nome, email, pwd_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado,
+              lat, lng))
+        user_id = cursor.lastrowid
+        conn.commit()
+
+        return jsonify({
+            'id': user_id,
+            'nome': nome,
+            'email': email,
+            'tipo': tipo,
+            'status_conta': 'ativo',
+            'mensagem': 'Usuário criado com sucesso.'
+        }), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao criar usuário.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@require_role('admin')
+@rate_limit(20, 180)
+def admin_update_user(user_id):
+    """Atualiza um usuário administrativo."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Usuário não encontrado.'}), 404
+
+        if user['id'] == user_id:
+            return jsonify({'error': 'Não é possível atualizar seu próprio usuário.'}), 403
+
+        update_fields = {}
+        if 'nome' in data:
+            update_fields['nome'] = str(data['nome']).strip()
+        if 'email' in data:
+            new_email = str(data['email']).strip().lower()
+            if conn.execute('SELECT 1 FROM users WHERE email = ? AND id != ?', (new_email, user_id)).fetchone():
+                return jsonify({'error': 'Email já cadastrado.'}), 409
+            update_fields['email'] = new_email
+        if 'tipo' in data:
+            if data['tipo'] not in ('cliente', 'prestador', 'admin', 'operador_financeiro'):
+                return jsonify({'error': 'Tipo de usuário inválido.'}), 400
+            update_fields['tipo'] = data['tipo']
+        if 'senha' in data and data['senha']:
+            update_fields['senha_hash'] = generate_password_hash(data['senha'])
+        if 'status_conta' in data:
+            if data['status_conta'] not in ('ativo', 'suspenso', 'bloqueado'):
+                return jsonify({'error': 'Status inválido.'}), 400
+            update_fields['status_conta'] = data['status_conta']
+        if 'kyc_status' in data:
+            if data['kyc_status'] not in ('aprovado', 'pendente', 'reprovado'):
+                return jsonify({'error': 'Status KYC inválido.'}), 400
+            update_fields['kyc_status'] = data['kyc_status']
+        if 'telefone' in data:
+            update_fields['telefone'] = str(data['telefone']).strip()
+        if 'bio' in data:
+            update_fields['bio'] = str(data['bio']).strip()
+        if 'cep' in data:
+            update_fields['cep'] = str(data['cep']).strip()
+        if 'endereco' in data:
+            update_fields['endereco'] = str(data['endereco']).strip()
+        if 'numero' in data:
+            update_fields['numero'] = str(data['numero']).strip()
+        if 'bairro' in data:
+            update_fields['bairro'] = str(data['bairro']).strip()
+        if 'cidade' in data:
+            update_fields['cidade'] = str(data['cidade']).strip()
+        if 'estado' in data:
+            update_fields['estado'] = str(data['estado']).strip()
+        if 'lat' in data:
+            update_fields['lat'] = data['lat']
+        if 'lng' in data:
+            update_fields['lng'] = data['lng']
+
+        if update_fields:
+            set_clause = ', '.join(f'{k} = ?' for k in update_fields)
+            values = list(update_fields.values()) + [user_id]
+            conn.execute(f'UPDATE users SET {set_clause} WHERE id = ?', values)
+        conn.commit()
+
+        updated = conn.execute('SELECT id, nome, email, tipo, status_conta, kyc_status, criado_em FROM users WHERE id = ?', (user_id,)).fetchone()
+        return jsonify(dict(updated)), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao atualizar usuário.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_delete_user(user_id):
+    """Desativa um usuário administrativo."""
+    conn = get_db_connection()
+    try:
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Usuário não encontrado.'}), 404
+        if user['id'] == user_id:
+            return jsonify({'error': 'Não é possível excluir seu próprio usuário.'}), 403
+
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET status_conta = ? WHERE id = ?', ('bloqueado', user_id))
+        conn.commit()
+
+        return jsonify({'message': 'Usuário desativado com sucesso.'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao desativar usuário.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# =================== CRUD de Serviços Administrativos ===================
+
+@app.route('/api/admin/services', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_get_services():
+    """Lista serviços administrativos com filtros."""
+    conn = get_db_connection()
+    try:
+        query = """
+            SELECT s.id, s.titulo, s.categoria, s.preco, s.ativo, s.criado_em,
+                   u.nome AS prestador_nome, u.id AS prestador_id
+            FROM services s
+            LEFT JOIN users u ON s.prestador_id = u.id
+            WHERE 1=1
+        """
+        params = []
+        search = request.args.get('search')
+        if search:
+            query += " AND (s.titulo LIKE ? OR s.categoria LIKE ?)"
+            like = f'%{search}%'
+            params.extend([like, like])
+        categoria = request.args.get('categoria')
+        if categoria:
+            query += " AND s.categoria = ?"
+            params.append(categoria)
+        ativo = request.args.get('ativo')
+        if ativo:
+            query += " AND s.ativo = ?"
+            params.append(1 if ativo == 'true' else 0)
+        order_by = request.args.get('order_by', 'criado_em')
+        order_dir = request.args.get('order_dir', 'DESC')
+        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/services', methods=['POST'])
+@require_role('admin')
+@rate_limit(20, 180)
+def admin_create_service():
+    """Cria um novo serviço administrativo."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        titulo = str(data.get('titulo') or '').strip()
+        categoria = str(data.get('categoria') or '').strip()
+        preco = data.get('preco')
+        prestador_id = data.get('prestador_id')
+
+        if not titulo or not categoria or preco is None or not prestador_id:
+            return jsonify({'error': 'Título, categoria, preço e prestador_id são obrigatórios.'}), 400
+
+        if preco < 0:
+            return jsonify({'error': 'Preço deve ser >= 0.'}), 400
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, ativo, criado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+        ''', (prestador_id, titulo, '', categoria, preco, '', '', '', '', '', ''))
+        service_id = cursor.lastrowid
+        conn.commit()
+
+        service = conn.execute('SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?', (service_id,)).fetchone()
+        return jsonify(dict(service)), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao criar serviço.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/services/<int:service_id>', methods=['PUT'])
+@require_role('admin')
+@rate_limit(20, 180)
+def admin_update_service(service_id):
+    """Atualiza um serviço administrativo."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        service = conn.execute('SELECT * FROM services WHERE id = ?', (service_id,)).fetchone()
+        if not service:
+            return jsonify({'error': 'Serviço não encontrado.'}), 404
+
+        if 'titulo' in data:
+            service['titulo'] = str(data['titulo']).strip()
+        if 'categoria' in data:
+            service['categoria'] = str(data['categoria']).strip()
+        if 'preco' in data:
+            if data['preco'] < 0:
+                return jsonify({'error': 'Preço deve ser >= 0.'}), 400
+            service['preco'] = data['preco']
+        if 'ativo' in data:
+            service['ativo'] = 1 if data['ativo'] else 0
+        if 'descricao' in data:
+            service['descricao'] = str(data['descricao'] or '')
+
+        set_clause = ', '.join(f'{k} = ?' for k in service.keys() if k not in ('id',))
+        values = list(service.values()) + [service_id]
+        conn.execute(f'UPDATE services SET {set_clause} WHERE id = ?', values)
+        conn.commit()
+
+        updated = conn.execute('SELECT id, titulo, categoria, preco, ativo, criado_em, prestador_id FROM services WHERE id = ?', (service_id,)).fetchone()
+        return jsonify(dict(updated)), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao atualizar serviço.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/services/<int:service_id>', methods=['DELETE'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_delete_service(service_id):
+    """Desativa (não exclui) um serviço administrativo."""
+    conn = get_db_connection()
+    try:
+        service = conn.execute('SELECT * FROM services WHERE id = ?', (service_id,)).fetchone()
+        if not service:
+            return jsonify({'error': 'Serviço não encontrado.'}), 404
+        conn.execute('UPDATE services SET ativo = 0 WHERE id = ?', (service_id,))
+        conn.commit()
+        return jsonify({'message': 'Serviço desativado com sucesso.'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao desativar serviço.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# =================== CRUD de Pedidos Administrativos ===================
+
+@app.route('/api/admin/orders', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_get_orders():
+    """Lista pedidos administrativos com filtros."""
+    conn = get_db_connection()
+    try:
+        query = """
+            SELECT o.id, o.status, o.preco_total, o.escrow_status, o.pago,
+                   u.nome AS cliente_nome, u.id AS cliente_id,
+                   p.nome AS prestador_nome, p.id AS prestador_id,
+                   s.titulo AS servico_titulo, o.criado_em
+            FROM orders o
+            LEFT JOIN users u ON o.cliente_id = u.id
+            LEFT JOIN users p ON o.prestador_id = p.id
+            LEFT JOIN services s ON o.servico_id = s.id
+            WHERE 1=1
+        """
+        params = []
+        status = request.args.get('status')
+        if status:
+            query += " AND o.status = ?"
+            params.append(status)
+        cliente_id = request.args.get('cliente_id')
+        if cliente_id:
+            query += " AND o.cliente_id = ?"
+            params.append(int(cliente_id))
+        prestador_id = request.args.get('prestador_id')
+        if prestador_id:
+            query += " AND o.prestador_id = ?"
+            params.append(int(prestador_id))
+        order_by = request.args.get('order_by', 'criado_em')
+        order_dir = request.args.get('order_dir', 'DESC')
+        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/orders/<int:order_id>', methods=['PUT'])
+@require_role('admin')
+@rate_limit(20, 180)
+def admin_update_order(order_id):
+    """Atualiza status de um pedido administrativo."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+
+        allowed_statuses = ('solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado', 'em_disputa')
+        if 'status' in data and data['status'] in allowed_statuses:
+            conn.execute('UPDATE orders SET status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', (data['status'], order_id))
+            conn.commit()
+
+        updated = conn.execute('SELECT id, status, preco_total, escrow_status, pago FROM orders WHERE id = ?', (order_id,)).fetchone()
+        return jsonify(dict(updated)), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao atualizar pedido.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/orders/<int:order_id>', methods=['DELETE'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_delete_order(order_id):
+    """Cancela um pedido administrativo."""
+    conn = get_db_connection()
+    try:
+        order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
+        if not order:
+            return jsonify({'error': 'Pedido não encontrado.'}), 404
+
+        conn.execute('''
+            UPDATE orders SET status = 'cancelado', motivo_cancelamento = 'Cancelamento administrativo',
+            atualizado_em = CURRENT_TIMESTAMP WHERE id = ?
+        ''', (order_id,))
+        conn.commit()
+
+        return jsonify({'message': 'Pedido cancelado com successo.'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao cancelar pedido.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# =================== CRUD de Pagamentos Administrativos ===================
+
+@app.route('/api/admin/payments', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_get_payments():
+    """Lista transações de pagamento administrativas."""
+    conn = get_db_connection()
+    try:
+        query = """
+            SELECT pt.id, pt.order_id, pt.method, pt.gateway, pt.status, pt.amount,
+                   pt.currency, pt.gateway_status, pt.created_at
+            FROM payment_transactions pt
+            WHERE 1=1
+        """
+        params = []
+        status = request.args.get('status')
+        if status:
+            query += " AND pt.status = ?"
+            params.append(status)
+        method = request.args.get('method')
+        if method:
+            query += " AND pt.method = ?"
+            params.append(method)
+        order_by = request.args.get('order_by', 'created_at')
+        order_dir = request.args.get('order_dir', 'DESC')
+        query += f" ORDER BY {order_by} {order_dir} LIMIT 100"
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/payments/<int:payment_id>/approve', methods=['POST'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_approve_payment(payment_id):
+    """Aprova/transfere pagamento capturado."""
+    conn = get_db_connection()
+    try:
+        txn = conn.execute('SELECT * FROM payment_transactions WHERE id = ?', (payment_id,)).fetchone()
+        if not txn:
+            return jsonify({'error': 'Transação não encontrada.'}), 404
+        if txn['status'] not in ('authorized', 'pending'):
+            return jsonify({'error': 'Somente transações pendentes/autorizadas podem ser aprovadas.'}), 400
+
+        conn.execute('''
+            UPDATE payment_transactions SET status = 'captured', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (payment_id,))
+        conn.commit()
+
+        return jsonify({'message': 'Pagamento aprovado e capturado com successo.', 'payment_id': payment_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao aprovar pagamento.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/payments/<int:payment_id>/refund', methods=['POST'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_refund_payment(payment_id):
+    """Reembolsa um pagamento capturado."""
+    conn = get_db_connection()
+    try:
+        txn = conn.execute('SELECT * FROM payment_transactions WHERE id = ?', (payment_id,)).fetchone()
+        if not txn:
+            return jsonify({'error': 'Transação não encontrada.'}), 404
+        if txn['status'] != 'captured':
+            return jsonify({'error': 'Somente transações capturadas podem ser reembolsadas.'}), 400
+
+        conn.execute('''
+            UPDATE payment_transactions SET status = 'refunded', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (payment_id,))
+        conn.commit()
+
+        return jsonify({'message': 'Reembolso registrado com successo.', 'payment_id': payment_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao reembolsar.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# =================== Notificações Administrativas ===================
+
+@app.route('/api/admin/notifications', methods=['POST'])
+@require_role('admin')
+@rate_limit(10, 120)
+def admin_create_notification():
+    """Envia notificação operacional."""
+    conn = get_db_connection()
+    try:
+        data = request.get_json(silent=True) or {}
+        mensagem = str(data.get('mensagem') or '').strip()[:500]
+        tipo = str(data.get('tipo') or 'info').strip()
+        destinatario_tipo = str(data.get('destinatario_tipo') or 'all').strip()
+
+        if not mensagem:
+            return jsonify({'error': 'Mensagem é obrigatória.'}), 400
+
+        # Get current admin user ID
+        current_user = get_current_user()
+        if not current_user:
+            return jsonify({'error': 'Autenticação obrigatória.'}), 401
+        admin_id = current_user['id']
+
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO notifications (admin_id, tipo, mensagem, destinatario_tipo, criado_em)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (admin_id, tipo, mensagem, destinatario_tipo))
+        notification_id = cursor.lastrowid
+        conn.commit()
+
+        return jsonify({
+            'id': notification_id,
+            'mensagem': mensagem,
+            'tipo': tipo,
+            'status': 'enviada'
+        }), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao enviar notificação.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/notifications', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_get_notifications():
+    """Lista notificações enviadas."""
+    conn = get_db_connection()
+    try:
+        query = "SELECT id, tipo, mensagem, destinatario_tipo, criado_em FROM notifications ORDER BY id DESC LIMIT 100"
+        rows = conn.execute(query).fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
+
+
 # =================== Inicialização do Servidor =================
 
 if __name__ == '__main__':

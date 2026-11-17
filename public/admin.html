@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administração PertoJá Marketplace</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .sidebar { transition: width 0.3s; }
+    .sidebar.collapsed { width: 60px; }
+    .sidebar .nav-text { display: none; }
+    .sidebar:not(.collapsed) .nav-icon { margin-right: 8px; }
+    .card { transition: transform 0.2s; }
+    .card:hover { transform: translateY(-2px); }
+    .badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; z-index: 999; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar flex flex-col bg-white border-r border-gray-200 w-64" id="sidebar">
+      <div class="p-4 border-b">
+        <h1 class="text-lg font-bold text-gray-800">PertoJá</h1>
+        <p class="text-xs text-gray-500">Painel Administrativo</p>
+      </div>
+      <nav class="flex-1 p-4 space-y-2">
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 bg-gray-100 rounded-md" data-page="dashboard">
+          <i class="fas fa-tachometer-alt nav-icon"></i><span class="nav-text">Dashboard</span>
+        </a>
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 rounded-md" data-page="users">
+          <i class="fas fa-users nav-icon"></i><span class="nav-text">Usuários</span>
+        </a>
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 rounded-md" data-page="services">
+          <i class="fas fa-store nav-icon"></i><span class="nav-text">Serviços</span>
+        </a>
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 rounded-md" data-page="orders">
+          <i class="fas fa-shopping-cart nav-icon"></i><span class="nav-text">Pedidos</span>
+        </a>
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 rounded-md" data-page="payments">
+          <i class="fas fa-credit-card nav-icon"></i><span class="nav-text">Pagamentos</span>
+        </a>
+        <a href="#" class="nav-item flex items-center px-3 py-2 text-gray-700 rounded-md" data-page="notifications">
+          <i class="fas fa-bell nav-icon"></i><span class="nav-text">Notificações</span>
+        </a>
+      </nav>
+      <div class="p-4 border-t text-xs text-gray-500">
+        <p>v1.0.0</p>
+        <p>© 2026 PertoJá Marketplace</p>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-auto p-6">
+      <!-- Dashboard -->
+      <div id="page-dashboard" class="space-y-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Dashboard</h2>
+          <button onclick="exportCSV('metrics')" class="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+            <i class="fas fa-download mr-2"></i>Exportar CSV
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-sm text-gray-500">Total de Pedidos</h3>
+            <p id="total-orders" class="text-2xl font-bold text-gray-800">—</p>
+          </div>
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-sm text-gray-500">Em Execução</h3>
+            <p id="em-execucao" class="text-2xl font-bold text-blue-600">—</p>
+          </div>
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-sm text-gray-500">Faturamento Bruto</h3>
+            <p id="faturamento" class="text-2xl font-bold text-green-600">—</p>
+          </div>
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-sm text-gray-500">Pagamentos Capturados</h3>
+            <p id="capturados" class="text-2xl font-bold text-purple-600">—</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Status dos Pedidos</h3>
+            <div class="space-y-2" id="orders-chart"></div>
+          </div>
+          <div class="bg-white p-4 rounded-md shadow card">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Pagamentos por Método</h3>
+            <div class="space-y-2" id="payments-chart"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users -->
+      <div id="page-users" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Gerenciar Usuários</h2>
+          <button onclick="openUserModal()" class="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+            <i class="fas fa-plus mr-2"></i>Novo Usuário
+          </button>
+        </div>
+        <div class="bg-white rounded-md shadow overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Nome</th>
+                <th class="px-4 py-3 text-left">Email</th>
+                <th class="px-4 py-3 text-left">Tipo</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="users-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Services -->
+      <div id="page-services" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Gerenciar Serviços</h2>
+          <button onclick="openServiceModal()" class="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+            <i class="fas fa-plus mr-2"></i>Novo Serviço
+          </button>
+        </div>
+        <div class="bg-white rounded-md shadow overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Título</th>
+                <th class="px-4 py-3 text-left">Categoria</th>
+                <th class="px-4 py-3 text-left">Preço</th>
+                <th class="px-4 py-3 text-left">Prestador</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="services-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Orders -->
+      <div id="page-orders" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Gerenciar Pedidos</h2>
+        </div>
+        <div class="bg-white rounded-md shadow overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Cliente</th>
+                <th class="px-4 py-3 text-left">Prestador</th>
+                <th class="px-4 py-3 text-left">Serviço</th>
+                <th class="px-4 py-3 text-left">Valor</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="orders-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Payments -->
+      <div id="page-payments" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Gerenciar Pagamentos</h2>
+        </div>
+        <div class="bg-white rounded-md shadow overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Método</th>
+                <th class="px-4 py-3 text-left">Gateway</th>
+                <th class="px-4 py-3 text-left">Valor</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="payments-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div id="page-notifications" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold text-gray-800">Notificações</h2>
+        </div>
+        <div class="bg-white rounded-md shadow overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Tipo</th>
+                <th class="px-4 py-3 text-left">Mensagem</th>
+                <th class="px-4 py-3 text-left">Destinatário</th>
+                <th class="px-4 py-3 text-left">Data</th>
+              </tr>
+            </thead>
+            <tbody id="notifications-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- User Modal -->
+  <div id="user-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-md shadow-xl w-full max-w-md p-6">
+      <h3 class="text-lg font-bold mb-4" id="user-modal-title">Novo Usuário</h3>
+      <form onsubmit="saveUser(event)">
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Nome completo</label>
+            <input type="text" id="user-nome" class="w-full border rounded-md px-3 py-2" required>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Email</label>
+            <input type="email" id="user-email" class="w-full border rounded-md px-3 py-2" required>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Senha</label>
+            <input type="password" id="user-senha" class="w-full border rounded-md px-3 py-2" required>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Tipo</label>
+            <select id="user-tipo" class="w-full border rounded-md px-3 py-2">
+              <option value="cliente">Cliente</option>
+              <option value="prestador">Prestador</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="flex gap-3">
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md">Salvar</button>
+            <button type="button" onclick="closeModal('user-modal')" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md">Cancelar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API = {
+      get: (url) => fetch(url).then(r => r.json()),
+      post: (url, data) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)}).then(r => r.json()),
+      put: (url, data) => fetch(url, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)}).then(r => r.json()),
+      del: (url) => fetch(url, {method: 'DELETE'}).then(r => r.json())
+    };
+
+    let currentPage = 'dashboard';
+    let users = [];
+    let services = [];
+    let orders = [];
+    let payments = [];
+
+    function showPage(page) {
+      currentPage = page;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('bg-gray-100'));
+      document.querySelectorAll('.nav-item[data-page="'+page+'"]').forEach(el => el.classList.add('bg-gray-100'));
+      document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden'));
+      document.getElementById('page-'+page).classList.remove('hidden');
+      if (page === 'dashboard') loadDashboard();
+      if (page === 'users') loadUsers();
+      if (page === 'services') loadServices();
+      if (page === 'orders') loadOrders();
+      if (page === 'payments') loadPayments();
+      if (page === 'notifications') loadNotifications();
+    }
+
+    // Load dashboard
+    async function loadDashboard() {
+      const metrics = await API.get('/api/admin/metrics');
+      document.getElementById('total-orders').textContent = metrics.orders?.total || 0;
+      document.getElementById('em-execucao').textContent = metrics.orders?.em_execucao || 0;
+      document.getElementById('faturamento').textContent = 'R$ ' + (metrics.faturamento?.bruto || 0).toFixed(2);
+      document.getElementById('capturados').textContent = metrics.pagamentos?.capturados || 0;
+
+      const orders = metrics.orders;
+      const orderList = ['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'finalizado', 'cancelado'];
+      const counts = {};
+      orderList.forEach(s => counts[s] = orders?.[s] || 0);
+      const chart = document.getElementById('orders-chart');
+      chart.innerHTML = orderList.map(s => `
+        <div class="flex items-center">
+          <div class="w-32 text-xs text-gray-600">${s.replace(/_/g, ' ')}</div>
+          <div class="flex-1 bg-gray-200 rounded-full h-4">
+            <div class="h-4 rounded-full bg-blue-500" style="width: ${counts[s] ? (counts[s]/Math.max(...Object.values(counts))*100 : 0)}%"></div>
+          </div>
+          <div class="w-8 text-right text-xs">${counts[s]}</div>
+        </div>
+      `).join('');
+
+      const methods = ['cartao', 'boleto', 'pix', 'transferencia'];
+      const methodCounts = {};
+      methods.forEach(m => methodCounts[m] = 0);
+      (payments || []).forEach(p => { if (methodCounts[p.method]) methodCounts[p.method]++; });
+      const payChart = document.getElementById('payments-chart');
+      payChart.innerHTML = methods.map(m => `
+        <div class="flex items-center">
+          <div class="w-20 text-xs text-gray-600">${m}</div>
+          <div class="flex-1 bg-gray-200 rounded-full h-4">
+            <div class="h-4 rounded-full bg-purple-500" style="width: ${methodCounts[m] ? (methodCounts[m]/Math.max(...Object.values(methodCounts))*100 : 0)}%"></div>
+          </div>
+          <div class="w-8 text-right text-xs">${methodCounts[m]}</div>
+        </div>
+      `).join('');
+    }
+
+    // Load users
+    async function loadUsers() {
+      users = await API.get('/api/admin/users');
+      const tbody = document.getElementById('users-table');
+      tbody.innerHTML = users.map(u => `
+        <tr class="border-b">
+          <td class="px-4 py-2">${u.id}</td>
+          <td class="px-4 py-2 font-medium">${u.nome}</td>
+          <td class="px-4 py-2">${u.email}</td>
+          <td class="px-4 py-2">${u.tipo}</td>
+          <td class="px-4 py-2">
+            <span class="badge ${u.status_conta === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+              ${u.status_conta}
+            </span>
+          </td>
+          <td class="px-4 py-2">
+            <button onclick="deleteUser(${u.id})" class="text-red-600 hover:text-red-800"><i class="fas fa-trash-alt"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Load services
+    async function loadServices() {
+      services = await API.get('/api/admin/services');
+      const tbody = document.getElementById('services-table');
+      tbody.innerHTML = services.map(s => `
+        <tr class="border-b">
+          <td class="px-4 py-2">${s.id}</td>
+          <td class="px-4 py-2 font-medium">${s.titulo}</td>
+          <td class="px-4 py-2">${s.categoria}</td>
+          <td class="px-4 py-2">R$ ${parseFloat(s.preco).toFixed(2)}</td>
+          <td class="px-4 py-2">${s.prestador_nome || '—'}</td>
+          <td class="px-4 py-2">
+            <span class="badge ${s.ativo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}">
+              ${s.ativo ? 'Ativo' : 'Inativo'}
+            </span>
+          </td>
+          <td class="px-4 py-2">
+            <button onclick="deleteService(${s.id})" class="text-red-600 hover:text-red-800"><i class="fas fa-trash-alt"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Load orders
+    async function loadOrders() {
+      orders = await API.get('/api/admin/orders');
+      const tbody = document.getElementById('orders-table');
+      tbody.innerHTML = orders.map(o => `
+        <tr class="border-b">
+          <td class="px-4 py-2">${o.id}</td>
+          <td class="px-4 py-2">${o.cliente_nome || '—'}</td>
+          <td class="px-4 py-2">${o.prestador_nome || '—'}</td>
+          <td class="px-4 py-2">${o.servico_titulo || '—'}</td>
+          <td class="px-4 py-2">R$ ${parseFloat(o.preco_total || 0).toFixed(2)}</td>
+          <td class="px-4 py-2">
+            <span class="badge ${o.status === 'finalizado' ? 'bg-green-100 text-green-800' : o.status === 'cancelado' ? 'bg-red-100 text-red-800' : o.status === 'em_execucao' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">
+              ${o.status.replace(/_/g, ' ')}
+            </span>
+          </td>
+          <td class="px-4 py-2">
+            <button onclick="changeOrderStatus(${o.id})" class="text-blue-600 hover:text-blue-800"><i class="fas fa-edit"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Load payments
+    async function loadPayments() {
+      payments = await API.get('/api/admin/payments');
+      const tbody = document.getElementById('payments-table');
+      tbody.innerHTML = payments.map(p => `
+        <tr class="border-b">
+          <td class="px-4 py-2">${p.id}</td>
+          <td class="px-4 py-2">${p.method}</td>
+          <td class="px-4 py-2">${p.gateway || '—'}</td>
+          <td class="px-4 py-2">R$ ${parseFloat(p.amount || 0).toFixed(2)}</td>
+          <td class="px-4 py-2">
+            <span class="badge ${p.status === 'captured' ? 'bg-green-100 text-green-800' : p.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : p.status === 'refunded' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}">
+              ${p.status}
+            </span>
+          </td>
+          <td class="px-4 py-2">
+            <button onclick="approvePayment(${p.id})" class="text-green-600 hover:text-green-800">Aprovar</button>
+            <button onclick="refundPayment(${p.id})" class="text-red-600 hover:text-red-800">Reembolsar</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Load notifications
+    async function loadNotifications() {
+      const data = await API.get('/api/admin/notifications');
+      const tbody = document.getElementById('notifications-table');
+      tbody.innerHTML = data.map(n => `
+        <tr class="border-b">
+          <td class="px-4 py-2">${n.id}</td>
+          <td class="px-4 py-2"><span class="badge ${n.tipo === 'info' ? 'bg-blue-100 text-blue-800' : n.tipo === 'alert' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}">${n.tipo}</span></td>
+          <td class="px-4 py-2">${n.mensagem}</td>
+          <td class="px-4 py-2">${n.destinatario_tipo || '—'}</td>
+          <td class="px-4 py-2 text-xs text-gray-500">${n.criado_em}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Modal functions
+    function openUserModal() {
+      document.getElementById('user-modal-title').textContent = 'Novo Usuário';
+      document.getElementById('user-modal').classList.remove('hidden');
+      document.getElementById('user-nome').value = '';
+      document.getElementById('user-email').value = '';
+      document.getElementById('user-senha').value = '';
+      document.getElementById('user-tipo').value = 'cliente';
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    async function saveUser(e) {
+      e.preventDefault();
+      const data = {
+        nome: document.getElementById('user-nome').value,
+        email: document.getElementById('user-email').value,
+        senha: document.getElementById('user-senha').value,
+        tipo: document.getElementById('user-tipo').value
+      };
+      await API.post('/api/admin/users', data);
+      closeModal('user-modal');
+      loadUsers();
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('Excluir este usuário?')) return;
+      await API.del(`/api/admin/users/${id}`);
+      loadUsers();
+      showToast('Usuário desativado');
+    }
+
+    async function approvePayment(id) {
+      await API.post(`/api/admin/payments/${id}/approve`);
+      loadPayments();
+      showToast('Pagamento aprovado');
+    }
+
+    async function refundPayment(id) {
+      if (!confirm('Reembolsar este pagamento?')) return;
+      await API.post(`/api/admin/payments/${id}/refund`);
+      loadPayments();
+      showToast('Reembolso registrado');
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'toast bg-white shadow-lg rounded-md px-4 py-3 border border-gray-200';
+      toast.innerHTML = `<i class="fas fa-check-circle text-green-600 mr-2"></i>${msg}`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Initialize
+    showPage('dashboard');
+  </script>
+</body>
+</html>
