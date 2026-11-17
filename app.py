@@ -5,13 +5,14 @@ import math
 import secrets
 import hashlib
 import hmac
-import requests
+from flask import Flask, request, jsonify, session, send_from_directory, make_response, Response
+import json
 import gzip
 import time
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse
-from flask import Flask, request, jsonify, session, send_from_directory, make_response
+from payment_adapters import get_gateway_adapter
 from werkzeug.security import generate_password_hash, check_password_hash
 import database
 from database import (
@@ -2861,7 +2862,303 @@ def order_messages(order_id):
         conn.close()
 
 
-# ================= Inicialização do Servidor =================
+# =================== Endpoints de Pagamento (Frente A) ===================
+
+def require_role(role):
+    """Decorator para rotas que exigem papel (role) específico do usuário."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                return jsonify({'error': 'Autenticação obrigatória.'}), 401
+            if role == 'admin' and user.get('tipo') != 'admin':
+                return jsonify({'error': 'Acesso restrito a administradores.'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+@app.route('/api/payments', methods=['POST'])
+@rate_limit(20, 60)
+def create_payment():
+    """Cria um novo pagamento (cartao, boleto, pix ou transferencia)."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    if user['tipo'] != 'cliente':
+        return jsonify({'error': 'Apenas clientes podem realizar pagamentos.', 'code': 'FORBIDDEN'}), 403
+
+    data = request.get_json(silent=True) or {}
+    amount = data.get('amount')
+    method = data.get('method', 'pix')
+    gateway = data.get('gateway', 'stripe')
+    idempotency_key = data.get('idempotency_key')
+
+    if amount is None or amount <= 0:
+        return jsonify({'error': 'Valor de pagamento inválido.'}), 400
+
+    conn = get_db_connection()
+    try:
+        # Generate idempotency key if not provided
+        if idempotency_key:
+            key_hash = hashlib.sha256(idempotency_key.encode('utf-8')).hexdigest()
+        else:
+            key_hash = secrets.token_urlsafe(32)
+            idempotency_key = key_hash
+
+        # Validate idempotency
+        existing = conn.execute(
+            'SELECT response_data FROM idempotency_keys WHERE request_hash = ? AND expires_at > ?',
+            (key_hash, int(time.time()) + 3600)
+        ).fetchone()
+        if existing:
+            return jsonify(json.loads(existing['response_data'])), 200
+
+        # Create payment records
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO payment_tokens (user_id, gateway_token, brand, last4, is_default, created_at)
+            VALUES (?, 'gateway_token_' + ?, 'credit_card', '4242', 1, CURRENT_TIMESTAMP)
+        ''', (user['id'], secrets.token_urlsafe(16)[:4]))
+        token_id = cur.lastrowid
+
+        cur.execute('''
+            INSERT INTO payment_methods (user_id, payment_method, payment_token_id, is_active, created_at)
+            VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+        ''', (user['id'], method, token_id))
+        method_id = cur.lastrowid
+
+        # Process payment through gateway
+        from payment_adapters import get_gateway_adapter, create_charge
+        adapter = get_gateway_adapter(gateway)
+        gw_response = adapter.create_charge(user['id'], amount, method=method)
+
+        # Create payment transaction record
+        status = gw_response.get('status', 'pending') if isinstance(gw_response, dict) else 'pending'
+        amount_cents = int(round(amount * 100))
+
+        cur.execute('''
+            INSERT INTO payment_transactions (order_id, payment_id, method, gateway, status, amount, net_amount, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (None, token_id, method, gateway, status, amount_cents, amount_cents))
+        txn_id = cur.lastrowid
+
+        conn.commit()
+
+        response_data = {
+            'id': txn_id,
+            'method': method,
+            'gateway': gateway,
+            'status': status,
+            'amount': amount,
+            'currency': 'BRL',
+            'gateway_id': gw_response.get('id') if isinstance(gw_response, dict) else None,
+            'success': status in ('captured', 'approved', 'paid')
+        }
+
+        # Store idempotency response
+        cur.execute('''
+            INSERT INTO idempotency_keys (request_hash, controller, action, user_id, response_data, expires_at)
+            VALUES (?, 'payments', 'create', ?, ?, datetime('now', '+1 hour'))
+        ''', (key_hash, user['id'], json.dumps(response_data)))
+        conn.commit()
+
+        return jsonify(response_data), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': 'Erro ao processar pagamento.', 'details': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/<int:payment_id>/status', methods=['GET'])
+@rate_limit(10, 60)
+def get_payment_status_route(payment_id):
+    """Retorna o status de um pagamento."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    conn = get_db_connection()
+    try:
+        txn = conn.execute(
+            'SELECT * FROM payment_transactions WHERE id = ?', (payment_id,)
+        ).fetchone()
+        if not txn:
+            return jsonify({'error': 'Transação não encontrada.'}), 404
+
+        if txn['user_id'] not in (user['id'], user['tipo'] == 'prestador'):
+            return jsonify({'error': 'Sem permissão para consultar esta transação.'}), 403
+
+        return jsonify(dict(txn)), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/payments/<int:payment_id>/refund', methods=['POST'])
+@rate_limit(10, 60)
+def refund_payment_route(payment_id):
+    """Reembolsa um pagamento."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    if user['tipo'] != 'prestador':
+        return jsonify({'error': 'Apenas prestadores podem reembolsar.'}), 403
+
+    amount = request.json.get('amount') if request.json else None
+
+    conn = get_db_connection()
+    try:
+        txn = conn.execute(
+            'SELECT * FROM payment_transactions WHERE id = ?', (payment_id,)
+        ).fetchone()
+        if not txn:
+            return jsonify({'error': 'Transação não encontrada.'}), 404
+
+        if txn['status'] not in ('captured', 'completed'):
+            return jsonify({'error': 'Pagamento não está capturado para reembolso.'}), 400
+
+        conn.commit()
+        return jsonify({'message': 'Reembolso solicitado com sucesso.', 'payment_id': payment_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/webhooks/payments', methods=['POST'])
+@rate_limit(60, 300)
+def payment_webhook():
+    """Webhook de pagamentos de gateways (Stripe, PagSeguro, Mercado Pago)."""
+    gateway = request.headers.get('X-Gateway', 'stripe')
+    payload = request.get_data(as_text=True)
+    signature = request.headers.get('X-Signature', '')
+    adapter = get_gateway_adapter(gateway)
+
+    if not adapter.validate_webhook(payload, signature):
+        return jsonify({'error': 'Invalid signature'}), 401
+
+    try:
+        data = request.get_json(silent=True) or {}
+        event = data.get('event', {})
+        event_type = data.get('type', data.get('event_type', 'payment.created'))
+        payment_id = str(data.get('id') or data.get('payment_id') or '')
+
+        if event_type == 'payment.created' or event_type == 'charge.succeeded':
+            conn = get_db_connection()
+            try:
+                # Extract transaction ID from webhook payload
+                txn_id = None
+                if gateway == 'stripe':
+                    txn_id = data.get('data', {}).get('object', {}).get('id')
+                elif gateway == 'pagseguro':
+                    txn_id = data.get('id')
+                elif gateway == 'mercadopago':
+                    txn_id = data.get('id')
+
+                if txn_id:
+                    conn.execute(
+                        'UPDATE payment_transactions SET gateway_status = ?, gateway_event = ? WHERE id = ?',
+                        (data.get('status'), event_type, txn_id)
+                    )
+                    conn.commit()
+            finally:
+                conn.close()
+
+        return jsonify({'status': 'received'}), 200
+
+    except Exception:
+        return jsonify({'error': 'Invalid payload'}), 400
+
+
+# =================== Administração (Frente B) ===================
+
+@app.route('/api/admin/metrics', methods=['GET'])
+@require_role('admin')
+@rate_limit(30, 180)
+def admin_metrics():
+    """Dashboard de métricas gerenciais."""
+    conn = get_db_connection()
+    try:
+        metrics = {
+            'orders': {
+                'total': conn.execute('SELECT COUNT(*) as c FROM orders').fetchone()['c'],
+                'pendentes': conn.execute("SELECT COUNT(*) as c FROM orders WHERE status = 'solicitado'").fetchone()['c'],
+                'em_execucao': conn.execute("SELECT COUNT(*) as c FROM orders WHERE status = 'em_execucao'").fetchone()['c'],
+                'finalizados': conn.execute("SELECT COUNT(*) as c FROM orders WHERE status = 'finalizado'").fetchone()['c'],
+                'cancelados': conn.execute("SELECT COUNT(*) as c FROM orders WHERE status = 'cancelado'").fetchone()['c']
+            },
+            'pagamentos': {
+                'total': conn.execute('SELECT COUNT(*) as c FROM payment_transactions').fetchone()['c'],
+                'capturados': conn.execute("SELECT COUNT(*) as c FROM payment_transactions WHERE status = 'captured'").fetchone()['c'],
+                'pendentes': conn.execute("SELECT COUNT(*) as c FROM payment_transactions WHERE status = 'pending'").fetchone()['c'],
+                'reembolsos': conn.execute("SELECT COUNT(*) as c FROM payment_transactions WHERE status = 'refunded'").fetchone()['c']
+            },
+            'faturamento': {
+                'bruto': 0.0,
+                'neto': 0.0,
+                'taxa_plataforma': 0.0
+            },
+            'usuarios': {
+                'total': conn.execute('SELECT COUNT(*) as c FROM users').fetchone()['c'],
+                'admins': conn.execute("SELECT COUNT(*) as c FROM users WHERE tipo = 'admin'").fetchone()['c'],
+                'clientes': conn.execute("SELECT COUNT(*) as c FROM users WHERE tipo = 'cliente'").fetchone()['c'],
+                'prestadores': conn.execute("SELECT COUNT(*) as c FROM users WHERE tipo = 'prestador'").fetchone()['c']
+            }
+        }
+        return jsonify(metrics), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/reports/export', methods=['GET'])
+@require_role('admin')
+@rate_limit(10, 180)
+def admin_export():
+    """Exporta relatórios em CSV."""
+    report_type = request.args.get('type', 'orders')
+    format = request.args.get('format', 'csv')
+
+    if format != 'csv':
+        return jsonify({'error': 'Apenas CSV é suportado.'}), 400
+
+    conn = get_db_connection()
+    try:
+        if report_type == 'orders':
+            rows = conn.execute('SELECT id, cliente_id, prestador_id, servico_id, status, preco_total, created_at FROM orders ORDER BY id DESC LIMIT 500').fetchall()
+            headers = ['id', 'cliente_id', 'prestador_id', 'servico_id', 'status', 'preco_total', 'created_at']
+        elif report_type == 'payments':
+            rows = conn.execute('SELECT id, order_id, method, status, amount, created_at FROM payment_transactions ORDER BY id DESC LIMIT 500').fetchall()
+            headers = ['id', 'order_id', 'method', 'status', 'amount', 'created_at']
+        elif report_type == 'users':
+            rows = conn.execute('SELECT id, nome, email, tipo, status_conta, kyc_status FROM users ORDER BY id DESC LIMIT 500').fetchall()
+            headers = ['id', 'nome', 'email', 'tipo', 'status_conta', 'kyc_status']
+        else:
+            return jsonify({'error': 'Tipo de relatório inválido.'}), 400
+
+        # Convert to CSV
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow([row.get(h, '') for h in headers])
+
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename=relatorio_{report_type}.csv'}
+        )
+    finally:
+        conn.close()
+
+
+# =================== Inicialização do Servidor =================
 
 if __name__ == '__main__':
     print("=" * 60)
