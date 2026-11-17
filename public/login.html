@@ -286,7 +286,6 @@
           '/pedido.html', '/pedido',
           '/portal-cliente.html', '/portal-cliente',
           '/portal-prestador.html', '/portal-prestador',
-          '/admin.html', '/admin',
           '/como-funciona.html', '/como-funciona',
           '/cadastro.html', '/cadastro',
           '/sobre-nos.html', '/sobre-nos',
@@ -483,9 +482,7 @@
           return;
         }
 
-        if (data.user && data.user.tipo === 'admin') {
-          window.location.href = redirectParam ? sanitizarRedirectInterno(redirectParam, 'admin.html') : 'admin.html';
-        } else if (data.user && data.user.tipo === 'prestador') {
+        if (data.user && data.user.tipo === 'prestador') {
           window.location.href = 'portal-prestador.html';
         } else {
           // Validação estrita contra open-redirect e pseudo-esquemas

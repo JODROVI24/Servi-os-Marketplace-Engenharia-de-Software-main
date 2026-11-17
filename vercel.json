@@ -28,7 +28,7 @@
       ]
     },
     {
-      "source": "/(portal-cliente|portal-prestador|login|cadastro|admin)(\\.html)?",
+      "source": "/(portal-cliente|portal-prestador|login|cadastro)(\\.html)?",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]

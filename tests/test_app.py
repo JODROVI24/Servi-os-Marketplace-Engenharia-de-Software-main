@@ -35,7 +35,7 @@ class TestMarketplaceFull(unittest.TestCase):
         self.client = app.test_client()
 
     def test_01_static_pages_load(self):
-        pages = ['/', '/index.html', '/pedido.html', '/login.html', '/cadastro.html', '/portal-prestador.html', '/portal-cliente.html', '/admin.html', '/como-funciona.html', '/sobre-nos.html']
+        pages = ['/', '/index.html', '/pedido.html', '/login.html', '/cadastro.html', '/portal-prestador.html', '/portal-cliente.html', '/como-funciona.html', '/sobre-nos.html']
         for page in pages:
             res = self.client.get(page)
             self.assertEqual(res.status_code, 200, f'Falha ao carregar página {page}')
