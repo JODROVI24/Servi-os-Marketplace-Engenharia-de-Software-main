@@ -372,20 +372,80 @@ class PagSeguroAdapter(GatewayAdapter):
 
 
 class MercadoPagoAdapter(GatewayAdapter):
-    """Mercado Pago payment gateway adapter."""
+    """Mercado Pago payment gateway adapter.
+
+    Supports both legacy Payments API and Checkout Pro Orders API.
+    Return URLs are configured per order via config_return_urls().
+    """
 
     def __init__(self):
         self.access_token = MERCADOPAGO_ACCESS_TOKEN
         self.base_url = 'https://api.mercadopago.com/v1'
+        # Checkout Pro Orders API endpoint
+        self.orders_url = 'https://api.mercadopago.com/v1/orders'
+        # Return URLs configuration (set via config_return_urls)
+        self.config = {
+            'success_url': None,
+            'failure_url': None,
+            'pending_url': None,
+            'auto_return': 'approved',  # 'approved' or 'all'
+        }
 
-    def create_charge(self, user_id, amount, currency='BRL', metadata=None):
-        """Create a payment in Mercado Pago."""
+    def config_return_urls(self, success_url=None, failure_url=None, pending_url=None, auto_return='approved'):
+        """Configure the return URLs for Checkout Pro Orders.
+
+        Args:
+            success_url: URL redirecionado quando o pagamento é aprovado.
+            failure_url: URL redirecionado quando o pagamento é rejeitado.
+            pending_url: URL redirecionado quando o pagamento está pendente.
+            auto_return: 'approved' para aprovação só, 'all' para qualquer resultado.
+        """
+        if success_url:
+            self.config['success_url'] = success_url
+        if failure_url:
+            self.config['failure_url'] = failure_url
+        if pending_url:
+            self.config['pending_url'] = pending_url
+        if auto_return in ('approved', 'all'):
+            self.config['auto_return'] = auto_return
+        return self.config
+
+    def get_return_urls_config(self):
+        """Get the configured return URLs for the current order."""
+        return {
+            'success_url': self.config['success_url'],
+            'failure_url': self.config['failure_url'],
+            'pending_url': self.config['pending_url'],
+            'auto_return': self.config['auto_return'],
+        }
+
+    def create_charge(self, user_id, amount, currency='BRL', metadata=None, use_orders_api=True):
+        """Create a payment in Mercado Pago.
+
+        Args:
+            user_id: User ID making the payment.
+            amount: Amount in BRL.
+            currency: Currency code (default 'BRL').
+            metadata: Additional metadata.
+            use_orders_api: If True, use Checkout Pro Orders API (recommended);
+                            if False, use legacy Payments API.
+
+        Returns:
+            dict: Payment confirmation or error.
+        """
         if not self.access_token:
             return {'error': 'Mercado Pago not configured', 'code': 'MISSING_CREDENTIALS'}
 
         # Format amount for Mercado Pago (in cents)
         amount_cents = int(round(amount * 100)) if amount > 0 else 100
 
+        if use_orders_api:
+            return self._create_order(user_id, amount_cents, currency, metadata)
+        else:
+            return self._create_payment(user_id, amount_cents, currency, metadata)
+
+    def _create_payment(self, user_id, amount_cents, currency, metadata):
+        """Create a payment using the legacy Payments API (older integration)."""
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json'
@@ -393,7 +453,7 @@ class MercadoPagoAdapter(GatewayAdapter):
 
         payload = {
             'transaction_amount': amount_cents,
-            'currency_id': 'BRL',
+            'currency_id': currency,
             'description': 'Pagamento de serviço',
             'payer': {
                 'id': user_id
@@ -424,6 +484,75 @@ class MercadoPagoAdapter(GatewayAdapter):
                         'id': result.get('point_of_interaction', {}).get('id')
                     } if result.get('point_of_interaction') else None,
                     'date_created': result.get('date_created')
+                }
+        except HTTPError as e:
+            return {'error': f'Mercado Pago HTTP error: {e.code}', 'code': 'HTTP_ERROR'}
+        except URLError as e:
+            return {'error': f'Mercado Pago connection error: {e.reason}', 'code': 'CONNECTION_ERROR'}
+        except Exception as e:
+            return {'error': str(e), 'code': 'UNKNOWN_ERROR'}
+
+    def _create_order(self, user_id, amount_cents, currency, metadata):
+        """Create an order using the Checkout Pro Orders API (recommended).
+
+        Configures return URLs per the Mercado Pago documentation:
+        https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-orders/web-integration/configure-back-urls
+        """
+        if not self.access_token:
+            return {'error': 'Mercado Pago not configured', 'code': 'MISSING_CREDENTIALS'}
+
+        headers = {
+            'Authorization': f'Bearer {self.access_token}',
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': f'order_{user_id}_{int(time.time())}'
+        }
+
+        # Configure the online config with return URLs
+        online_config = {
+            'success_url': self.config.get('success_url'),
+            'failure_url': self.config.get('failure_url'),
+            'pending_url': self.config.get('pending_url'),
+            'auto_return': self.config.get('auto_return'),
+        }
+
+        payload = {
+            'type': 'online',
+            'processing_mode': 'manual',
+            'total_amount': amount_cents,
+            'currency_id': currency,
+            'description': 'Pagamento de serviço',
+            'payer': {
+                'id': user_id
+            },
+            'external_reference': f'order_{user_id}_{int(time.time())}',
+            'config': {
+                'online': {k: v for k, v in online_config.items() if v is not None}
+            }
+        }
+
+        if metadata:
+            payload['metadata'] = metadata
+
+        try:
+            req = Request(
+                self.orders_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            with urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                return {
+                    'id': result.get('id'),
+                    'status': result.get('status'),
+                    'payment_type': result.get('payment_type'),
+                    'total_amount': result.get('total_amount'),
+                    'currency_id': result.get('currency_id'),
+                    'point_of_interaction': {
+                        'id': result.get('point_of_interaction', {}).get('id')
+                    } if result.get('point_of_interaction') else None,
+                    'date_created': result.get('date_created'),
+                    'return_urls': result.get('return_url') or self.config
                 }
         except HTTPError as e:
             return {'error': f'Mercado Pago HTTP error: {e.code}', 'code': 'HTTP_ERROR'}
@@ -491,12 +620,23 @@ class MercadoPagoAdapter(GatewayAdapter):
             return {'error': str(e), 'code': 'UNKNOWN_ERROR'}
 
     def validate_webhook(self, payload, signature):
-        """Validate Mercado Pago webhook signature."""
-        # Mercado Pago uses a different signature scheme (X-Signature header)
-        # This is a simplified version; production should verify against Mercado Pago docs
+        """Validate Mercado Pago webhook signature.
+
+        Mercado Pago uses the X-Signature header with the format:
+        'type=NOTIFICATION_TYPE, timestamp=TIMESTAMP, token=TOKEN, signature=SIGNATURE'
+
+        Args:
+            payload: The raw webhook payload.
+            signature: The X-Signature header value.
+
+        Returns:
+            bool: True if valid, False otherwise.
+        """
         if not self.access_token:
-            return True
-        return True  # Placeholder - implement full verification in production
+            return True  # Skip verification in dev mode
+        # Placeholder - implement full verification against Mercado Pago docs
+        # in production (see https://www.mercadopago.com.br/developers/pt/docs/notifications/payment/notifications)
+        return True
 
     def format_gateway_response(self, gateway_response):
         """Format response for internal use."""
@@ -504,11 +644,15 @@ class MercadoPagoAdapter(GatewayAdapter):
             'gateway': 'mercadopago',
             'gateway_id': gateway_response.get('id'),
             'status': gateway_response.get('status'),
+            'total_amount': gateway_response.get('total_amount'),
+            'currency_id': gateway_response.get('currency_id'),
+            'payment_type': gateway_response.get('payment_type'),
+            'point_of_interaction': gateway_response.get('point_of_interaction'),
+            'date_created': gateway_response.get('date_created'),
             'success': gateway_response.get('status') in ('approved', 'paid')
         }
 
 
-# Factory to create gateway instances
 GATEWAY_ADAPTERS = {}
 
 def get_gateway_adapter(gateway='stripe'):
