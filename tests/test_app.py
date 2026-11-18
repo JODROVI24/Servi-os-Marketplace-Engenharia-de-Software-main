@@ -2538,7 +2538,51 @@ class TestMarketplaceFull(unittest.TestCase):
         for token in ('btnAbrirSuporteIA', 'modalSuporteIA', 'formSuporteIA'):
             self.assertIn(token, html_cli)
 
+    def test_65_ui_design_system_20_rules_compliance(self):
+        # 1. Tokens do Design System e Cor de Destaque em public/style.css
+        with open(os.path.join(REPO_ROOT, 'public', 'style.css'), 'r', encoding='utf-8') as f:
+            css = f.read()
+        for token in (
+            '--accent:',
+            '--radius-outer:',
+            '--radius-inner:',
+            'calc(var(--radius-outer) - var(--pad-card))',
+            'tabular-nums',
+            'text-wrap: balance',
+            '.is-loading',
+            '@keyframes toastSlideIn',
+            '.product-preview-frame',
+        ):
+            self.assertIn(token, css, f"Token de Design System ausente em style.css: {token}")
+
+        # 2. Exclusão de emblemas redundantes e presença do Hero com prévia real do produto em public/index.html
+        with open(os.path.join(REPO_ROOT, 'public', 'index.html'), 'r', encoding='utf-8') as f:
+            html_index = f.read()
+        self.assertIn('product-preview-frame', html_index)
+        self.assertIn('id="busca-hero-principal"', html_index)
+        self.assertNotIn('Avaliação Média:', html_index)
+
+        # 3. Exclusão de aviso técnico redundante em public/pedido.html
+        with open(os.path.join(REPO_ROOT, 'public', 'pedido.html'), 'r', encoding='utf-8') as f:
+            html_pedido = f.read()
+        self.assertNotIn('Modo com coordenadas padrão ativado.', html_pedido)
+        self.assertIn('tabular-nums', html_pedido)
+
+        # 4. Presença de tabular-nums, .is-loading e exclusão de rótulos redundantes nos portais e scripts
+        with open(os.path.join(REPO_ROOT, 'public', 'portal-prestador.html'), 'r', encoding='utf-8') as f:
+            html_prest = f.read()
+        self.assertIn('tabular-nums', html_prest)
+
+        with open(os.path.join(REPO_ROOT, 'public', 'portal-cliente.html'), 'r', encoding='utf-8') as f:
+            html_cli = f.read()
+        self.assertIn('tabular-nums', html_cli)
+
+        with open(os.path.join(REPO_ROOT, 'public', 'script.js'), 'r', encoding='utf-8') as f:
+            js_script = f.read()
+        self.assertIn('is-loading', js_script)
+        self.assertIn('tabular-nums', js_script)
+        self.assertNotIn('Avaliação Média:', js_script)
+
 
 if __name__ == '__main__':
     unittest.main()
-

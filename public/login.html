@@ -115,8 +115,8 @@
           <span class="material-symbols-outlined text-sm" aria-hidden="true">engineering</span>
           Acesso do Prestador Parceiro
         </div>
-        <h1 class="text-2xl font-black text-perto-ink tracking-tight m-0">Acessar Plataforma</h1>
-        <p class="text-xs sm:text-sm text-perto-ink/75 mt-1 font-body">Entre com sua conta de cliente ou prestador de serviços.</p>
+        <h1 class="text-2xl font-black text-perto-ink tracking-tight m-0">Entrar na sua conta</h1>
+        <p class="text-xs sm:text-sm text-perto-ink/85 mt-1 font-body">Acesse seus chamados, propostas e histórico de atendimentos.</p>
       </div>
 
       <!-- Alerta Informativo de Autenticação Necessária para Pedido -->
@@ -133,22 +133,22 @@
         <div class="campo-form">
           <label for="email" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail</label>
           <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none" aria-hidden="true">mail</span>
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/85 text-lg pointer-events-none" aria-hidden="true">mail</span>
             <input type="email" id="email" required autocomplete="email" placeholder="seu@email.com" class="input-form pl-11 text-sm font-medium">
           </div>
         </div>
 
         <div class="campo-form">
           <div class="flex items-center justify-between">
-            <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha de Acesso</label>
+            <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha</label>
             <button type="button" id="btnEsqueciSenha" class="text-xs font-bold text-perto-sea hover:underline">
               Esqueci minha senha
             </button>
           </div>
           <div class="relative">
-            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/70 text-lg pointer-events-none" aria-hidden="true">key</span>
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/85 text-lg pointer-events-none" aria-hidden="true">key</span>
             <input type="password" id="senha" required autocomplete="current-password" placeholder="Digite sua senha" class="input-form pl-11 pr-11 text-sm font-medium">
-            <button type="button" id="btnToggleSenha" aria-label="Mostrar senha" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-perto-ink/70 hover:text-perto-ink p-1 rounded-lg">
+            <button type="button" id="btnToggleSenha" aria-label="Mostrar senha" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-perto-ink/85 hover:text-perto-ink p-1 rounded-lg">
               <span class="material-symbols-outlined text-lg" id="iconToggleSenha" aria-hidden="true">visibility</span>
             </button>
           </div>
@@ -161,13 +161,13 @@
       </form>
 
       <!-- Chamada para Cadastro -->
-      <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/70 font-body">
+      <div class="mt-6 pt-5 border-t border-perto-road text-center text-xs sm:text-sm text-perto-ink/85 font-body">
         <p>Ainda não possui uma conta? <a href="cadastro.html" id="linkParaCadastro" class="text-perto-sea font-bold hover:underline">Cadastre-se gratuitamente</a></p>
       </div>
 
       <!-- Caixa de Credenciais Demo -->
-      <div class="mt-6 bg-perto-bg border border-perto-road rounded-xl p-3.5 text-xs font-body text-perto-ink/80">
-        <div class="flex items-center gap-1.5 font-bold text-perto-ink mb-1.5">
+      <div class="mt-6 bg-perto-bg border border-perto-road rounded-xl p-3.5 text-xs font-body text-perto-ink/85">
+        <div class="flex items-center gap-1.5 font-bold text-perto-ink mb-1.5 tabular-nums">
           <span class="material-symbols-outlined text-sm text-perto-sea">lightbulb</span>
           Credenciais de Demonstração (Senha: 123456):
         </div>
@@ -177,19 +177,19 @@
     </div>
   </main>
 
-  <!-- Modal Acessível de Recuperação de Senha (PA-09) -->
+  <!-- Modal Acessível de Recuperação de Senha -->
   <div id="modalRecuperarSenha" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalRecuperar" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
         <h2 id="tituloModalRecuperar" class="text-lg font-black text-perto-ink m-0">Recuperar Senha</h2>
-        <button type="button" id="btnFecharModalRecuperar" aria-label="Fechar modal de recuperação" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg">✕</button>
+        <button type="button" id="btnFecharModalRecuperar" aria-label="Fechar modal de recuperação" class="text-perto-ink/85 hover:text-perto-ink text-xl px-2 py-1 rounded-lg">✕</button>
       </div>
 
       <div id="recuperarFeedback" class="mt-3 p-3 rounded-xl text-xs font-semibold" style="display: none;"></div>
 
       <!-- Passo 1: Informar E-mail -->
       <form id="formForgotStep1" class="mt-4 space-y-4">
-        <p class="text-xs text-perto-ink/75 font-body">Informe o e-mail cadastrado para receber o código/token de redefinição.</p>
+        <p class="text-xs text-perto-ink/85 font-body">Informe o e-mail cadastrado para receber o código de redefinição.</p>
         <div class="campo-form">
           <label for="forgotEmail" class="text-xs font-bold text-perto-ink uppercase tracking-wider">E-mail cadastrado</label>
           <input type="email" id="forgotEmail" required placeholder="seu@email.com" class="input-form text-sm font-medium">
@@ -202,10 +202,10 @@
 
       <!-- Passo 2: Token + Nova Senha -->
       <form id="formResetStep2" class="mt-4 space-y-4" style="display: none;">
-        <p class="text-xs text-perto-ink/75 font-body">Digite o código/token recebido e defina sua nova senha de acesso.</p>
+        <p class="text-xs text-perto-ink/85 font-body">Digite o código recebido e defina sua nova senha.</p>
         <div class="campo-form">
-          <label for="resetToken" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Código / Token</label>
-          <input type="text" id="resetToken" required placeholder="Cole o código recebido" class="input-form text-sm font-mono font-bold">
+          <label for="resetToken" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Código de verificação</label>
+          <input type="text" id="resetToken" required placeholder="Cole o código recebido" class="input-form text-sm font-mono font-bold tabular-nums">
         </div>
         <div class="campo-form">
           <label for="resetNovaSenha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Nova Senha</label>
@@ -231,7 +231,7 @@
             <div class="logo-badge"><span class="material-symbols-outlined" aria-hidden="true">bolt</span></div>
             <span>Perto<b>Já</b></span>
           </a>
-          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade checada por nível de risco e pagamento protegido em Escrow.</p>
+          <p class="footer-brand-desc">Plataforma hiperlocal que conecta você a profissionais com identidade verificada e pagamento protegido em Escrow.</p>
         </div>
         <div class="footer-col">
           <span class="footer-col-title">Cliente</span>

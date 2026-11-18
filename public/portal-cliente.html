@@ -107,7 +107,7 @@
             <h1 id="clienteNome" class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">
               Carregando portal...
             </h1>
-            <p id="clienteEmail" class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body"></p>
+            <p id="clienteEmail" class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body"></p>
           </div>
         </div>
 
@@ -123,11 +123,11 @@
       <div class="chips flex flex-wrap gap-2">
         <button class="chip on flex items-center gap-2" id="tabBtnPedidos" onclick="mudarAba('pedidos')">
           <span class="material-symbols-outlined text-base">receipt_long</span>
-          Meus Chamados & Pedidos (<span id="contPedidos" class="font-bold">0</span>)
+          Meus Chamados &amp; Pedidos (<span id="contPedidos" class="font-bold tabular-nums">0</span>)
         </button>
         <button class="chip flex items-center gap-2" id="tabBtnPerfil" onclick="mudarAba('perfil')">
           <span class="material-symbols-outlined text-base">badge</span>
-          Dados Cadastrais & Endereço
+          Dados Cadastrais &amp; Endereço
         </button>
         <button type="button" class="chip flex items-center gap-2 bg-perto-sun/25 border-perto-sun text-perto-ink font-extrabold ml-auto" id="btnAbrirSuporteIA" onclick="abrirModalSuporteIA()" title="Abrir Assistente de Suporte IA (FreeLLMAPI)">
           <span aria-hidden="true">🤖</span>
@@ -142,9 +142,9 @@
         <div class="mb-6 pb-4 border-b border-perto-road">
           <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
             <span class="material-symbols-outlined text-perto-sea">history</span>
-            Histórico de Serviços Solicitados
+            Chamados Ativos e Histórico de Atendimento
           </h2>
-          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Veja o andamento de suas ordens de serviço e detalhes dos profissionais contratados.</p>
+          <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Acompanhe o status em tempo real, o PIN presencial de 4 dígitos e a garantia Escrow dos seus chamados.</p>
         </div>
 
         <div id="listaPedidosCliente">
@@ -168,9 +168,9 @@
         <div class="mb-6 pb-4 border-b border-perto-road">
           <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
             <span class="material-symbols-outlined text-perto-sea">person</span>
-            Atualizar Dados Cadastrais
+            Dados de Contato e Endereço de Atendimento
           </h2>
-          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Mantenha suas informações de contato e endereço atualizadas para facilitar a chegada dos prestadores.</p>
+          <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Mantenha suas informações de contato e endereço atualizadas para facilitar a chegada dos prestadores.</p>
         </div>
 
         <form id="formPerfilCliente" class="space-y-4">
@@ -181,7 +181,7 @@
 
           <div class="campo-form">
             <label for="clienteFormTelefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp</label>
-            <input type="text" id="clienteFormTelefone" required class="input-form text-sm font-medium">
+            <input type="text" id="clienteFormTelefone" required class="input-form text-sm font-medium tabular-nums">
           </div>
 
           <!-- Endereço Residencial do Cliente (ViaCEP + Geocodificação) -->
@@ -197,7 +197,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div class="campo-form sm:col-span-1">
                 <label for="clienteFormCep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
-                <input type="text" id="clienteFormCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink" onblur="buscarCepCliente(this.value)">
+                <input type="text" id="clienteFormCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink tabular-nums" onblur="buscarCepCliente(this.value)">
               </div>
               <div class="campo-form sm:col-span-2">
                 <label for="clienteFormEndereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Logradouro / Rua</label>
@@ -208,7 +208,7 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div class="campo-form">
                 <label for="clienteFormNumero" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Número</label>
-                <input type="text" id="clienteFormNumero" placeholder="1000" class="input-form text-sm font-medium">
+                <input type="text" id="clienteFormNumero" placeholder="1000" class="input-form text-sm font-medium tabular-nums">
               </div>
               <div class="campo-form">
                 <label for="clienteFormComplemento" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Complemento</label>
@@ -231,11 +231,11 @@
               </div>
               <div class="campo-form sm:col-span-1">
                 <label for="clienteFormLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude</label>
-                <input type="number" step="any" id="clienteFormLat" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="clienteFormLat" class="input-form text-xs font-mono tabular-nums bg-perto-bg">
               </div>
               <div class="campo-form sm:col-span-1">
                 <label for="clienteFormLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude</label>
-                <input type="number" step="any" id="clienteFormLng" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="clienteFormLng" class="input-form text-xs font-mono tabular-nums bg-perto-bg">
               </div>
             </div>
 
@@ -268,9 +268,9 @@
         <div class="mb-4 pb-3 border-b border-perto-road">
           <h2 class="text-lg sm:text-xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
             <span class="material-symbols-outlined text-perto-sea" aria-hidden="true">shield_person</span>
-            Privacidade &amp; Seus Dados (LGPD Art. 18)
+            Privacidade e Portabilidade de Dados
           </h2>
-          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">
+          <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">
             Exerça seus direitos de portabilidade e anonimização irreversível previstos na Lei Geral de Proteção de Dados.
             Consulte nossa <a href="privacidade.html" class="underline font-bold text-perto-sea">Política de Privacidade</a>.
           </p>
@@ -299,17 +299,17 @@
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
-      <p id="modalAvaliarSubtitulo" class="text-xs text-perto-ink/75 mb-4 font-body"></p>
+      <p id="modalAvaliarSubtitulo" class="text-xs text-perto-ink/80 mb-4 font-body"></p>
       <form id="formAvaliarPedido" class="space-y-4">
         <input type="hidden" id="avaliarOrderId">
         <div class="campo-form">
           <span class="text-xs font-bold text-perto-ink uppercase tracking-wider block mb-2">Sua Nota (1 a 5 estrelas)</span>
           <div id="avaliarEstrelas" class="flex items-center gap-2" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
-            <button type="button" class="chip on" data-nota="5" aria-pressed="true">★ 5</button>
-            <button type="button" class="chip" data-nota="4" aria-pressed="false">★ 4</button>
-            <button type="button" class="chip" data-nota="3" aria-pressed="false">★ 3</button>
-            <button type="button" class="chip" data-nota="2" aria-pressed="false">★ 2</button>
-            <button type="button" class="chip" data-nota="1" aria-pressed="false">★ 1</button>
+            <button type="button" class="chip on tabular-nums" data-nota="5" aria-pressed="true">★ 5</button>
+            <button type="button" class="chip tabular-nums" data-nota="4" aria-pressed="false">★ 4</button>
+            <button type="button" class="chip tabular-nums" data-nota="3" aria-pressed="false">★ 3</button>
+            <button type="button" class="chip tabular-nums" data-nota="2" aria-pressed="false">★ 2</button>
+            <button type="button" class="chip tabular-nums" data-nota="1" aria-pressed="false">★ 1</button>
           </div>
           <input type="hidden" id="avaliarNota" value="5">
         </div>
@@ -325,7 +325,7 @@
     </div>
   </div>
 
-  <!-- Modal Acessível: Chat Protegido do Pedido (ET-15) -->
+  <!-- Modal Acessível: Chat Protegido do Pedido -->
   <div id="modalChatPedidoCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalChatClienteTitulo" style="display: none;">
     <div class="modal-conteudo" style="max-width: 480px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -352,7 +352,7 @@
     </div>
   </div>
 
-  <!-- Modal Acessível: Abrir Mediação / Disputa (ET-08) -->
+  <!-- Modal Acessível: Abrir Mediação / Disputa -->
   <div id="modalDisputaCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalDisputaTitulo" style="display: none;">
     <div class="modal-conteudo" style="max-width: 460px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -364,7 +364,7 @@
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
-      <p class="text-xs text-perto-ink/75 font-body mb-3">
+      <p class="text-xs text-perto-ink/80 font-body mb-3">
         O valor em custódia (Escrow) permanece retido durante a análise pela equipe de mediação (prazo de até 72h).
       </p>
       <form id="formDisputaCliente" class="space-y-3">
@@ -385,7 +385,7 @@
     </div>
   </div>
 
-  <!-- Modal Acessível: SOS Emergência (ET-14) -->
+  <!-- Modal Acessível: SOS Emergência -->
   <div id="modalSosCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalSosClienteTitulo" style="display: none;">
     <div class="modal-conteudo" style="max-width: 460px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -400,11 +400,11 @@
       <div class="p-3 rounded-xl bg-[#fff7dd] border border-perto-sun text-xs text-perto-ink mb-3 space-y-2">
         <p class="font-bold m-0">Em risco físico imediato, ligue primeiro para os serviços públicos:</p>
         <div class="flex flex-wrap gap-2">
-          <a href="tel:190" class="btn px-3.5 py-1.5 rounded-full text-xs font-extrabold text-perto-ink no-underline inline-flex items-center gap-1">
+          <a href="tel:190" class="btn px-3.5 py-1.5 rounded-full text-xs font-extrabold text-perto-ink no-underline inline-flex items-center gap-1 tabular-nums">
             <span class="material-symbols-outlined text-sm" aria-hidden="true">call</span>
             Polícia (190)
           </a>
-          <a href="tel:192" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-extrabold no-underline inline-flex items-center gap-1">
+          <a href="tel:192" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-extrabold no-underline inline-flex items-center gap-1 tabular-nums">
             <span class="material-symbols-outlined text-sm" aria-hidden="true">local_hospital</span>
             SAMU (192)
           </a>
@@ -428,7 +428,7 @@
     </div>
   </div>
 
-  <!-- Modal Acessível: Excluir / Anonimizar Conta LGPD (ET-10) -->
+  <!-- Modal Acessível: Excluir / Anonimizar Conta LGPD -->
   <div id="modalExcluirContaLgpd" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalExcluirContaTitulo" style="display: none;">
     <div class="modal-conteudo" style="max-width: 440px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -447,7 +447,7 @@
     </div>
   </div>
 
-  <!-- Modal Acessível: Ver Avaliações Double-Blind (ET-13) -->
+  <!-- Modal Acessível: Ver Avaliações Double-Blind -->
   <div id="modalVerReviewsPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalVerReviewsTitulo" style="display: none;">
     <div class="modal-conteudo" style="max-width: 480px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -460,7 +460,7 @@
         </button>
       </div>
       <div id="verReviewsConteudo" class="space-y-3 text-xs font-body" aria-live="polite">
-        <p class="text-perto-ink/70">Carregando avaliações...</p>
+        <p class="text-perto-ink/80">Carregando avaliações...</p>
       </div>
       <div class="flex justify-end pt-3 mt-3 border-t border-perto-road">
         <button type="button" id="btnFecharModalVerReviewsRodape" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Fechar</button>
@@ -474,7 +474,7 @@
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
         <h3 id="tituloModalSuporteIA" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
           <span aria-hidden="true">🤖</span>
-          Assistente de Suporte PertoJá — FreeLLMAPI
+          Assistente de Suporte PertoJá
         </h3>
         <button type="button" id="btnFecharModalSuporteIA" class="drawer-fechar" aria-label="Fechar suporte IA">
           <span class="material-symbols-outlined">close</span>
@@ -482,7 +482,7 @@
       </div>
       <div id="listaMensagensSuporteIA" class="max-h-72 overflow-y-auto space-y-2.5 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body" aria-live="polite">
         <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink">
-          <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá (FreeLLMAPI)</div>
+          <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá</div>
           <p class="m-0">Olá! Sou o assistente inteligente do PertoJá. Posso tirar dúvidas sobre pagamento protegido em Escrow, PIN presencial de 4 dígitos, garantia de 48h, disputas e segurança. Como posso ajudar?</p>
         </div>
       </div>
@@ -541,11 +541,33 @@
     let dadosCliente = null;
 
     function toast(t) {
+      const container = document.getElementById('toasts');
+      if (!container) return;
       const d = document.createElement('div');
-      d.className = 'toast';
-      d.textContent = t;
-      document.getElementById('toasts').appendChild(d);
-      setTimeout(() => d.remove(), 4000);
+      d.className = 'toast toast-animated flex items-center gap-2 transition-all duration-300 ease-out';
+      const msg = String(t || '');
+      const lower = msg.toLowerCase();
+      let icon = 'check_circle';
+      if (lower.includes('erro') || lower.includes('falha') || lower.includes('indisponível') || lower.includes('não foi possível')) {
+        icon = 'error';
+      } else if (lower.includes('buscando') || lower.includes('obtendo') || lower.includes('calculando') || lower.includes('carregando')) {
+        icon = 'autorenew';
+      } else if (lower.includes('atenção') || lower.includes('encerrado')) {
+        icon = 'warning';
+      }
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'material-symbols-outlined text-base shrink-0';
+      iconSpan.setAttribute('aria-hidden', 'true');
+      iconSpan.textContent = icon;
+      const textSpan = document.createElement('span');
+      textSpan.textContent = msg;
+      d.append(iconSpan, textSpan);
+      container.appendChild(d);
+      setTimeout(() => {
+        d.style.opacity = '0';
+        d.style.transform = 'translateY(6px)';
+        setTimeout(() => d.remove(), 250);
+      }, 3750);
     }
 
     const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -570,7 +592,7 @@
 
         dadosCliente = data.user;
         document.getElementById('clienteNome').textContent = `Olá, ${dadosCliente.nome}!`;
-        document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · Tel: ${dadosCliente.telefone || 'Não informado'}`;
+        document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · ${dadosCliente.telefone || 'Telefone não informado'}`;
 
         document.getElementById('clienteFormNome').value = dadosCliente.nome;
         document.getElementById('clienteFormTelefone').value = dadosCliente.telefone || '';
@@ -766,7 +788,10 @@
       const nota = parseInt(document.getElementById('avaliarNota').value, 10) || 5;
       const comentario = document.getElementById('avaliarComentario').value.trim();
       const btnSubmit = document.getElementById('btnEnviarAvaliacao');
+      const origText = btnSubmit.textContent;
+      btnSubmit.classList.add('is-loading');
       btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Enviando...';
       try {
         const res = await fetch(`/api/orders/${orderId}/review`, {
           method: 'POST',
@@ -784,7 +809,9 @@
       } catch (err) {
         toast('Erro de comunicação ao enviar avaliação.');
       } finally {
+        btnSubmit.classList.remove('is-loading');
         btnSubmit.disabled = false;
+        btnSubmit.textContent = origText;
       }
     };
 
@@ -816,9 +843,9 @@
           const st = String(p.status || '').toLowerCase();
           const badgeClass = st === 'cancelado' ? 'tag off' : 'tag';
           const codigoHtml = p.codigo_confirmacao
-            ? `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">PIN presencial: <b>${escapeHtml(p.codigo_confirmacao)}</b></span>`
+            ? `<span class="tag tabular-nums" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">PIN <b class="tabular-nums font-mono tracking-wider">${escapeHtml(p.codigo_confirmacao)}</b></span>`
             : '';
-          const pagamentoHtml = `<span>💳 Pagamento: <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>`;
+          const pagamentoHtml = `<span>💳 <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>`;
           const emDisputa = Boolean(p.em_disputa || st === 'em_disputa');
           const disputaBadgeHtml = emDisputa
             ? `<span class="dispute-badge">⚖️ Em Mediação</span>`
@@ -844,7 +871,7 @@
             escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Aguardando Pagamento</span>`;
           }
           const estornoInfoHtml = (estornadoTotal || estornadoParcial) && p.valor_estornado != null
-            ? `<div style="font-size:0.82rem; color:#991b1b; font-weight:700; margin: 4px 0;">↩️ Valor estornado: ${escapeHtml(brl(p.valor_estornado))}</div>`
+            ? `<div class="tabular-nums" style="font-size:0.82rem; color:#991b1b; font-weight:700; margin: 4px 0;">↩️ Valor estornado: ${escapeHtml(brl(p.valor_estornado))}</div>`
             : '';
           const podeAvaliar = st === 'finalizado' && !p.ja_avaliado;
           const jaAvaliadoHtml = st === 'finalizado' && p.ja_avaliado
@@ -859,21 +886,21 @@
           return `
             <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
               <div class="top">
-                <span><b>${escapeHtml(p.servico_titulo)}</b> (${escapeHtml(p.servico_categoria)})</span>
-                <span class="price">${brl(p.preco_total)}</span>
+                <span class="flex items-center gap-2 flex-wrap"><b>${escapeHtml(p.servico_titulo)}</b> <span class="tag">${escapeHtml(p.servico_categoria)}</span></span>
+                <span class="price tabular-nums">${brl(p.preco_total)}</span>
               </div>
-              <div class="meta" style="margin: 6px 0;">
-                <span>🛠️ Profissional: <b>${escapeHtml(p.prestador_nome)}</b></span>
-                <span>📞 Tel: ${escapeHtml(p.prestador_telefone || 'Não informado')}</span>
+              <div class="meta text-perto-ink/80" style="margin: 6px 0;">
+                <span>🛠️ <b>${escapeHtml(p.prestador_nome)}</b></span>
+                <span class="tabular-nums">📞 ${escapeHtml(p.prestador_telefone || 'Não informado')}</span>
                 ${pagamentoHtml}
-                <span>Status: <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b></span>
+                <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b>
                 ${codigoHtml}
                 ${escrowBadgeHtml}
                 ${disputaBadgeHtml}
                 ${jaAvaliadoHtml}
               </div>
-              ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 Base do Profissional: ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
-              ${p.observacoes ? `<p style="font-size:0.85rem; color:#4b6073;">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
+              ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
+              ${p.observacoes ? `<p class="text-perto-ink/80" style="font-size:0.85rem;">${escapeHtml(p.observacoes)}</p>` : ''}
               ${estornoInfoHtml}
               <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
                 ${precisaPagar ? `
@@ -956,12 +983,19 @@
           btn.onclick = () => abrirModalSosCliente(btn.dataset.orderId);
         });
       } catch (e) {
-        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar histórico de pedidos.</p>';
+        div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar histórico de pedidos.</p>';
       }
     }
 
     document.getElementById('formPerfilCliente').onsubmit = async (e) => {
       e.preventDefault();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Salvando...';
+      }
       const latVal = parseFloat(document.getElementById('clienteFormLat').value);
       const lngVal = parseFloat(document.getElementById('clienteFormLng').value);
 
@@ -990,20 +1024,31 @@
           toast('Dados cadastrais atualizados com sucesso!');
           Object.assign(dadosCliente, payload);
           document.getElementById('clienteNome').textContent = `Olá, ${payload.nome}!`;
-          document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · Tel: ${dadosCliente.telefone || 'Não informado'}`;
+          document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · ${dadosCliente.telefone || 'Telefone não informado'}`;
           atualizarNavegacao();
         } else {
           toast('Erro ao atualizar dados.');
         }
       } catch (e) {
         toast('Erro de comunicação.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = origHtml;
+        }
       }
     };
 
     // --- Fluxos Éticos do Portal do Cliente (ET-08, ET-10, ET-13, ET-14, ET-15) ---
     async function confirmarConclusaoPedido(orderId, btnEl) {
       if (!orderId) return;
-      if (btnEl) btnEl.disabled = true;
+      const origHtml = btnEl ? btnEl.innerHTML : '';
+      if (btnEl) {
+        btnEl.classList.add('is-loading');
+        btnEl.disabled = true;
+        btnEl.textContent = 'Confirmando...';
+      }
       try {
         const res = await fetch(`/api/orders/${orderId}/status`, {
           method: 'PATCH',
@@ -1020,13 +1065,22 @@
       } catch (e) {
         toast('Erro de comunicação ao confirmar conclusão.');
       } finally {
-        if (btnEl) btnEl.disabled = false;
+        if (btnEl) {
+          btnEl.classList.remove('is-loading');
+          btnEl.disabled = false;
+          btnEl.innerHTML = origHtml;
+        }
       }
     }
 
     async function confirmarLiberacaoEscrow(orderId, btnEl) {
       if (!orderId) return;
-      if (btnEl) btnEl.disabled = true;
+      const origHtml = btnEl ? btnEl.innerHTML : '';
+      if (btnEl) {
+        btnEl.classList.add('is-loading');
+        btnEl.disabled = true;
+        btnEl.textContent = 'Liberando...';
+      }
       try {
         let res = await fetch(`/api/orders/${orderId}/confirm-completion`, {
           method: 'POST',
@@ -1049,7 +1103,11 @@
       } catch (e) {
         toast('Erro de comunicação ao liberar Escrow.');
       } finally {
-        if (btnEl) btnEl.disabled = false;
+        if (btnEl) {
+          btnEl.classList.remove('is-loading');
+          btnEl.disabled = false;
+          btnEl.innerHTML = origHtml;
+        }
       }
     }
 
@@ -1093,12 +1151,12 @@
       try {
         const res = await fetch(`/api/orders/${orderId}/messages`);
         if (!res.ok) {
-          box.innerHTML = '<p class="text-xs text-perto-ink/60">Não foi possível carregar as mensagens.</p>';
+          box.innerHTML = '<p class="text-xs text-perto-ink/80">Não foi possível carregar as mensagens.</p>';
           return;
         }
         const msgs = await res.json();
         if (!Array.isArray(msgs) || !msgs.length) {
-          box.innerHTML = '<p class="text-xs text-perto-ink/60">Nenhuma mensagem ainda. Use este canal protegido para falar com o profissional.</p>';
+          box.innerHTML = '<p class="text-xs text-perto-ink/80">Nenhuma mensagem ainda. Use este canal protegido para falar com o profissional.</p>';
           return;
         }
         const myId = dadosCliente && dadosCliente.id;
@@ -1110,9 +1168,9 @@
           const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
           return `
             <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
-              <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/70 mb-0.5">
+              <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5">
                 <span>${autor}</span>
-                ${hora ? `<span>${hora}</span>` : ''}
+                ${hora ? `<span class="tabular-nums">${hora}</span>` : ''}
               </div>
               <div class="text-xs text-perto-ink break-words">${texto}</div>
             </div>
@@ -1120,7 +1178,7 @@
         }).join('');
         box.scrollTop = box.scrollHeight;
       } catch (e) {
-        box.innerHTML = '<p class="text-xs text-perto-ink/60">Erro de comunicação ao carregar mensagens.</p>';
+        box.innerHTML = '<p class="text-xs text-perto-ink/80">Erro de comunicação ao carregar mensagens.</p>';
       }
     }
 
@@ -1151,7 +1209,10 @@
       const btn = document.getElementById('btnEnviarChatCliente');
       const mensagem = input.value.trim();
       if (!orderId || !mensagem) return;
+      const origText = btn.textContent;
+      btn.classList.add('is-loading');
       btn.disabled = true;
+      btn.textContent = 'Enviando...';
       try {
         const res = await fetch(`/api/orders/${orderId}/messages`, {
           method: 'POST',
@@ -1168,7 +1229,9 @@
       } catch (err) {
         toast('Erro de comunicação ao enviar mensagem.');
       } finally {
+        btn.classList.remove('is-loading');
         btn.disabled = chatClienteReadOnly;
+        btn.textContent = origText;
       }
     };
 
@@ -1176,7 +1239,7 @@
     async function abrirModalVerReviewsPedido(orderId) {
       const box = document.getElementById('verReviewsConteudo');
       if (!box) return;
-      box.innerHTML = '<p class="text-perto-ink/70">Carregando avaliações...</p>';
+      box.innerHTML = '<p class="text-perto-ink/80">Carregando avaliações...</p>';
       ctrlVerReviewsPedido.abrir('#btnFecharModalVerReviews');
       try {
         const res = await fetch(`/api/orders/${orderId}/reviews`);
@@ -1191,18 +1254,18 @@
         const renderStatusModeracao = (stMod) => {
           const mod = String(stMod || '').trim();
           if (!mod || mod.toLowerCase() === 'publicada') return '';
-          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">Status: ${escapeHtml(mod)}</div>`;
+          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">${escapeHtml(mod)}</div>`;
         };
         const minhaHtml = minha
           ? `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
-              <div class="font-bold text-perto-ink mb-1">Sua avaliação (${escapeHtml(String(minha.nota || 5))} ★)</div>
+              <div class="font-bold text-perto-ink mb-1 tabular-nums">Sua avaliação (★ ${escapeHtml(String(minha.nota || 5))})</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
               ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
               ${renderStatusModeracao(minha.status_moderacao)}
             </div>
           `
-          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não enviou sua avaliação para este pedido.</div>`;
+          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">Você ainda não enviou sua avaliação para este pedido.</div>`;
 
         let contraHtml = '';
         if (oculta) {
@@ -1218,12 +1281,12 @@
           const jaContestada = Boolean(contraparte.contestada) || ['contestada', 'em_revisao'].includes(statusModContra);
           contraHtml = `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
-              <div class="font-bold text-perto-ink">Avaliação do profissional (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
+              <div class="font-bold text-perto-ink tabular-nums">Avaliação do profissional (★ ${escapeHtml(String(contraparte.nota || 5))})</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
               ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
               ${renderStatusModeracao(contraparte.status_moderacao)}
               ${revId > 0 ? (jaContestada
-                ? `<div class="pt-2 border-t border-perto-road text-xs font-semibold text-perto-ink/70">Avaliação já contestada e em análise de moderação.</div>`
+                ? `<div class="pt-2 border-t border-perto-road text-xs font-semibold text-perto-ink/80">Avaliação já contestada e em análise de moderação.</div>`
                 : `
                 <form id="formContestarReviewCliente" class="pt-2 border-t border-perto-road flex gap-2">
                   <input type="text" id="inputMotivoContestReviewCliente" required minlength="3" placeholder="Motivo para contestar avaliação..." class="input-form text-xs flex-1">
@@ -1233,7 +1296,7 @@
             </div>
           `;
         } else {
-          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">O profissional ainda não registrou uma avaliação.</div>`;
+          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">O profissional ainda não registrou uma avaliação.</div>`;
         }
 
         box.innerHTML = minhaHtml + contraHtml;
@@ -1244,7 +1307,10 @@
             const motivo = (document.getElementById('inputMotivoContestReviewCliente').value || '').trim();
             if (!motivo) return;
             const btnSubmit = document.getElementById('btnSubmitContestReviewCliente');
-            if (btnSubmit) btnSubmit.disabled = true;
+            if (btnSubmit) {
+              btnSubmit.classList.add('is-loading');
+              btnSubmit.disabled = true;
+            }
             try {
               const r = await fetch(`/api/reviews/${contraparte.id}/contest`, {
                 method: 'POST',
@@ -1261,12 +1327,15 @@
             } catch (err) {
               toast('Erro de comunicação ao contestar avaliação.');
             } finally {
-              if (btnSubmit) btnSubmit.disabled = false;
+              if (btnSubmit) {
+                btnSubmit.classList.remove('is-loading');
+                btnSubmit.disabled = false;
+              }
             }
           };
         }
       } catch (e) {
-        box.innerHTML = '<p class="text-perto-ink/70">Erro de comunicação ao carregar avaliações.</p>';
+        box.innerHTML = '<p class="text-perto-ink/80">Erro de comunicação ao carregar avaliações.</p>';
       }
     }
 
@@ -1282,7 +1351,10 @@
       e.preventDefault();
       const orderId = document.getElementById('disputaOrderId').value;
       const btn = document.getElementById('btnEnviarDisputa');
+      const origText = btn.textContent;
+      btn.classList.add('is-loading');
       btn.disabled = true;
+      btn.textContent = 'Enviando...';
       try {
         const motivo = document.getElementById('disputaMotivo').value.trim();
         const evidencias = document.getElementById('disputaEvidencias').value.trim();
@@ -1302,7 +1374,9 @@
       } catch (err) {
         toast('Erro de comunicação ao abrir mediação.');
       } finally {
+        btn.classList.remove('is-loading');
         btn.disabled = false;
+        btn.textContent = origText;
       }
     };
 
@@ -1330,7 +1404,10 @@
         if (!ok) return;
       }
       const btn = document.getElementById('btnConfirmarSosCliente');
+      const origText = btn.textContent;
+      btn.classList.add('is-loading');
       btn.disabled = true;
+      btn.textContent = 'Enviando SOS...';
       try {
         const res = await fetch(`/api/orders/${orderId}/sos`, {
           method: 'POST',
@@ -1347,7 +1424,9 @@
       } catch (err) {
         toast('Erro de comunicação ao acionar SOS.');
       } finally {
+        btn.classList.remove('is-loading');
         btn.disabled = false;
+        btn.textContent = origText;
       }
     };
 
@@ -1381,6 +1460,7 @@
     };
     document.getElementById('btnConfirmarExcluirLgpd').onclick = async () => {
       const btn = document.getElementById('btnConfirmarExcluirLgpd');
+      btn.classList.add('is-loading');
       btn.disabled = true;
       try {
         const res = await fetch('/api/profile', { method: 'DELETE' });
@@ -1402,6 +1482,7 @@
       } catch (err) {
         toast('Erro de comunicação ao anonimizar conta.');
       } finally {
+        btn.classList.remove('is-loading');
         btn.disabled = false;
       }
     };
@@ -1426,11 +1507,16 @@
       if (!msg || !listaEl) return;
 
       inputEl.value = '';
-      if (btnEl) btnEl.disabled = true;
+      const origBtnText = btnEl ? btnEl.textContent : 'Enviar';
+      if (btnEl) {
+        btnEl.classList.add('is-loading');
+        btnEl.disabled = true;
+        btnEl.textContent = 'Consultando...';
+      }
 
       listaEl.insertAdjacentHTML('beforeend', `
         <div class="p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6">
-          <div class="text-[10px] font-bold text-perto-ink/70 mb-0.5">Você</div>
+          <div class="text-[10px] font-bold text-perto-ink/80 mb-0.5">Você</div>
           <p class="m-0 break-words">${escapeHtml(msg)}</p>
         </div>
       `);
@@ -1474,7 +1560,11 @@
           </div>
         `);
       } finally {
-        if (btnEl) btnEl.disabled = false;
+        if (btnEl) {
+          btnEl.classList.remove('is-loading');
+          btnEl.disabled = false;
+          btnEl.textContent = origBtnText;
+        }
         listaEl.scrollTop = listaEl.scrollHeight;
         if (inputEl) inputEl.focus();
       }

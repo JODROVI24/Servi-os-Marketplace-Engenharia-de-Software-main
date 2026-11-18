@@ -173,10 +173,30 @@ function toast(t) {
   const container = $('#toasts');
   if (!container) return;
   const d = document.createElement('div');
-  d.className = 'toast';
-  d.textContent = t;
+  d.className = 'toast toast-animated flex items-center gap-2 transition-all duration-300 ease-out';
+  const msg = String(t || '');
+  const lower = msg.toLowerCase();
+  let icon = 'check_circle';
+  if (lower.includes('erro') || lower.includes('falha') || lower.includes('indisponível') || lower.includes('recusado') || lower.includes('não foi possível')) {
+    icon = 'error';
+  } else if (lower.includes('buscando') || lower.includes('obtendo') || lower.includes('verificando') || lower.includes('aguardando') || lower.includes('sincronizando')) {
+    icon = 'autorenew';
+  } else if (lower.includes('atenção') || lower.includes('⚠️') || lower.includes('necessário') || lower.includes('expirou')) {
+    icon = 'warning';
+  }
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'material-symbols-outlined text-base shrink-0';
+  iconSpan.setAttribute('aria-hidden', 'true');
+  iconSpan.textContent = icon;
+  const textSpan = document.createElement('span');
+  textSpan.textContent = msg;
+  d.append(iconSpan, textSpan);
   container.append(d);
-  setTimeout(() => d.remove(), 4500);
+  setTimeout(() => {
+    d.style.opacity = '0';
+    d.style.transform = 'translateY(6px)';
+    setTimeout(() => d.remove(), 250);
+  }, 4250);
 }
 
 // Sanitização para proteção contra injeções de script (XSS)
@@ -314,11 +334,12 @@ function renderList() {
     }
     return dist(a) - dist(b);
   });
-  if ($('#count')) $('#count').textContent = '(' + v.length + ')';
+  if ($('#count')) {
+    $('#count').textContent = '(' + v.length + ')';
+    $('#count').classList.add('tabular-nums');
+  }
   listEl.innerHTML = v.length ? v.map(p => {
-    const svcScore = Math.round(getServiceScore(p));
     const isSuper = p.super_profissional || (p.r >= 4.8 && (p.total_avaliacoes || 0) >= 5);
-    const isNovo = Boolean(p.novo_no_pertoja || ((p.total_avaliacoes || 0) < 5));
     const kycTier = p.kyc_tier || 1;
     const iconName = getCategoryIcon(p.c);
     return `
@@ -327,35 +348,34 @@ function renderList() {
        <div class="svc-avatar" aria-hidden="true">
          <span class="material-symbols-outlined">${iconName}</span>
        </div>
-       <div class="flex-1 min-w-0">
+       <div class="flex-1 min-w-0 space-y-1.5">
          <div class="top">
-           <span>${escapeHtml(p.s)}</span>
-           <span class="price">${brl(p.p)}</span>
+           <span class="font-bold text-perto-ink">${escapeHtml(p.s)}</span>
+           <span class="price tabular-nums">${brl(p.p)}</span>
          </div>
-         <div class="text-xs font-semibold text-perto-sea mt-0.5 flex items-center gap-1 truncate">
-           <span aria-hidden="true">📍</span>
+         <div class="text-xs font-semibold text-perto-sea flex items-center gap-1.5 truncate">
+           <span class="material-symbols-outlined text-sm shrink-0" aria-hidden="true">location_on</span>
            <span class="truncate">${escapeHtml(p.endereco || 'São Paulo - SP')}${p.localizacao_aproximada ? ' · Região aproximada' : ''}</span>
          </div>
-         <div class="meta mt-1.5">
-           <span><span aria-hidden="true">👤</span> ${escapeHtml(p.n)}</span>
-           <span>★ ${p.r.toFixed(1)}</span>
-           <span>${dist(p).toFixed(1)} km</span>
-           <span class="score-badge" title="Score: Proximidade (15 km) + Nota Bayesiana + Disponibilidade" aria-label="Score ${svcScore}. Score: Proximidade (15 km) + Nota Bayesiana + Disponibilidade">Score ${svcScore}</span>
-           <span class="kyc-badge aprovado" title="Identidade checada por nível de risco">Tier ${escapeHtml(String(kycTier))}</span>
-           ${isNovo ? '<span class="novo-badge">Novo no PertoJá</span>' : ''}
+         <div class="meta flex flex-wrap items-center gap-x-3 gap-y-1.5 text-perto-ink/80">
+           <span class="inline-flex items-center gap-1 font-semibold text-perto-ink"><span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">person</span> ${escapeHtml(p.n)}</span>
+           <span class="tabular-nums font-bold text-perto-ink">★ ${p.r.toFixed(1)}</span>
+           <span class="tabular-nums font-semibold text-perto-ink/80">${dist(p).toFixed(1)} km</span>
+           <span class="tag">${escapeHtml(p.c)}</span>
+           ${kycTier >= 2 ? `<span class="kyc-badge aprovado tabular-nums" title="Identidade e registro profissional verificados">Verificado Nível ${escapeHtml(String(kycTier))}</span>` : ''}
            ${isSuper ? '<span class="super-badge">★ Super Profissional</span>' : ''}
            <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
          </div>
        </div>
      </div>
-     <div class="mt-2.5 flex justify-end">
-       <button type="button" class="btn btn-requisitar" data-req="${Number(p.id)}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Requisitar Atendimento</button>
+     <div class="mt-3 flex justify-end">
+       <button type="button" class="btn btn-requisitar font-extrabold shadow-sm" data-req="${Number(p.id)}" aria-label="Solicitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Solicitar Atendimento</button>
      </div>
     </div>`;
   }).join('') : `
      <div class="empty-state-card" role="status" aria-live="polite">
        <p class="empty-title">Nenhum serviço encontrado nesta área</p>
-       <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de ${radius} km. Experimente expandir o raio de busca.</p>
+       <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de <span class="tabular-nums">${radius} km</span>. Experimente expandir o raio de busca.</p>
        <button type="button" class="btn" data-action="expand-radius" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;">
          Expandir raio para 15 km
        </button>
@@ -428,6 +448,14 @@ async function buscarPorEnderecoCliente() {
   if (!input || !input.value.trim()) return;
   const q = input.value.trim();
   const cleanCep = q.replace(/\D/g, '');
+
+  const btnBusca = document.getElementById('btnBuscarEndereco') || document.getElementById('btnBuscarEnderecoHero');
+  const btnBuscaOriginalHtml = btnBusca ? btnBusca.innerHTML : '';
+  if (btnBusca) {
+    btnBusca.classList.add('is-loading');
+    btnBusca.disabled = true;
+    btnBusca.textContent = 'Buscando...';
+  }
 
   toast('Buscando localização...');
   startLoading();
@@ -571,6 +599,11 @@ async function buscarPorEnderecoCliente() {
     console.error('Erro ao buscar localização:', e);
     toast('Erro ao buscar localização.');
   } finally {
+    if (btnBusca) {
+      btnBusca.classList.remove('is-loading');
+      btnBusca.disabled = false;
+      btnBusca.innerHTML = btnBuscaOriginalHtml;
+    }
     stopLoading();
   }
 }
@@ -809,7 +842,7 @@ async function carregarMensagensPedido(orderDbId) {
     if (!res.ok) return;
     const msgs = await res.json();
     if (!Array.isArray(msgs) || !msgs.length) {
-      box.innerHTML = '<p class="text-perto-ink/60 text-xs m-0">Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.</p>';
+      box.innerHTML = '<p class="text-perto-ink/80 text-xs m-0">Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.</p>';
       return;
     }
     const myId = cachedLoggedUser && cachedLoggedUser.id;
@@ -821,9 +854,9 @@ async function carregarMensagensPedido(orderDbId) {
       const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
       return `
         <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
-          <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/70 mb-0.5">
+          <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5">
             <span>${autor}</span>
-            ${hora ? `<span>${hora}</span>` : ''}
+            ${hora ? `<span class="tabular-nums">${hora}</span>` : ''}
           </div>
           <div class="text-xs text-perto-ink break-words">${texto}</div>
         </div>
@@ -2063,14 +2096,21 @@ function renderDestaques() {
   const top3 = [...P].sort((a, b) => b.r - a.r).slice(0, 3);
   destaquesEl.innerHTML = top3.map((p, index) => {
     const destUrl = `pedido.html?cat=${encodeURIComponent(p.c)}&q=${encodeURIComponent(p.s)}`;
+    const bairroClean = p.bairro || (p.endereco ? String(p.endereco).split('·')[1] || String(p.endereco).split(',')[0] : 'São Paulo');
     return `
     <div class="card-home clicavel" role="button" tabindex="0" data-dest-url="${escapeHtml(destUrl)}" style="cursor: pointer; animation-delay: ${index * 0.1}s;" aria-label="Ver ${escapeHtml(p.s)} com ${escapeHtml(p.n)}">
       <div class="card-texto" style="text-align: center;">
-        <div style="font-size: 0.85rem; font-weight: 800; color: var(--sun); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px;">★ Destaque da Semana</div>
+        <div class="flex items-center justify-center gap-2 mb-2">
+          <span class="tag">${escapeHtml(p.c)}</span>
+          <span class="tabular-nums font-extrabold text-perto-ink text-sm">★ ${p.r.toFixed(1)}</span>
+        </div>
         <h3 style="color: var(--ink); margin-bottom: 4px;">${escapeHtml(p.n)}</h3>
-        <p style="color: var(--sea); font-weight: bold; margin-bottom: 8px;">${escapeHtml(p.c)} · ${escapeHtml(p.s)}</p>
-        <p style="font-size: 0.9rem; color: #4b6073;">Avaliação Média: <b style="color: var(--ink);">★ ${p.r.toFixed(1)}</b> / 5.0</p>
-        <p style="font-size: 1.1rem; color: var(--sea); font-weight: bold; margin-top: 8px;">${brl(p.p)}</p>
+        <p style="color: var(--sea); font-weight: 700; margin-bottom: 6px;">${escapeHtml(p.s)}</p>
+        <p class="text-xs font-semibold text-perto-ink/80 mb-2 flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">location_on</span>
+          <span>${escapeHtml(String(bairroClean).trim())}</span>
+        </p>
+        <p class="tabular-nums" style="font-size: 1.15rem; color: var(--sea); font-weight: 800; margin-top: 8px;">${brl(p.p)}</p>
       </div>
     </div>
   `;
@@ -2258,24 +2298,43 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Função reutilizável para geolocalização por satélite/dispositivo
-  async function ativarGeolocalizacaoGPS() {
+  async function ativarGeolocalizacaoGPS(e) {
     if (!navigator.geolocation) {
       toast('O navegador atual não suporta geolocalização.');
       return;
     }
+    const triggerBtn = (e && e.currentTarget) ? e.currentTarget : (document.getElementById('btnGpsBusca') || document.getElementById('btnLoc'));
+    const originalBtnHtml = triggerBtn ? triggerBtn.innerHTML : '';
+    if (triggerBtn) {
+      triggerBtn.classList.add('is-loading');
+      triggerBtn.disabled = true;
+      triggerBtn.textContent = 'Obtendo GPS...';
+    }
+    const restaurarBtnGps = () => {
+      if (triggerBtn) {
+        triggerBtn.classList.remove('is-loading');
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = originalBtnHtml;
+      }
+    };
     const locInfo = $('#locInfo');
     if (locInfo) locInfo.textContent = 'Obtendo sinal do satélite GPS...';
     navigator.geolocation.getCurrentPosition(
       async (g) => {
-        centerLat = g.coords.latitude;
-        centerLng = g.coords.longitude;
-        if (mapInstance) mapInstance.setView([centerLat, centerLng], 14);
-        if (locInfo) locInfo.textContent = 'Precisão obtida: ±' + Math.round(g.coords.accuracy) + ' metros.';
-        toast('Posição geográfica atualizada via GPS.');
-        await carregarPrestadoresAPI();
-        renderAll();
+        try {
+          centerLat = g.coords.latitude;
+          centerLng = g.coords.longitude;
+          if (mapInstance) mapInstance.setView([centerLat, centerLng], 14);
+          if (locInfo) locInfo.textContent = 'Precisão obtida: ±' + Math.round(g.coords.accuracy) + ' metros.';
+          toast('Posição geográfica atualizada via GPS.');
+          await carregarPrestadoresAPI();
+          renderAll();
+        } finally {
+          restaurarBtnGps();
+        }
       },
       (erro) => {
+        restaurarBtnGps();
         let motivo = erro.code === erro.PERMISSION_DENIED ? "Acesso não permitido pelo usuário." : "Falha na comunicação de rede/GPS.";
         if (locInfo) locInfo.textContent = 'Erro: ' + motivo;
         toast('Geolocalização indisponível: ' + motivo);

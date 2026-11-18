@@ -365,13 +365,13 @@ function garantirModalEnderecoHeader() {
           <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">close</span>
         </button>
       </div>
-      <p style="font-size:0.88rem;color:#3f5364;margin-bottom:14px;">
+      <p style="font-size:0.88rem;color:#10243e;opacity:0.85;margin-bottom:14px;">
         Informe seu CEP ou endereço para calcular distâncias e encontrar profissionais perto de você.
       </p>
 
       <form id="formBuscaEnderecoHeader" style="display:flex;gap:8px;margin-bottom:12px;">
         <label for="inputBuscaEnderecoHeader" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">CEP ou endereço</label>
-        <input type="text" id="inputBuscaEnderecoHeader" class="input-form" placeholder="Digite CEP (ex: 01310-100) ou endereço" autocomplete="postal-code" style="flex:1;margin:0;" />
+        <input type="text" id="inputBuscaEnderecoHeader" class="input-form tabular-nums" placeholder="Digite CEP (ex: 01310-100) ou endereço" autocomplete="postal-code" style="flex:1;margin:0;" />
         <button type="submit" id="btnBuscarEnderecoHeader" class="btn" style="min-height:42px;padding:0 18px;border-radius:12px;font-weight:800;">Buscar</button>
       </form>
 
@@ -406,6 +406,7 @@ function garantirModalEnderecoHeader() {
   const btnFechar = modal.querySelector('#btnFecharModalEndereco');
   const formBusca = modal.querySelector('#formBuscaEnderecoHeader');
   const inputBusca = modal.querySelector('#inputBuscaEnderecoHeader');
+  const btnBuscar = modal.querySelector('#btnBuscarEnderecoHeader');
   const btnGps = modal.querySelector('#btnGpsEnderecoHeader');
   const btnCadastrado = modal.querySelector('#btnEnderecoCadastradoHeader');
   const statusBox = modal.querySelector('#statusEnderecoHeader');
@@ -462,6 +463,12 @@ function garantirModalEnderecoHeader() {
     acoesBox.style.display = 'none';
     mostrarStatus('Buscando localização...', 'info');
 
+    if (btnBuscar) {
+      btnBuscar.classList.add('is-loading');
+      btnBuscar.disabled = true;
+      btnBuscar.textContent = 'Buscando...';
+    }
+
     try {
       if (pareceCep) {
         const res = await fetch(`/api/cep/${digits}`);
@@ -491,6 +498,12 @@ function garantirModalEnderecoHeader() {
       }
     } catch (err) {
       mostrarStatus('Erro de conexão ao buscar endereço. Tente novamente.', 'erro');
+    } finally {
+      if (btnBuscar) {
+        btnBuscar.classList.remove('is-loading');
+        btnBuscar.disabled = false;
+        btnBuscar.textContent = 'Buscar';
+      }
     }
   });
 
@@ -502,8 +515,18 @@ function garantirModalEnderecoHeader() {
     _locPendente = null;
     acoesBox.style.display = 'none';
     mostrarStatus('Obtendo sua posição via GPS...', 'info');
+    const origGpsHtml = btnGps.innerHTML;
+    btnGps.classList.add('is-loading');
+    btnGps.disabled = true;
+    btnGps.textContent = 'Obtendo GPS...';
+    const restoreGpsBtn = () => {
+      btnGps.classList.remove('is-loading');
+      btnGps.disabled = false;
+      btnGps.innerHTML = origGpsHtml;
+    };
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        restoreGpsBtn();
         const loc = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -513,6 +536,7 @@ function garantirModalEnderecoHeader() {
         definirPendente(loc, 'Localização GPS obtida com sucesso!');
       },
       () => {
+        restoreGpsBtn();
         mostrarStatus('Não foi possível obter seu GPS. Verifique as permissões ou digite seu CEP.', 'erro');
       },
       { enableHighAccuracy: true, timeout: 10000 }

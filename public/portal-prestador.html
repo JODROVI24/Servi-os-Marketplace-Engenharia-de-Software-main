@@ -107,7 +107,7 @@
             <h1 id="prestadorNome" class="text-2xl sm:text-3xl font-black text-perto-ink tracking-tight m-0">
               Carregando cockpit...
             </h1>
-            <p id="prestadorEmail" class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body"></p>
+            <p id="prestadorEmail" class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body"></p>
             <div id="alertaStatusConta" class="mt-2 p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-xs font-semibold text-perto-ink" style="display: none;"></div>
           </div>
         </div>
@@ -126,39 +126,39 @@
     <section class="kpi-grid" aria-label="Indicadores de Desempenho">
       <div class="kpi-card">
         <span class="kpi-label">Chamados Pendentes</span>
-        <strong id="kpiPendentes" class="kpi-value">0</strong>
-        <span class="text-xs text-perto-ink/70 font-body">Aguardando confirmação</span>
+        <strong id="kpiPendentes" class="kpi-value tabular-nums">0</strong>
+        <span class="text-xs text-perto-ink/80 font-body">Aguardando confirmação</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Serviços Ativos</span>
-        <strong id="kpiServicosAtivos" class="kpi-value">0</strong>
-        <span class="text-xs text-perto-ink/70 font-body">Visíveis no catálogo</span>
+        <strong id="kpiServicosAtivos" class="kpi-value tabular-nums">0</strong>
+        <span class="text-xs text-perto-ink/80 font-body">Visíveis no catálogo</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Avaliação Média</span>
-        <strong id="kpiAvaliacao" class="kpi-value">★ 5.0</strong>
-        <span class="text-xs text-perto-ink/70 font-body">Reputação na região</span>
+        <strong id="kpiAvaliacao" class="kpi-value tabular-nums">★ 5.0</strong>
+        <span class="text-xs text-perto-ink/80 font-body">Reputação na região</span>
       </div>
       <div class="kpi-card">
-        <span class="kpi-label">Faturamento vs Isenção (R$ 1.800)</span>
-        <strong id="kpiFaturamento" class="kpi-value">R$ 0,00</strong>
+        <span class="kpi-label tabular-nums">Faturamento vs Isenção (R$ 1.800)</span>
+        <strong id="kpiFaturamento" class="kpi-value tabular-nums">R$ 0,00</strong>
         <div class="w-full h-2 bg-perto-bg rounded-full overflow-hidden mt-1 border border-perto-road">
           <div id="kpiProgressoBarra" class="h-full bg-perto-ok transition-all" style="width: 0%;"></div>
         </div>
-        <span id="kpiIsencaoTexto" class="text-[11px] font-semibold text-perto-ok font-body">Isento de mensalidade até R$ 1.800/mês</span>
+        <span id="kpiIsencaoTexto" class="text-[11px] font-semibold text-perto-ok font-body tabular-nums">Isento de mensalidade até R$ 1.800/mês</span>
       </div>
     </section>
 
-    <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #tabBtnFinanceiro, #contPedidos) -->
+    <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #tabBtnFinanceiro, #contPedidos, #contServicos) -->
     <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
       <div class="chips flex flex-wrap gap-2" role="tablist" aria-label="Navegação do Painel do Prestador">
         <button class="chip on flex items-center gap-2" id="tabBtnServicos" role="tab" aria-selected="true" aria-controls="aba-servicos-painel" onclick="mudarAba('servicos')">
           <span class="material-symbols-outlined text-base">storefront</span>
-          Meus Serviços &amp; Preços
+          Meus Serviços &amp; Preços (<span id="contServicos" class="font-bold tabular-nums">0</span>)
         </button>
         <button class="chip flex items-center gap-2" id="tabBtnPedidos" role="tab" aria-selected="false" aria-controls="aba-pedidos-painel" onclick="mudarAba('pedidos')">
           <span class="material-symbols-outlined text-base">assignment</span>
-          Fila de Chamados (<span id="contPedidos" class="font-bold">0</span>)
+          Fila de Chamados (<span id="contPedidos" class="font-bold tabular-nums">0</span>)
         </button>
         <button class="chip flex items-center gap-2" id="tabBtnPerfil" role="tab" aria-selected="false" aria-controls="aba-perfil-painel" onclick="mudarAba('perfil')">
           <span class="material-symbols-outlined text-base">tune</span>
@@ -182,9 +182,9 @@
           <div>
             <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
               <span class="material-symbols-outlined text-perto-sea">inventory_2</span>
-              Catálogo de Serviços Ofertados
+              Catálogo de Serviços e Tabela de Preços
             </h2>
-            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Cadastre novos serviços, altere valores em tempo real e controle a visibilidade do seu catálogo.</p>
+            <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Cadastre serviços, atualize tarifas em tempo real e gerencie a visibilidade das ofertas no mapa.</p>
           </div>
           <button class="btn font-bold px-5 py-2.5 rounded-full text-xs sm:text-sm inline-flex items-center gap-2 shrink-0 text-perto-ink shadow-sm" onclick="abrirModalServico()">
             <span class="material-symbols-outlined text-base">add_circle</span>
@@ -193,7 +193,7 @@
         </div>
 
         <div id="listaServicos" class="grid-tabela-servicos">
-          <p class="text-sm text-perto-ink/70">Carregando serviços cadastrados...</p>
+          <p class="text-sm text-perto-ink/80">Carregando serviços cadastrados...</p>
         </div>
       </div>
     </div>
@@ -205,9 +205,9 @@
           <div>
             <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
               <span class="material-symbols-outlined text-perto-sea">pending_actions</span>
-              Fila de Atendimento &amp; Chamados de Clientes
+              Fila de Chamados e Execução em Tempo Real
             </h2>
-            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Gerencie o fluxo de atendimento em tempo real. Atualize as etapas para que o cliente acompanhe no mapa.</p>
+            <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Confirme solicitações, valide o PIN de 4 dígitos na chegada e finalize atendimentos com proteção Escrow.</p>
           </div>
           <button type="button" id="btnAlertaSonoro" onclick="alternarAlertaSonoro()" aria-pressed="false" class="btn-neutral px-4 py-2 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shrink-0">
             <span class="material-symbols-outlined text-base" id="iconAlertaSonoro" aria-hidden="true">notifications_off</span>
@@ -224,7 +224,7 @@
         </div>
 
         <div id="listaPedidosRecebidos">
-          <p class="text-sm text-perto-ink/70">Carregando chamados...</p>
+          <p class="text-sm text-perto-ink/80">Carregando chamados...</p>
         </div>
       </div>
     </div>
@@ -235,9 +235,9 @@
         <div class="mb-6 pb-4 border-b border-perto-road">
           <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
             <span class="material-symbols-outlined text-perto-sea">manage_accounts</span>
-            Dados Profissionais e Base de Atendimento
+            Perfil Profissional, Coordenadas GPS e Verificação KYC
           </h2>
-          <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Mantenha seu raio geográfico e telefone atualizados para receber solicitações pertinentes.</p>
+          <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Mantenha sua base geográfica, telefone comercial e documentação atualizados para receber chamados próximos.</p>
         </div>
 
         <form id="formPerfilPrestador" class="space-y-4">
@@ -248,7 +248,7 @@
 
           <div class="campo-form">
             <label for="perfilTelefone" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Telefone / WhatsApp Comercial</label>
-            <input type="text" id="perfilTelefone" required class="input-form text-sm font-medium">
+            <input type="text" id="perfilTelefone" required class="input-form text-sm font-medium tabular-nums">
           </div>
 
           <div class="campo-form">
@@ -269,7 +269,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div class="campo-form sm:col-span-1">
                 <label for="perfilCep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
-                <input type="text" id="perfilCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink" onblur="buscarCepPrestador(this.value)">
+                <input type="text" id="perfilCep" maxlength="9" placeholder="01310-100" class="input-form text-sm font-bold text-perto-ink tabular-nums" onblur="buscarCepPrestador(this.value)">
               </div>
               <div class="campo-form sm:col-span-2">
                 <label for="perfilEndereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Logradouro / Rua</label>
@@ -280,7 +280,7 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div class="campo-form">
                 <label for="perfilNumero" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Número</label>
-                <input type="text" id="perfilNumero" placeholder="1000" class="input-form text-sm font-medium">
+                <input type="text" id="perfilNumero" placeholder="1000" class="input-form text-sm font-medium tabular-nums">
               </div>
               <div class="campo-form">
                 <label for="perfilBairro" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Bairro</label>
@@ -299,11 +299,11 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div class="campo-form">
                 <label for="perfilLat" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Latitude Calculada</label>
-                <input type="number" step="any" id="perfilLat" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="perfilLat" class="input-form text-xs font-mono tabular-nums bg-perto-bg">
               </div>
               <div class="campo-form">
                 <label for="perfilLng" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Longitude Calculada</label>
-                <input type="number" step="any" id="perfilLng" class="input-form text-xs font-mono bg-perto-bg">
+                <input type="number" step="any" id="perfilLng" class="input-form text-xs font-mono tabular-nums bg-perto-bg">
               </div>
             </div>
           </div>
@@ -325,21 +325,21 @@
           </button>
         </form>
 
-        <!-- ET-09: Verificação KYC por Camadas (Tier 0/1/2) -->
+        <!-- Verificação KYC por Camadas (Tier 0/1/2) -->
         <div class="mt-8 pt-6 border-t border-perto-road space-y-4" id="blocoKycPrestador">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
                 <span class="material-symbols-outlined text-perto-sea text-lg">verified_user</span>
-                Verificação KYC por Camadas (Tier 0/1/2)
+                Verificação de Identidade e Registro Profissional
               </h3>
-              <p class="text-xs text-perto-ink/70 font-body mt-0.5">CNH não é obrigatória (aceitamos RG, CIN ou CNH). Nenhuma imagem é armazenada no PertoJá.</p>
+              <p class="text-xs text-perto-ink/80 font-body mt-0.5">CNH não é obrigatória (aceitamos RG, CIN ou CNH). Nenhuma imagem é armazenada no PertoJá.</p>
             </div>
-            <span id="kycStatusBadge" class="tag">Tier 0 · Pendente</span>
+            <span id="kycStatusBadge" class="tag tabular-nums">Tier 0 · Pendente</span>
           </div>
 
           <div class="p-3 rounded-xl bg-perto-sun/20 border border-perto-sun text-xs text-perto-ink font-body">
-            <b>Atenção (ET-09):</b> Categorias de maior risco como <b>Elétrica</b> e <b>Encanamento</b> exigem <b>Tier 2</b> com registro profissional válido (CREA / CFT / CRT / NR-10).
+            <b>Requisito Técnico:</b> Categorias de maior risco como <b>Elétrica</b> e <b>Encanamento</b> exigem <b>Tier 2</b> com registro profissional válido (CREA / CFT / CRT / NR-10).
           </div>
 
           <form id="formKycVerify" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -353,7 +353,7 @@
             </div>
             <div class="campo-form">
               <label for="kycCpfInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CPF (opcional)</label>
-              <input type="text" id="kycCpfInput" placeholder="000.000.000-00" maxlength="14" class="input-form text-sm font-medium">
+              <input type="text" id="kycCpfInput" placeholder="000.000.000-00" maxlength="14" class="input-form text-sm font-medium tabular-nums">
             </div>
             <div class="campo-form">
               <label for="kycRegProfPerfil" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Registro Profissional (opcional)</label>
@@ -374,13 +374,13 @@
           </form>
         </div>
 
-        <!-- ET-10: Recurso / Revisão Humana -->
+        <!-- Recurso / Revisão Humana -->
         <div class="mt-6 pt-6 border-t border-perto-road space-y-3" id="blocoRecursoConta" style="display: none;">
           <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
             <span class="material-symbols-outlined text-perto-sea text-lg">gavel</span>
-            Recurso / Revisão Humana da Conta
+            Recurso e Revisão Humana da Conta
           </h3>
-          <p class="text-xs text-perto-ink/75 font-body">Sua conta encontra-se com restrição cautelar ou em análise. Você pode solicitar revisão humana abaixo.</p>
+          <p class="text-xs text-perto-ink/80 font-body">Sua conta encontra-se com restrição cautelar ou em análise. Você pode solicitar revisão humana abaixo.</p>
           <form id="formAppealConta" class="space-y-3">
             <div class="campo-form">
               <label for="appealJustificativa" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Justificativa para Revisão</label>
@@ -390,13 +390,13 @@
           </form>
         </div>
 
-        <!-- ET-10: Direitos LGPD -->
+        <!-- Direitos LGPD -->
         <div class="mt-6 pt-6 border-t border-perto-road space-y-3">
           <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
             <span class="material-symbols-outlined text-perto-sea text-lg">privacy_tip</span>
-            Privacidade &amp; Direitos LGPD
+            Privacidade e Portabilidade de Dados
           </h3>
-          <p class="text-xs text-perto-ink/70 font-body">Exporte seus dados em JSON ou solicite a anonimização/exclusão da sua conta conforme a LGPD.</p>
+          <p class="text-xs text-perto-ink/80 font-body">Exporte seus dados em JSON ou solicite a anonimização/exclusão da sua conta conforme a LGPD.</p>
           <div class="flex flex-wrap gap-3">
             <button type="button" id="btnExportarDadosLgpd" onclick="exportarDadosLgpd()" class="btn2 px-4 py-2.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
               <span class="material-symbols-outlined text-sm">download</span>
@@ -418,30 +418,30 @@
           <div>
             <h2 class="text-xl sm:text-2xl font-black text-perto-ink tracking-tight m-0 flex items-center gap-2">
               <span class="material-symbols-outlined text-perto-sea">account_balance_wallet</span>
-              Financeiro, Escrow &amp; Plano
+              Gestão Financeira, Custódia Escrow e Repasses
             </h2>
-            <p class="text-xs sm:text-sm text-perto-ink/70 mt-1 font-body">Acompanhe valores protegidos em custódia (Escrow), repasses liberados e detalhes do seu plano.</p>
+            <p class="text-xs sm:text-sm text-perto-ink/80 mt-1 font-body">Acompanhe valores protegidos em custódia (Escrow), repasses líquidos liberados e regras do seu plano.</p>
           </div>
-          <span id="finPlanoBadge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-perto-sun/25 text-perto-ink text-xs font-extrabold uppercase tracking-wider">
+          <span id="finPlanoBadge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-perto-sun/25 text-perto-ink text-xs font-extrabold uppercase tracking-wider tabular-nums">
             Plano Básico (12%)
           </span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
-            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Saldo em Escrow (Retido)</span>
-            <strong id="finSaldoEscrow" class="text-2xl font-black text-perto-sea">R$ 0,00</strong>
-            <span id="finEscrowHint" class="text-xs text-perto-ink/70 font-body block mt-1">Liberado ao finalizar ou após garantia de 48h</span>
+            <span class="text-xs font-bold text-perto-ink/80 uppercase tracking-wider block mb-1">Saldo em Escrow (Retido)</span>
+            <strong id="finSaldoEscrow" class="text-2xl font-black text-perto-sea tabular-nums">R$ 0,00</strong>
+            <span id="finEscrowHint" class="text-xs text-perto-ink/80 font-body block mt-1 tabular-nums">Liberado ao finalizar ou após garantia de 48h</span>
           </div>
           <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
-            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Total Liberado (Líquido)</span>
-            <strong id="finTotalLiberado" class="text-2xl font-black text-perto-ok">R$ 0,00</strong>
-            <span class="text-xs text-perto-ink/70 font-body block mt-1">Atendimentos finalizados já descontada a taxa</span>
+            <span class="text-xs font-bold text-perto-ink/80 uppercase tracking-wider block mb-1">Total Liberado (Líquido)</span>
+            <strong id="finTotalLiberado" class="text-2xl font-black text-perto-ok tabular-nums">R$ 0,00</strong>
+            <span class="text-xs text-perto-ink/80 font-body block mt-1">Atendimentos finalizados já descontada a taxa</span>
           </div>
           <div class="bg-perto-bg border border-perto-road rounded-2xl p-5">
-            <span class="text-xs font-bold text-perto-ink/70 uppercase tracking-wider block mb-1">Regra de Mensalidade</span>
-            <strong id="finRegraMensalidade" class="text-lg font-black text-perto-ink">Isento &le; R$ 1.800/mês</strong>
-            <span id="finTaxaInfo" class="text-xs text-perto-ink/70 font-body block mt-1">Taxa atual do plano: 12% por serviço</span>
+            <span class="text-xs font-bold text-perto-ink/80 uppercase tracking-wider block mb-1">Regra de Mensalidade</span>
+            <strong id="finRegraMensalidade" class="text-lg font-black text-perto-ink tabular-nums">Isento &le; R$ 1.800/mês</strong>
+            <span id="finTaxaInfo" class="text-xs text-perto-ink/80 font-body block mt-1 tabular-nums">Taxa atual do plano: 12% por serviço</span>
           </div>
         </div>
 
@@ -458,9 +458,9 @@
                   <th class="py-3 px-4">Situação</th>
                 </tr>
               </thead>
-              <tbody id="tabelaExtratoFinanceiro" class="divide-y divide-perto-road font-body">
+              <tbody id="tabelaExtratoFinanceiro" class="divide-y divide-perto-road font-body tabular-nums">
                 <tr>
-                  <td colspan="5" class="py-4 px-4 text-center text-perto-ink/70">Carregando extrato financeiro...</td>
+                  <td colspan="5" class="py-4 px-4 text-center text-perto-ink/80">Carregando extrato financeiro...</td>
                 </tr>
               </tbody>
             </table>
@@ -502,7 +502,7 @@
 
         <div class="campo-form">
           <label for="servicoPreco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Preço Cobrado (R$)</label>
-          <input type="number" id="servicoPreco" step="0.50" min="5" required placeholder="Ex: 180.00" class="input-form text-base font-black text-perto-sea">
+          <input type="number" id="servicoPreco" step="0.50" min="5" required placeholder="Ex: 180.00" class="input-form text-base font-black text-perto-sea tabular-nums">
         </div>
 
         <div class="campo-form">
@@ -523,11 +523,11 @@
     </div>
   </div>
 
-  <!-- MODAL DE MOTIVO DE RECUSA / CANCELAMENTO (PA-04) -->
+  <!-- MODAL DE MOTIVO DE RECUSA / CANCELAMENTO -->
   <div id="modalMotivoPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalMotivo" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
-        <h3 id="tituloModalMotivo" class="text-lg font-black text-perto-ink m-0">Informar Motivo</h3>
+        <h3 id="tituloModalMotivo" class="text-lg font-black text-perto-ink m-0">Informar Motivo do Cancelamento</h3>
         <button type="button" id="btnFecharModalMotivo" aria-label="Fechar modal de motivo" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalMotivoPedido()">✕</button>
       </div>
 
@@ -545,7 +545,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-02: PIN DE CONFIRMAÇÃO NA PORTA (em_transito -> em_execucao) -->
+  <!-- MODAL PIN DE CONFIRMAÇÃO NA PORTA (em_transito -> em_execucao) -->
   <div id="modalPinExecucao" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalPin" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
@@ -554,10 +554,10 @@
       </div>
       <form id="formPinExecucao" class="mt-4 space-y-4">
         <input type="hidden" id="pinOrderId">
-        <p class="text-xs text-perto-ink/75 font-body">Solicite ao cliente na porta os <strong>4 dígitos do PIN de confirmação</strong> para iniciar a execução do serviço.</p>
+        <p class="text-xs text-perto-ink/80 font-body">Solicite ao cliente na porta os <strong>4 dígitos do PIN de confirmação</strong> para iniciar a execução do serviço.</p>
         <div class="campo-form">
           <label for="pinExecucaoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">PIN de 4 dígitos</label>
-          <input type="text" id="pinExecucaoInput" inputmode="numeric" pattern="\d{4}" maxlength="4" minlength="4" required placeholder="0000" class="input-form text-lg font-mono font-black tracking-widest text-center">
+          <input type="text" id="pinExecucaoInput" inputmode="numeric" pattern="\d{4}" maxlength="4" minlength="4" required placeholder="0000" class="input-form text-lg font-mono tabular-nums font-black tracking-widest text-center">
         </div>
         <p id="pinExecucaoFeedback" class="hidden text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2" role="alert"></p>
         <div class="flex justify-end gap-3 pt-3 border-t border-perto-road">
@@ -568,16 +568,16 @@
     </div>
   </div>
 
-  <!-- MODAL ET-08: CHAT PROTEGIDO DO PEDIDO -->
+  <!-- MODAL CHAT PROTEGIDO DO PEDIDO -->
   <div id="modalChatPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalChat" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
-        <h3 id="tituloModalChat" class="text-lg font-black text-perto-ink m-0">Chat Protegido</h3>
+        <h3 id="tituloModalChat" class="text-lg font-black text-perto-ink m-0">Chat do Pedido</h3>
         <button type="button" aria-label="Fechar chat" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalChat()">✕</button>
       </div>
       <input type="hidden" id="chatOrderId">
       <div id="listaMensagensChat" class="mt-3 max-h-64 overflow-y-auto space-y-2 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body">
-        <p class="text-perto-ink/70">Carregando mensagens...</p>
+        <p class="text-perto-ink/80">Carregando mensagens...</p>
       </div>
       <p id="chatPrestadorReadOnlyNotice" class="hidden mt-3 text-xs font-bold text-perto-ink bg-perto-sun/25 border border-perto-sun rounded-lg px-3 py-2" role="status">
         Chat encerrado (somente leitura)
@@ -589,7 +589,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-13: SOS EMERGÊNCIA -->
+  <!-- MODAL SOS EMERGÊNCIA -->
   <div id="modalSosPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalSos" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
@@ -599,7 +599,7 @@
       <form id="formSosPedido" class="mt-4 space-y-4">
         <input type="hidden" id="sosOrderId">
         <p class="text-xs text-perto-ink/80 font-body bg-perto-sun/20 border border-perto-sun p-3 rounded-xl">
-          Ao acionar o SOS, a equipe de segurança PertoJá é notificada imediatamente com o registro do chamado. Em risco iminente, ligue 190/192/193.
+          Ao acionar o SOS, a equipe de segurança PertoJá é notificada imediatamente com o registro do chamado. Em risco iminente, ligue <span class="tabular-nums font-bold">190 / 192 / 193</span>.
         </p>
         <div class="campo-form">
           <label for="sosMotivoInput" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Descreva a ocorrência</label>
@@ -613,11 +613,11 @@
     </div>
   </div>
 
-  <!-- MODAL ET-14: ABRIR DISPUTA -->
+  <!-- MODAL ABRIR DISPUTA -->
   <div id="modalDisputaPedido" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalDisputa" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
-        <h3 id="tituloModalDisputa" class="text-lg font-black text-perto-ink m-0">Abrir Disputa</h3>
+        <h3 id="tituloModalDisputa" class="text-lg font-black text-perto-ink m-0">Abrir Mediação / Disputa</h3>
         <button type="button" aria-label="Fechar modal de disputa" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalDisputa()">✕</button>
       </div>
       <form id="formDisputaPedido" class="mt-4 space-y-4">
@@ -638,7 +638,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-15: AVALIAR CLIENTE (padronizado com portal-cliente.html) -->
+  <!-- MODAL AVALIAR CLIENTE -->
   <div id="modalAvaliarCliente" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalAvaliar" style="display: none;">
     <div class="modal-conteudo" style="max-width: 440px;">
       <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
@@ -647,17 +647,17 @@
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
-      <p id="modalAvaliarClienteSubtitulo" class="text-xs text-perto-ink/75 mb-4 font-body"></p>
+      <p id="modalAvaliarClienteSubtitulo" class="text-xs text-perto-ink/80 mb-4 font-body"></p>
       <form id="formAvaliarCliente" class="space-y-4">
         <input type="hidden" id="avaliarOrderId">
         <div class="campo-form">
           <span class="text-xs font-bold text-perto-ink uppercase tracking-wider block mb-2">Sua Nota (1 a 5 estrelas)</span>
           <div id="avaliarClienteEstrelas" class="flex items-center gap-2 flex-wrap" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
-            <button type="button" class="chip on" data-nota="5" aria-pressed="true">★ 5</button>
-            <button type="button" class="chip" data-nota="4" aria-pressed="false">★ 4</button>
-            <button type="button" class="chip" data-nota="3" aria-pressed="false">★ 3</button>
-            <button type="button" class="chip" data-nota="2" aria-pressed="false">★ 2</button>
-            <button type="button" class="chip" data-nota="1" aria-pressed="false">★ 1</button>
+            <button type="button" class="chip on tabular-nums" data-nota="5" aria-pressed="true">★ 5</button>
+            <button type="button" class="chip tabular-nums" data-nota="4" aria-pressed="false">★ 4</button>
+            <button type="button" class="chip tabular-nums" data-nota="3" aria-pressed="false">★ 3</button>
+            <button type="button" class="chip tabular-nums" data-nota="2" aria-pressed="false">★ 2</button>
+            <button type="button" class="chip tabular-nums" data-nota="1" aria-pressed="false">★ 1</button>
           </div>
           <input type="hidden" id="avaliarNotaInput" value="5">
         </div>
@@ -673,7 +673,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-10: EXCLUIR / ANONIMIZAR CONTA (LGPD) -->
+  <!-- MODAL EXCLUIR / ANONIMIZAR CONTA (LGPD) -->
   <div id="modalExcluirConta" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalExcluirConta" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
@@ -696,7 +696,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-15: RÉPLICA OU CONTESTAÇÃO DE AVALIAÇÃO -->
+  <!-- MODAL RÉPLICA OU CONTESTAÇÃO DE AVALIAÇÃO -->
   <div id="modalReviewAcao" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalReviewAcao" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
@@ -718,7 +718,7 @@
     </div>
   </div>
 
-  <!-- MODAL ET-13: VER AVALIAÇÕES DOUBLE-BLIND DO PEDIDO -->
+  <!-- MODAL VER AVALIAÇÕES DOUBLE-BLIND DO PEDIDO -->
   <div id="modalVerReviewsPrestador" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalVerReviewsPrestador" style="display: none;">
     <div class="modal-conteudo">
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
@@ -726,7 +726,7 @@
         <button type="button" aria-label="Fechar avaliações" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalVerReviewsPrestador()">✕</button>
       </div>
       <div id="verReviewsPrestadorConteudo" class="mt-3 space-y-3 text-xs font-body" aria-live="polite">
-        <p class="text-perto-ink/70">Carregando avaliações...</p>
+        <p class="text-perto-ink/80">Carregando avaliações...</p>
       </div>
       <div class="flex justify-end pt-3 mt-3 border-t border-perto-road">
         <button type="button" class="btn-neutral px-5 py-2 rounded-full text-xs font-bold" onclick="fecharModalVerReviewsPrestador()">Fechar</button>
@@ -740,13 +740,13 @@
       <div class="flex items-center justify-between pb-3 border-b border-perto-road">
         <h3 id="tituloModalSuporteIA" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
           <span aria-hidden="true">🤖</span>
-          Assistente de Suporte PertoJá — FreeLLMAPI
+          Assistente de Suporte PertoJá
         </h3>
         <button type="button" id="btnFecharModalSuporteIA" aria-label="Fechar suporte IA" class="text-perto-ink/80 hover:text-perto-ink text-xl px-2 py-1 rounded-lg" onclick="fecharModalSuporteIA()">✕</button>
       </div>
       <div id="listaMensagensSuporteIA" class="mt-3 max-h-72 overflow-y-auto space-y-2.5 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body" aria-live="polite">
         <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink">
-          <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá (FreeLLMAPI)</div>
+          <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá</div>
           <p class="m-0">Olá! Sou o assistente inteligente do PertoJá. Posso tirar dúvidas sobre repasses em Escrow, verificação KYC, planos, PIN de execução e boas práticas no catálogo. Como posso ajudar?</p>
         </div>
       </div>
@@ -811,11 +811,33 @@
     let primeiraCargaPedidos = true;
 
     function toast(t) {
+      const container = document.getElementById('toasts');
+      if (!container) return;
       const d = document.createElement('div');
-      d.className = 'toast';
-      d.textContent = t;
-      document.getElementById('toasts').appendChild(d);
-      setTimeout(() => d.remove(), 4000);
+      d.className = 'toast toast-animated flex items-center gap-2 transition-all duration-300 ease-out';
+      const msg = String(t || '');
+      const lower = msg.toLowerCase();
+      let icon = 'check_circle';
+      if (lower.includes('erro') || lower.includes('falha') || lower.includes('indisponível') || lower.includes('não foi possível')) {
+        icon = 'error';
+      } else if (lower.includes('buscando') || lower.includes('obtendo') || lower.includes('recalculando') || lower.includes('carregando')) {
+        icon = 'autorenew';
+      } else if (lower.includes('atenção') || lower.includes('pausa') || lower.includes('encerrado')) {
+        icon = 'warning';
+      }
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'material-symbols-outlined text-base shrink-0';
+      iconSpan.setAttribute('aria-hidden', 'true');
+      iconSpan.textContent = icon;
+      const textSpan = document.createElement('span');
+      textSpan.textContent = msg;
+      d.append(iconSpan, textSpan);
+      container.appendChild(d);
+      setTimeout(() => {
+        d.style.opacity = '0';
+        d.style.transform = 'translateY(6px)';
+        setTimeout(() => d.remove(), 250);
+      }, 3750);
     }
 
     const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -903,7 +925,7 @@
 
         dadosPrestador = data.user;
         document.getElementById('prestadorNome').textContent = dadosPrestador.nome;
-        document.getElementById('prestadorEmail').textContent = `${dadosPrestador.email} · Avaliação Média: ★ ${dadosPrestador.avaliacao_media.toFixed(1)}`;
+        document.getElementById('prestadorEmail').textContent = `${dadosPrestador.email} · ★ ${dadosPrestador.avaliacao_media.toFixed(1)}`;
         document.getElementById('chkDisponivel').checked = dadosPrestador.disponivel;
         document.getElementById('txtDisponivel').textContent = dadosPrestador.disponivel ? 'Disponível no Mapa' : 'Indisponível (Pausado)';
 
@@ -1030,6 +1052,7 @@
 
       const elPend = document.getElementById('kpiPendentes');
       const elAtiv = document.getElementById('kpiServicosAtivos');
+      const elContSvc = document.getElementById('contServicos');
       const elAval = document.getElementById('kpiAvaliacao');
       const elFat = document.getElementById('kpiFaturamento');
       const elBar = document.getElementById('kpiProgressoBarra');
@@ -1037,6 +1060,7 @@
 
       if (elPend) elPend.textContent = pendentes;
       if (elAtiv) elAtiv.textContent = ativos;
+      if (elContSvc) elContSvc.textContent = listaMeusServicos.length;
       if (elAval) elAval.textContent = `★ ${avaliacao}`;
       if (elFat) elFat.textContent = brl(faturamentoBruto);
       if (elBar) {
@@ -1074,7 +1098,7 @@
 
       if (tbody) {
         if (!listaPedidos.length) {
-          tbody.innerHTML = '<tr><td colspan="5" class="py-4 px-4 text-center text-perto-ink/70">Nenhum atendimento registrado ainda.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" class="py-4 px-4 text-center text-perto-ink/80">Nenhum atendimento registrado ainda.</td></tr>';
         } else {
           tbody.innerHTML = listaPedidos.map(p => {
             const bruto = Number(p.preco_total || 0);
@@ -1100,10 +1124,10 @@
             }
             return `
               <tr>
-                <td class="py-3 px-4 font-semibold text-perto-ink">#${escapeHtml(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
+                <td class="py-3 px-4 font-semibold text-perto-ink tabular-nums">#${escapeHtml(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
                 <td class="py-3 px-4 text-perto-ink/80">${escapeHtml(p.cliente_nome)}</td>
-                <td class="py-3 px-4 font-semibold">${brl(bruto)}</td>
-                <td class="py-3 px-4 font-bold text-perto-ok">${brl(liquido)}</td>
+                <td class="py-3 px-4 font-semibold tabular-nums">${brl(bruto)}</td>
+                <td class="py-3 px-4 font-bold text-perto-ok tabular-nums">${brl(liquido)}</td>
                 <td class="py-3 px-4">${situacao}</td>
               </tr>
             `;
@@ -1120,7 +1144,7 @@
         atualizarKPIsEFinanceiro();
 
         if (!listaMeusServicos.length) {
-          div.innerHTML = '<p class="text-sm text-perto-ink/70">Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!</p>';
+          div.innerHTML = '<p class="text-sm text-perto-ink/80">Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!</p>';
           return;
         }
 
@@ -1129,11 +1153,11 @@
           return `
           <div class="svc border-l-4 border-perto-sea">
             <div class="top">
-              <span>${escapeHtml(s.titulo)}</span>
-              <span class="price text-xl">${brl(s.preco)}</span>
+              <span class="font-bold text-perto-ink">${escapeHtml(s.titulo)}</span>
+              <span class="price text-xl tabular-nums">${brl(s.preco)}</span>
             </div>
-            <p class="text-sm text-perto-ink/75 my-1.5 font-body">${s.descricao ? escapeHtml(s.descricao) : 'Sem descrição informada.'}</p>
-            <p class="text-xs text-perto-sea font-semibold my-1">📍 Endereço de Atendimento: ${escapeHtml(endSvc)}</p>
+            <p class="text-sm text-perto-ink/80 my-1.5 font-body">${s.descricao ? escapeHtml(s.descricao) : 'Sem descrição informada.'}</p>
+            <p class="text-xs text-perto-sea font-semibold my-1">📍 ${escapeHtml(endSvc)}</p>
             <div class="meta mt-2">
               <span class="tag">${escapeHtml(s.categoria)}</span>
               <span class="tag ${s.ativo ? '' : 'off'}">${s.ativo ? 'Ativo' : 'Pausado'}</span>
@@ -1148,7 +1172,7 @@
           </div>
         `;}).join('');
       } catch (e) {
-        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar serviços.</p>';
+        div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar serviços.</p>';
       }
     }
 
@@ -1254,7 +1278,10 @@
         return;
       }
 
-      if (btnIA) btnIA.disabled = true;
+      if (btnIA) {
+        btnIA.classList.add('is-loading');
+        btnIA.disabled = true;
+      }
       if (btnTexto) btnTexto.textContent = 'Gerando...';
 
       try {
@@ -1282,7 +1309,10 @@
       } catch (err) {
         toast((err && err.error) || 'Não foi possível gerar a descrição no momento.');
       } finally {
-        if (btnIA) btnIA.disabled = false;
+        if (btnIA) {
+          btnIA.classList.remove('is-loading');
+          btnIA.disabled = false;
+        }
         if (btnTexto) btnTexto.textContent = 'Gerar com IA';
       }
     }
@@ -1294,6 +1324,13 @@
       if (isNaN(precoVal) || precoVal <= 0) {
         toast('Informe um valor de preço numérico e positivo.');
         return;
+      }
+      const btnSalvar = document.getElementById('btnSalvarModal');
+      const origSalvarText = btnSalvar ? btnSalvar.textContent : 'Salvar Serviço';
+      if (btnSalvar) {
+        btnSalvar.classList.add('is-loading');
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = 'Salvando...';
       }
       const payload = {
         titulo: document.getElementById('servicoTitulo').value,
@@ -1336,6 +1373,12 @@
         }
       } catch (e) {
         toast('Erro ao conectar ao servidor.');
+      } finally {
+        if (btnSalvar) {
+          btnSalvar.classList.remove('is-loading');
+          btnSalvar.disabled = false;
+          btnSalvar.textContent = origSalvarText;
+        }
       }
     };
 
@@ -1358,7 +1401,7 @@
       });
 
       if (!filtrados.length) {
-        div.innerHTML = '<p class="text-sm text-perto-ink/70">Nenhum chamado encontrado para este filtro.</p>';
+        div.innerHTML = '<p class="text-sm text-perto-ink/80">Nenhum chamado encontrado para este filtro.</p>';
         return;
       }
 
@@ -1392,7 +1435,7 @@
             <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="finalizado">Finalizar Serviço</button>
           `;
         } else {
-          acoesHtml = `<span class="text-xs font-semibold text-perto-ink/70">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
+          acoesHtml = `<span class="text-xs font-semibold text-perto-ink/80">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
         }
 
         const acoesContextuais = [];
@@ -1440,20 +1483,21 @@
         <div class="svc mb-3.5 ${isNovo ? 'order-card-new' : 'border-l-4 border-perto-sun'}">
           <div class="top">
             <span class="flex items-center gap-2 flex-wrap">
-              <b>${escapeHtml(p.servico_titulo)}</b> (${escapeHtml(p.servico_categoria)})
+              <b>${escapeHtml(p.servico_titulo)}</b>
+              <span class="tag">${escapeHtml(p.servico_categoria)}</span>
               ${isNovo ? '<span class="badge-novo">Novo</span>' : ''}
             </span>
-            <span class="price">${brl(p.preco_total)}</span>
+            <span class="price tabular-nums">${brl(p.preco_total)}</span>
           </div>
-          <div class="meta my-1.5">
-            <span>👤 Cliente: <b>${escapeHtml(p.cliente_nome)}</b></span>
-            <span>📞 Tel: ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
-            <span>💳 Pagamento: <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>
-            <span>Status: <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b></span>
+          <div class="meta my-1.5 text-perto-ink/80">
+            <span>👤 <b>${escapeHtml(p.cliente_nome)}</b></span>
+            <span class="tabular-nums">📞 ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
+            <span>💳 <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>
+            <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b>
             ${escrowBadgeHtml}
           </div>
-          ${localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 Local do Atendimento: ${escapeHtml(localTexto)}</div>` : ''}
-          ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">Obs: ${escapeHtml(p.observacoes)}</p>` : ''}
+          ${localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 ${escapeHtml(localTexto)}</div>` : ''}
+          ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">${escapeHtml(p.observacoes)}</p>` : ''}
           <div class="flex gap-2 mt-3 flex-wrap items-center">
             ${acoesHtml}
             ${acoesContextuais.join('')}
@@ -1484,7 +1528,7 @@
         carregarFinancialSummary();
         renderizarPedidos();
       } catch (e) {
-        div.innerHTML = '<p class="text-sm text-perto-ink/70">Erro ao carregar chamados.</p>';
+        div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar chamados.</p>';
       }
     }
 
@@ -1527,8 +1571,23 @@
         toast('Informe o motivo para cancelar ou recusar.');
         return;
       }
-      await alterarStatusPedido(orderId, 'cancelado', motivo);
-      fecharModalMotivoPedido();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origText = btnSubmit ? btnSubmit.textContent : '';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Cancelando...';
+      }
+      try {
+        await alterarStatusPedido(orderId, 'cancelado', motivo);
+        fecharModalMotivoPedido();
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
+      }
     };
 
     let ultimoStatusHttpCode = 0;
@@ -1668,7 +1727,12 @@
         fb.textContent = '';
         fb.classList.add('hidden');
       }
-      if (btnSubmit) btnSubmit.disabled = true;
+      const origText = btnSubmit ? btnSubmit.textContent : 'Validar PIN e Iniciar';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Validando...';
+      }
       try {
         const ok = await alterarStatusPedido(orderId, 'em_execucao', null, pin);
         if (ok) {
@@ -1686,7 +1750,11 @@
           }
         }
       } finally {
-        if (btnSubmit) btnSubmit.disabled = false;
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     };
 
@@ -1715,30 +1783,30 @@
     async function carregarMensagensChat(orderId) {
       const box = document.getElementById('listaMensagensChat');
       if (!box) return;
-      box.innerHTML = '<p class="text-perto-ink/70">Carregando mensagens...</p>';
+      box.innerHTML = '<p class="text-perto-ink/80">Carregando mensagens...</p>';
       try {
         const res = await fetch(`/api/orders/${orderId}/messages`);
         if (!res.ok) {
-          box.innerHTML = '<p class="text-perto-ink/70">Chat indisponível para este chamado.</p>';
+          box.innerHTML = '<p class="text-perto-ink/80">Chat indisponível para este chamado.</p>';
           return;
         }
         const msgs = await res.json();
         if (!Array.isArray(msgs) || !msgs.length) {
-          box.innerHTML = '<p class="text-perto-ink/70">Nenhuma mensagem ainda. Inicie a conversa abaixo.</p>';
+          box.innerHTML = '<p class="text-perto-ink/80">Nenhuma mensagem ainda. Inicie a conversa abaixo.</p>';
           return;
         }
         box.innerHTML = msgs.map(m => `
           <div class="p-2.5 rounded-xl bg-white border border-perto-road">
-            <div class="flex items-center justify-between text-[11px] text-perto-ink/60 mb-0.5">
+            <div class="flex items-center justify-between text-[11px] text-perto-ink/80 mb-0.5">
               <b>${escapeHtml(m.sender_nome || m.sender_tipo || 'Participante')}</b>
-              <span>${escapeHtml(m.criado_em || m.created_at || '')}</span>
+              <span class="tabular-nums">${escapeHtml(m.criado_em || m.created_at || '')}</span>
             </div>
             <p class="m-0 text-perto-ink">${escapeHtml(m.mensagem || m.conteudo || m.texto || '')}</p>
           </div>
         `).join('');
         box.scrollTop = box.scrollHeight;
       } catch (e) {
-        box.innerHTML = '<p class="text-perto-ink/70">Erro ao carregar mensagens.</p>';
+        box.innerHTML = '<p class="text-perto-ink/80">Erro ao carregar mensagens.</p>';
       }
     }
 
@@ -1751,6 +1819,13 @@
       const orderId = document.getElementById('chatOrderId').value;
       const texto = (document.getElementById('chatMensagemInput').value || '').trim();
       if (!texto) return;
+      const btn = document.getElementById('btnEnviarChatPedido');
+      const origText = btn ? btn.textContent : 'Enviar';
+      if (btn) {
+        btn.classList.add('is-loading');
+        btn.disabled = true;
+        btn.textContent = 'Enviando...';
+      }
       try {
         const res = await fetch(`/api/orders/${orderId}/messages`, {
           method: 'POST',
@@ -1766,6 +1841,12 @@
         }
       } catch (e) {
         toast('Erro de conexão no chat.');
+      } finally {
+        if (btn) {
+          btn.classList.remove('is-loading');
+          btn.disabled = chatPrestadorReadOnly;
+          btn.textContent = origText;
+        }
       }
     };
 
@@ -1788,7 +1869,12 @@
         return;
       }
       const btnSos = document.getElementById('btnConfirmarSosPrestador');
-      if (btnSos) btnSos.disabled = true;
+      const origText = btnSos ? btnSos.textContent : 'Confirmar SOS';
+      if (btnSos) {
+        btnSos.classList.add('is-loading');
+        btnSos.disabled = true;
+        btnSos.textContent = 'Enviando SOS...';
+      }
       try {
         const res = await fetch(`/api/orders/${orderId}/sos`, {
           method: 'POST',
@@ -1805,7 +1891,11 @@
       } catch (e) {
         toast('Erro de conexão.');
       } finally {
-        if (btnSos) btnSos.disabled = false;
+        if (btnSos) {
+          btnSos.classList.remove('is-loading');
+          btnSos.disabled = false;
+          btnSos.textContent = origText;
+        }
       }
     };
 
@@ -1822,6 +1912,13 @@
       const orderId = document.getElementById('disputaOrderId').value;
       const motivo = (document.getElementById('disputaMotivoInput').value || '').trim();
       const descricao = (document.getElementById('disputaDescricaoInput').value || '').trim();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origText = btnSubmit ? btnSubmit.textContent : 'Registrar Disputa';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Registrando...';
+      }
       try {
         const res = await fetch(`/api/orders/${orderId}/dispute`, {
           method: 'POST',
@@ -1838,6 +1935,12 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     };
 
@@ -1880,7 +1983,12 @@
       const nota = parseInt(document.getElementById('avaliarNotaInput').value, 10) || 5;
       const comentario = (document.getElementById('avaliarComentarioInput').value || '').trim();
       const btnSubmit = document.getElementById('btnEnviarAvaliacaoCliente');
-      if (btnSubmit) btnSubmit.disabled = true;
+      const origText = btnSubmit ? btnSubmit.textContent : 'Enviar Avaliação';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Enviando...';
+      }
       try {
         const res = await fetch(`/api/orders/${orderId}/review`, {
           method: 'POST',
@@ -1898,7 +2006,11 @@
       } catch (e) {
         toast('Erro de comunicação ao enviar avaliação.');
       } finally {
-        if (btnSubmit) btnSubmit.disabled = false;
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     };
 
@@ -1907,7 +2019,7 @@
     async function abrirModalVerReviewsPrestador(orderId) {
       const box = document.getElementById('verReviewsPrestadorConteudo');
       if (!box) return;
-      box.innerHTML = '<p class="text-perto-ink/70">Carregando avaliações...</p>';
+      box.innerHTML = '<p class="text-perto-ink/80">Carregando avaliações...</p>';
       abrirModalAcessivel('modalVerReviewsPrestador');
       try {
         const res = await fetch(`/api/orders/${orderId}/reviews`);
@@ -1922,18 +2034,18 @@
         const renderStatusModeracao = (stMod) => {
           const mod = String(stMod || '').trim();
           if (!mod || mod.toLowerCase() === 'publicada') return '';
-          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">Status: ${escapeHtml(mod)}</div>`;
+          return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">${escapeHtml(mod)}</div>`;
         };
         const minhaHtml = minha
           ? `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road">
-              <div class="font-bold text-perto-ink mb-1">Sua avaliação ao cliente (${escapeHtml(String(minha.nota || 5))} ★)</div>
+              <div class="font-bold text-perto-ink mb-1 tabular-nums">Sua avaliação ao cliente (★ ${escapeHtml(String(minha.nota || 5))})</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
               ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
               ${renderStatusModeracao(minha.status_moderacao)}
             </div>
           `
-          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">Você ainda não avaliou este cliente.</div>`;
+          : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">Você ainda não avaliou este cliente.</div>`;
 
         let contraHtml = '';
         if (oculta) {
@@ -1950,7 +2062,7 @@
           const jaContestada = Boolean(contraparte.contestada) || ['contestada', 'em_revisao'].includes(statusModContra);
           contraHtml = `
             <div class="p-3 rounded-xl bg-perto-bg border border-perto-road space-y-2">
-              <div class="font-bold text-perto-ink">Avaliação do cliente (${escapeHtml(String(contraparte.nota || 5))} ★)</div>
+              <div class="font-bold text-perto-ink tabular-nums">Avaliação do cliente (★ ${escapeHtml(String(contraparte.nota || 5))})</div>
               <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
               ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Sua réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
               ${renderStatusModeracao(contraparte.status_moderacao)}
@@ -1963,11 +2075,11 @@
             </div>
           `;
         } else {
-          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/75">O cliente ainda não registrou uma avaliação.</div>`;
+          contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">O cliente ainda não registrou uma avaliação.</div>`;
         }
         box.innerHTML = minhaHtml + contraHtml;
       } catch (e) {
-        box.innerHTML = '<p class="text-perto-ink/70">Erro de comunicação ao carregar avaliações.</p>';
+        box.innerHTML = '<p class="text-perto-ink/80">Erro de comunicação ao carregar avaliações.</p>';
       }
     }
 
@@ -1992,7 +2104,12 @@
       const url = isContest ? `/api/reviews/${reviewId}/contest` : `/api/reviews/${reviewId}/reply`;
       const payload = isContest ? { motivo: texto } : { replica: texto };
       const btnSubmit = e.target.querySelector('button[type="submit"]');
-      if (btnSubmit) btnSubmit.disabled = true;
+      const origText = btnSubmit ? btnSubmit.textContent : 'Enviar';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Enviando...';
+      }
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -2010,7 +2127,11 @@
       } catch (e) {
         toast('Erro de conexão.');
       } finally {
-        if (btnSubmit) btnSubmit.disabled = false;
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     };
 
@@ -2022,6 +2143,13 @@
         toast('Confirme a prova de vida (selfie com documento) para enviar a verificação KYC.');
         if (selfieCheck) selfieCheck.focus();
         return;
+      }
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Verificando KYC...';
       }
       const documento_tipo = document.getElementById('kycDocTipoPerfil').value;
       const cpf = (document.getElementById('kycCpfInput')?.value || '').trim();
@@ -2049,6 +2177,12 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = origHtml;
+        }
       }
     };
 
@@ -2056,6 +2190,13 @@
     document.getElementById('formAppealConta').onsubmit = async (e) => {
       e.preventDefault();
       const justificativa = (document.getElementById('appealJustificativa').value || '').trim();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origText = btnSubmit ? btnSubmit.textContent : 'Enviar Recurso';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Enviando...';
+      }
       try {
         const res = await fetch('/api/account/appeal', {
           method: 'POST',
@@ -2071,6 +2212,12 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     };
 
@@ -2106,6 +2253,11 @@
 
     document.getElementById('formExcluirConta').onsubmit = async (e) => {
       e.preventDefault();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+      }
       try {
         const res = await fetch('/api/profile', { method: 'DELETE' });
         if (res.ok) {
@@ -2126,6 +2278,11 @@
         }
       } catch (e) {
         toast('Erro de conexão.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+        }
       }
     };
 
@@ -2204,6 +2361,13 @@
 
     document.getElementById('formPerfilPrestador').onsubmit = async (e) => {
       e.preventDefault();
+      const btnSubmit = e.target.querySelector('button[type="submit"]');
+      const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+      if (btnSubmit) {
+        btnSubmit.classList.add('is-loading');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Salvando...';
+      }
       const latVal = parseFloat(document.getElementById('perfilLat').value);
       const lngVal = parseFloat(document.getElementById('perfilLng').value);
       const payload = {
@@ -2238,6 +2402,12 @@
         }
       } catch (e) {
         toast('Erro de comunicação.');
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.classList.remove('is-loading');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = origHtml;
+        }
       }
     };
 
@@ -2278,11 +2448,16 @@
       if (!msg || !listaEl) return;
 
       inputEl.value = '';
-      if (btnEl) btnEl.disabled = true;
+      const origBtnText = btnEl ? btnEl.textContent : 'Enviar';
+      if (btnEl) {
+        btnEl.classList.add('is-loading');
+        btnEl.disabled = true;
+        btnEl.textContent = 'Consultando...';
+      }
 
       listaEl.insertAdjacentHTML('beforeend', `
         <div class="p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6">
-          <div class="text-[10px] font-bold text-perto-ink/70 mb-0.5">Você</div>
+          <div class="text-[10px] font-bold text-perto-ink/80 mb-0.5">Você</div>
           <p class="m-0 break-words">${escapeHtml(msg)}</p>
         </div>
       `);
@@ -2326,7 +2501,11 @@
           </div>
         `);
       } finally {
-        if (btnEl) btnEl.disabled = false;
+        if (btnEl) {
+          btnEl.classList.remove('is-loading');
+          btnEl.disabled = false;
+          btnEl.textContent = origBtnText;
+        }
         listaEl.scrollTop = listaEl.scrollHeight;
         if (inputEl) inputEl.focus();
       }
