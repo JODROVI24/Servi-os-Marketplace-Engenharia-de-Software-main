@@ -7,7 +7,10 @@ import secrets
 import hashlib
 import hmac
 import requests
-import openai
+try:
+    import openai
+except ImportError:
+    openai = None
 import gzip
 import time
 from datetime import datetime, timedelta
@@ -275,7 +278,7 @@ class DatabaseRateLimiter:
 rate_limiter = DatabaseRateLimiter()
 
 
-def rate_limit(limit, window_seconds=60):
+def rate_limit(limit, window_seconds=60, key_prefix=None):
     """Decorator de rate limit por IP (hash HMAC-SHA256) para proteção contra brute-force e abusos de API."""
     def decorator(f):
         @wraps(f)
@@ -283,7 +286,8 @@ def rate_limit(limit, window_seconds=60):
             if app.config.get('TESTING'):
                 return f(*args, **kwargs)
             ip_hash = _hash_ip(_get_client_ip())
-            key = f"{request.endpoint or f.__name__}:{ip_hash}"
+            prefix = key_prefix or request.endpoint or f.__name__
+            key = f"{prefix}:{ip_hash}"
             if not rate_limiter.is_allowed(key, limit, window_seconds):
                 resp = make_response(jsonify({
                     'error': 'Muitas requisições. Por favor, aguarde alguns instantes antes de tentar novamente.',
@@ -3927,53 +3931,198 @@ def payment_gateway_webhook(gateway=None):
 
 # ================= Sistema de IA — Suporte e Descrições de Anúncios =================
 
-_OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'http://localhost:3001/v1').rstrip('/')
-_OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
-_LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'gemini-3.8-flash')
+
+def _get_llm_base_url():
+    """Retorna a URL base do gateway FreeLLMAPI / OpenAI-compatible."""
+    raw = (
+        os.environ.get('FREELLM_API_BASE_URL')
+        or os.environ.get('OPENAI_BASE_URL')
+        or 'http://localhost:3001/v1'
+    )
+    return str(raw).strip().rstrip('/')
+
+
+def _get_llm_api_key():
+    """Retorna a chave de API configurada para o gateway FreeLLMAPI / OpenAI."""
+    raw = os.environ.get('FREELLM_API_KEY') or os.environ.get('OPENAI_API_KEY') or ''
+    return str(raw).strip()
+
+
+def _get_llm_model():
+    """Retorna o modelo padrão configurado para o gateway FreeLLMAPI / OpenAI."""
+    raw = os.environ.get('LLM_MODEL') or os.environ.get('LLAMA_MODEL') or 'gemini-3.8-flash'
+    return str(raw).strip() or 'gemini-3.8-flash'
+
+
+# Variáveis globais mantidas para retrocompatibilidade
+_OPENAI_BASE_URL = _get_llm_base_url()
+_OPENAI_API_KEY = _get_llm_api_key()
+_LLAMA_MODEL = _get_llm_model()
 
 
 def _get_llm_client():
-    """Retorna um cliente OpenAI-compatible apontando para o FreeLLMAPI."""
+    """Retorna um cliente OpenAI-compatible apontando para o FreeLLMAPI, ou None se indisponível."""
+    if openai is None:
+        return None
     return openai.OpenAI(
-        base_url=_OPENAI_BASE_URL,
-        api_key=_OPENAI_API_KEY,
-        max_retries=4,
+        base_url=_get_llm_base_url(),
+        api_key=_get_llm_api_key() or 'freellmapi-local',
+        max_retries=2,
+        timeout=8.0,
     )
 
 
 def _call_llm(messages, model, temperature, max_tokens):
-    """Envia uma mensagem para o FreeLLMAPI e retorna o conteúdo da resposta."""
+    """Envia mensagens para o FreeLLMAPI (via SDK openai ou fallback HTTP requests) e retorna o texto."""
     client = _get_llm_client()
-    resp = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return resp.choices[0].message.content.strip()
+    if client is not None:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return resp.choices[0].message.content.strip()
+
+    base_url = _get_llm_base_url()
+    api_key = _get_llm_api_key() or 'freellmapi-local'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {api_key}',
+    }
+    payload = {
+        'model': model,
+        'messages': messages,
+        'temperature': temperature,
+        'max_tokens': max_tokens,
+    }
+    r = requests.post(f'{base_url}/chat/completions', json=payload, headers=headers, timeout=8)
+    r.raise_for_status()
+    body = r.json()
+    return body['choices'][0]['message']['content'].strip()
+
+
+def _fallback_chat_support_reply(message, context_text=''):
+    """Resposta local inteligente e determinística para o suporte do PertoJá Marketplace quando o gateway LLM está offline."""
+    q = f"{message or ''} {context_text or ''}".lower()
+    topics = []
+
+    if any(k in q for k in ('pagamento', 'pagar', 'pix', 'cartão', 'cartao', 'boleto', 'escrow', 'reembolso', 'estorno', 'garantia')):
+        topics.append(
+            'Pagamentos & Escrow: Seus pagamentos via PIX, Cartão ou Boleto ficam protegidos em custódia (Escrow) '
+            'com garantia de 48h após a conclusão antes do repasse ao prestador.'
+        )
+    if any(k in q for k in ('pin', 'código', 'codigo', 'porta', 'iniciar', 'execução', 'execucao', 'chegada', 'visita')):
+        topics.append(
+            'Check-in com PIN: O prestador só inicia a execução após validar na porta o PIN de 4 dígitos '
+            'exibido no painel do cliente.'
+        )
+    if any(k in q for k in ('kyc', 'verificação', 'verificacao', 'documento', 'crea', 'cft', 'nr-10', 'nr10', 'cau', 'selo', 'tier')):
+        topics.append(
+            'Verificação KYC: Contamos com KYC Tier 1 (identidade e selfie) e Tier 2 para categorias técnicas '
+            '(Elétrica e Encanamento) mediante registro CREA, CFT, CRT, NR-10 ou CAU.'
+        )
+    if any(k in q for k in ('plano', 'taxa', 'comissão', 'comissao', 'básico', 'basico', 'pro', '1800', 'isenção', 'isencao', 'preço')):
+        topics.append(
+            'Planos para Prestadores: O Plano Básico tem taxa de 12% (com isenção de comissão até R$ 1.800/mês) '
+            'e o Plano Pro reduz a taxa para 8% com destaque nas buscas.'
+        )
+    if any(k in q for k in ('sos', 'emergência', 'emergencia', 'segurança', 'seguranca', 'denúncia', 'denuncia', 'ajuda')):
+        topics.append(
+            'Segurança & SOS: Durante o atendimento você conta com botão SOS Emergência (190), '
+            'compartilhamento de rota verificada e suporte a disputas.'
+        )
+    if any(k in q for k in ('avaliação', 'avaliacao', 'review', 'nota', 'estrela', 'lgpd', 'privacidade', 'dados', 'conta')):
+        topics.append(
+            'Avaliações & LGPD: As avaliações são double-blind (publicadas após ambas as partes avaliarem ou após 7 dias) '
+            'e seus dados seguem rigorosamente a LGPD.'
+        )
+
+    if not topics:
+        topics.append(
+            'No PertoJá Marketplace você contrata profissionais verificados (KYC Tier 1 e Tier 2 com CREA/CFT/NR-10/CAU), '
+            'paga com segurança via Escrow (PIX, Cartão ou Boleto com garantia de 48h), valida o início do serviço com '
+            'PIN de 4 dígitos na porta e conta com SOS Emergência, avaliações double-blind e proteção LGPD. '
+            'Para prestadores, oferecemos Plano Básico (12% com isenção até R$ 1.800/mês) e Plano Pro (8%).'
+        )
+
+    intro = 'Olá! Sou o assistente virtual do PertoJá Marketplace. '
+    details = ' '.join(topics)
+    outro = ' Se precisar de auxílio adicional, consulte sua área de pedidos ou nossa central de ajuda!'
+    return f'{intro}{details}{outro}'
+
+
+def _fallback_ad_description(title, category='', description='', price=None, service_type='', extra=''):
+    """Gera localmente uma descrição comercial atraente e profissional (máx ~280 caracteres) sem inventar dados."""
+    clean_title = str(title or '').strip()
+    clean_cat = str(category or '').strip()
+    clean_desc = str(description or '').strip()
+    clean_type = str(service_type or '').strip()
+    clean_extra = str(extra or '').strip()
+
+    price_str = ''
+    if price is not None and price != '':
+        try:
+            p_val = float(price)
+            if math.isfinite(p_val) and p_val > 0:
+                price_str = f'R$ {p_val:.2f}'.replace('.', ',')
+        except (TypeError, ValueError):
+            price_str = ''
+
+    header = clean_title
+    if clean_cat and clean_cat.lower() not in clean_title.lower():
+        header = f'{clean_title} ({clean_cat})'
+
+    segments = [f'{header}: atendimento profissional com qualidade, pontualidade e garantia pelo PertoJá.']
+
+    if clean_desc:
+        segments.append(clean_desc.rstrip('.') + '.')
+    if clean_extra and clean_extra.lower() not in clean_desc.lower():
+        segments.append(clean_extra.rstrip('.') + '.')
+
+    meta = []
+    if clean_type:
+        meta.append(f'Modalidade: {clean_type}')
+    if price_str:
+        meta.append(f'Valor: {price_str}')
+    if meta:
+        segments.append(' | '.join(meta) + '.')
+
+    segments.append('Agende já com segurança!')
+    result = ' '.join(segments).strip()
+    if len(result) > 280:
+        result = result[:277].rstrip(' ,;:-') + '...'
+    return result
 
 
 def _chat_system_prompt():
     return (
         'Você é o suporte ao cliente do PertoJá Marketplace. '
         'Responda de forma amigável, objetiva e útil em português do Brasil. '
-        'Cubra serviços, agendamentos, pagamentos, KYC e a política de privacidade do site. '
+        'Cubra serviços, agendamentos, pagamentos via Escrow (PIX/Cartão/Boleto com garantia de 48h), '
+        'check-in com PIN de 4 dígitos, verificação KYC Tier 1/Tier 2 (CREA/CFT/NR-10/CAU), '
+        'planos Básico (12% com isenção até R$ 1.800/mês) e Pro (8%), SOS Emergência e política LGPD. '
         'Se não tiver certeza, oriente o usuário a procurar a seção de ajuda ou entrar em contato.'
     )
 
 
 @app.route('/api/chat/support', methods=['POST'])
+@rate_limit(20, 60, 'chat_support')
 def chat_support():
-    """Endpoint de suporte: o cliente pergunta e o LLM gera uma resposta.",
-         """
+    """Endpoint de suporte: o cliente pergunta e o LLM gera uma resposta."""
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Autenticação obrigatória.'}), 401
+    err_acc = _require_active_account(user)
+    if err_acc:
+        return err_acc
 
     data = request.get_json(silent=True) or {}
     message = str(data.get('message') or '').strip()
     if not message:
         return jsonify({'error': 'A mensagem é obrigatória.'}), 400
+    if len(message) > 2000:
+        return jsonify({'error': 'A mensagem deve ter no máximo 2000 caracteres.'}), 400
 
     # Constrói um contexto opcional (lista de strings ou dicionário) para reforço
     context_parts = []
@@ -3995,46 +4144,56 @@ def chat_support():
         messages.append({'role': 'user', 'content': 'Contexto adicional:\n' + context_text})
     messages.append({'role': 'user', 'content': message})
 
+    model_used = _get_llm_model()
+    fallback_used = False
     try:
         reply = _call_llm(
             messages=messages,
-            model=_LLAMA_MODEL,
+            model=model_used,
             temperature=0.4,
             max_tokens=800,
         )
     except Exception:
-        return jsonify({'error': 'Falha ao gerar resposta do suporte.'}), 500
+        if os.environ.get('LLM_STRICT_MODE') == '1':
+            return jsonify({'error': 'Falha ao gerar resposta do suporte.'}), 500
+        reply = _fallback_chat_support_reply(message, context_text)
+        fallback_used = True
 
     return jsonify({
         'reply': reply,
-        'model': _LLAMA_MODEL,
+        'model': model_used,
+        'fallback': fallback_used,
         'timestamp': datetime.utcnow().isoformat() + 'Z',
     }), 200
 
 
 @app.route('/api/ads/generate-description', methods=['POST'])
+@rate_limit(20, 60, 'ads_generate_desc')
 def generate_ad_description():
     """Gera/ajusta uma descrição de anúncio a partir dos dados do serviço."""
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Autenticação obrigatória.'}), 401
+    err_acc = _require_active_account(user)
+    if err_acc:
+        return err_acc
 
     data = request.get_json(silent=True) or {}
-    title = str(data.get('title') or '').strip()
+    title = str(data.get('title') or data.get('titulo') or '').strip()
     if not title:
         return jsonify({'error': 'O título é obrigatório.'}), 400
 
-    category = str(data.get('category') or '').strip()
-    description = str(data.get('description') or '').strip()
-    price = data.get('price')
-    service_type = str(data.get('service_type') or '').strip()
-    extra = str(data.get('extra') or '').strip()
+    category = str(data.get('category') or data.get('categoria') or '').strip()
+    description = str(data.get('description') or data.get('descricao') or '').strip()
+    price = data.get('price') if data.get('price') is not None else data.get('preco')
+    service_type = str(data.get('service_type') or data.get('tipo_servico') or '').strip()
+    extra = str(data.get('extra') or data.get('observacoes') or '').strip()
 
-    # Monta o contexto para o LLM a partir dos campos informados
-    parts = []
+    # Monta o contexto para o LLM sempre começando pelo Título
+    parts = ['Título: ' + title]
     if category:
         parts.append('Categoria: ' + category)
-    if price is not None:
+    if price is not None and price != '':
         try:
             parts.append('Preço: R$ ' + f'{float(price):.2f}')
         except (TypeError, ValueError):
@@ -4045,7 +4204,7 @@ def generate_ad_description():
         parts.append('Descrição atual: ' + description)
     if extra:
         parts.append('Observações: ' + extra)
-    context = '\n'.join(parts) if parts else ('Título: ' + title)
+    context = '\n'.join(parts)
 
     system_prompt = (
         'Você é um gerador de anúncios (descriptions) para o PertoJá Marketplace. '
@@ -4057,22 +4216,36 @@ def generate_ad_description():
     )
     prompt = 'Seu anúncio:\n\n' + context + '\n\nDescrição do anúncio (máx ~280 chars):'
 
+    model_used = _get_llm_model()
+    fallback_used = False
     try:
         generated = _call_llm(
             messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': prompt},
             ],
-            model=_LLAMA_MODEL,
+            model=model_used,
             temperature=0.35,
             max_tokens=600,
         )
     except Exception:
-        return jsonify({'error': 'Falha ao gerar a descrição do anúncio.'}), 500
+        if os.environ.get('LLM_STRICT_MODE') == '1':
+            return jsonify({'error': 'Falha ao gerar a descrição do anúncio.'}), 500
+        generated = _fallback_ad_description(
+            title=title,
+            category=category,
+            description=description,
+            price=price,
+            service_type=service_type,
+            extra=extra,
+        )
+        fallback_used = True
 
     return jsonify({
         'generated_description': generated,
-        'model_used': _LLAMA_MODEL,
+        'description': generated,
+        'model_used': model_used,
+        'fallback': fallback_used,
         'title': title,
         'category': category or None,
         'price': price,

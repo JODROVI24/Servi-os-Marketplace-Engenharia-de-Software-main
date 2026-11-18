@@ -292,6 +292,8 @@ class TestVercelPathNormalizerWSGIAdversarial(unittest.TestCase):
             ('/payments/config', '/api/payments/config'),
             ('/payments/intents', '/api/payments/intents'),
             ('/webhooks/payments/sandbox', '/api/webhooks/payments/sandbox'),
+            ('/chat/support', '/api/chat/support'),
+            ('/ads/generate-description', '/api/ads/generate-description'),
         ]
         for stripped_path, expected in known_routes:
             env = self._call_normalizer(stripped_path, '')
@@ -410,6 +412,8 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             ('POST', '__path=services', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
             ('PUT', '__path=services/1', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
             ('DELETE', '__path=services/1', b''),
+            ('POST', '__path=chat/support', json.dumps({'message': 'Oi'}).encode('utf-8')),
+            ('POST', '__path=ads/generate-description', json.dumps({'title': 'Pintura'}).encode('utf-8')),
         ]
         for method, qs, body in unauth_routes:
             status, _, _, resp_body, _ = invoke_wsgi(
@@ -554,7 +558,32 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         )
         self.assertEqual(status, 200)
 
-        # 5. Logout
+        # 5. Check /api/chat/support and /api/ads/generate-description through Vercel normalizer
+        status, _, _, body, _ = invoke_wsgi(
+            vercel_api.app,
+            path_info='/api/index.py',
+            query_string='__path=chat/support',
+            method='POST',
+            body=json.dumps({'message': 'Como funciona o Escrow e o PIN?'}).encode('utf-8'),
+            headers=auth_headers
+        )
+        self.assertEqual(status, 200)
+        chat_data = json.loads(body.decode('utf-8'))
+        self.assertIn('reply', chat_data)
+
+        status, _, _, body, _ = invoke_wsgi(
+            vercel_api.app,
+            path_info='/api/index.py',
+            query_string='__path=ads/generate-description',
+            method='POST',
+            body=json.dumps({'title': 'Instalação Elétrica Residencial', 'category': 'Elétrica', 'price': 150}).encode('utf-8'),
+            headers=auth_headers
+        )
+        self.assertEqual(status, 200)
+        ad_data = json.loads(body.decode('utf-8'))
+        self.assertIn('generated_description', ad_data)
+
+        # 6. Logout
         status, _, _, _, _ = invoke_wsgi(
             vercel_api.app,
             path_info='/api/index.py',

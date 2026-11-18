@@ -218,10 +218,21 @@ async function carregarPrestadoresAPI() {
     if (searchQuery) params.set('query', searchQuery);
     if (onlyAvailable) params.set('only_available', '1');
 
-    const res = await fetch(`/api/services?${params.toString()}`);
+    const url = `/api/services?${params.toString()}`;
+    let res = await fetch(url);
     if (res.status === 429 || res.status >= 500) {
-      exibirAlertaRetry(res.status);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      try {
+        res = await fetch(url);
+      } catch (_) {}
+    }
+
+    if (res.status === 429 || res.status >= 500) {
+      if (document.getElementById('list') || document.getElementById('map')) {
+        exibirAlertaRetry(res.status);
+      }
     } else if (res.ok) {
+      document.getElementById('alertaRetryBanner')?.remove();
       const data = await res.json();
       if (Array.isArray(data)) {
         P = data.map(item => ({

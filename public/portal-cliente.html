@@ -129,6 +129,10 @@
           <span class="material-symbols-outlined text-base">badge</span>
           Dados Cadastrais & Endereço
         </button>
+        <button type="button" class="chip flex items-center gap-2 bg-perto-sun/25 border-perto-sun text-perto-ink font-extrabold ml-auto" id="btnAbrirSuporteIA" onclick="abrirModalSuporteIA()" title="Abrir Assistente de Suporte IA (FreeLLMAPI)">
+          <span aria-hidden="true">🤖</span>
+          Suporte IA
+        </button>
       </div>
     </div>
 
@@ -461,6 +465,31 @@
       <div class="flex justify-end pt-3 mt-3 border-t border-perto-road">
         <button type="button" id="btnFecharModalVerReviewsRodape" class="btn2 px-4 py-2 rounded-full text-xs font-bold">Fechar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal Acessível: Assistente de Suporte IA (FreeLLMAPI — /api/chat/support) -->
+  <div id="modalSuporteIA" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tituloModalSuporteIA" style="display: none;">
+    <div class="modal-conteudo" style="max-width: 520px;">
+      <div class="flex items-center justify-between mb-3 pb-2 border-b border-perto-road">
+        <h3 id="tituloModalSuporteIA" class="text-lg font-black text-perto-ink m-0 flex items-center gap-2">
+          <span aria-hidden="true">🤖</span>
+          Assistente de Suporte PertoJá — FreeLLMAPI
+        </h3>
+        <button type="button" id="btnFecharModalSuporteIA" class="drawer-fechar" aria-label="Fechar suporte IA">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div id="listaMensagensSuporteIA" class="max-h-72 overflow-y-auto space-y-2.5 p-3 bg-perto-bg rounded-xl border border-perto-road text-xs font-body" aria-live="polite">
+        <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink">
+          <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá (FreeLLMAPI)</div>
+          <p class="m-0">Olá! Sou o assistente inteligente do PertoJá. Posso tirar dúvidas sobre pagamento protegido em Escrow, PIN presencial de 4 dígitos, garantia de 48h, disputas e segurança. Como posso ajudar?</p>
+        </div>
+      </div>
+      <form id="formSuporteIA" class="mt-3 flex gap-2">
+        <input type="text" id="inputMensagemSuporteIA" required minlength="2" maxlength="500" placeholder="Digite sua dúvida para o Assistente IA..." aria-label="Digite sua dúvida para o Assistente IA" class="input-form flex-1 text-sm font-medium">
+        <button type="submit" id="btnEnviarSuporteIA" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink shrink-0">Enviar</button>
+      </form>
     </div>
   </div>
 
@@ -1374,6 +1403,80 @@
         toast('Erro de comunicação ao anonimizar conta.');
       } finally {
         btn.disabled = false;
+      }
+    };
+
+    let historicoSuporteIACliente = [];
+    const ctrlSuporteIACliente = vincularModalAcessivel('modalSuporteIA', ['btnFecharModalSuporteIA']);
+
+    function abrirModalSuporteIA() {
+      ctrlSuporteIACliente.abrir('#inputMensagemSuporteIA');
+    }
+
+    function fecharModalSuporteIA() {
+      ctrlSuporteIACliente.fechar();
+    }
+
+    document.getElementById('formSuporteIA').onsubmit = async (e) => {
+      e.preventDefault();
+      const inputEl = document.getElementById('inputMensagemSuporteIA');
+      const listaEl = document.getElementById('listaMensagensSuporteIA');
+      const btnEl = document.getElementById('btnEnviarSuporteIA');
+      const msg = (inputEl?.value || '').trim();
+      if (!msg || !listaEl) return;
+
+      inputEl.value = '';
+      if (btnEl) btnEl.disabled = true;
+
+      listaEl.insertAdjacentHTML('beforeend', `
+        <div class="p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6">
+          <div class="text-[10px] font-bold text-perto-ink/70 mb-0.5">Você</div>
+          <p class="m-0 break-words">${escapeHtml(msg)}</p>
+        </div>
+      `);
+      listaEl.scrollTop = listaEl.scrollHeight;
+
+      try {
+        const res = await fetch('/api/chat/support', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: msg,
+            mensagem: msg,
+            context: 'cliente',
+            history: historicoSuporteIACliente.slice(-6)
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const reply = data.reply || data.response || data.message || 'Como posso ajudar com mais detalhes?';
+          historicoSuporteIACliente.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
+          listaEl.insertAdjacentHTML('beforeend', `
+            <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink mr-6">
+              <div class="text-[10px] font-bold text-perto-sea mb-0.5">🤖 Assistente PertoJá</div>
+              <p class="m-0 break-words whitespace-pre-line">${escapeHtml(reply)}</p>
+            </div>
+          `);
+        } else {
+          const errText = data.error || 'Assistente temporariamente indisponível. Tente novamente em instantes.';
+          listaEl.insertAdjacentHTML('beforeend', `
+            <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
+              <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso do Sistema</div>
+              <p class="m-0 break-words">${escapeHtml(errText)}</p>
+            </div>
+          `);
+        }
+      } catch (err) {
+        listaEl.insertAdjacentHTML('beforeend', `
+          <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
+            <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso de Conexão</div>
+            <p class="m-0">Não foi possível contatar o Assistente de Suporte IA no momento.</p>
+          </div>
+        `);
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+        listaEl.scrollTop = listaEl.scrollHeight;
+        if (inputEl) inputEl.focus();
       }
     };
 

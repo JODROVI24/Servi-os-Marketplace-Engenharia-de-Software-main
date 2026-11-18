@@ -1503,7 +1503,14 @@ class TestMarketplaceFull(unittest.TestCase):
             return [b'ok']
 
         mw = VercelPathNormalizerWSGI(dummy_app)
-        for prefix in ('/kyc/verify', '/account/appeal', '/provider/financial-summary', '/shared-route/tok123'):
+        for prefix in (
+            '/kyc/verify',
+            '/account/appeal',
+            '/provider/financial-summary',
+            '/shared-route/tok123',
+            '/chat/support',
+            '/ads/generate-description',
+        ):
             mw({'PATH_INFO': prefix, 'QUERY_STRING': ''}, lambda s, h: None)
             self.assertEqual(captured['path'], '/api' + prefix)
 
@@ -1980,7 +1987,16 @@ class TestMarketplaceFull(unittest.TestCase):
             self.assertEqual(app_mod._get_client_ip(), '192.0.2.55')
 
         # Verify rate limit wrappers exist on critical endpoints
-        for ep in ('verify_kyc', 'create_order', 'update_order_status', 'trigger_order_sos', 'open_order_dispute', 'order_messages'):
+        for ep in (
+            'verify_kyc',
+            'create_order',
+            'update_order_status',
+            'trigger_order_sos',
+            'open_order_dispute',
+            'order_messages',
+            'chat_support',
+            'generate_ad_description',
+        ):
             fn = app.view_functions[ep]
             self.assertTrue(hasattr(fn, '__wrapped__'), f"Endpoint {ep} missing @rate_limit decorator")
 
@@ -2366,5 +2382,163 @@ class TestMarketplaceFull(unittest.TestCase):
         conn.close()
         self.assertEqual(status_final, 'bloqueado')
 
+    def test_64_freellmapi_chat_support_and_ad_description_resilience(self):
+        import app as app_mod
+        import database
+        from unittest.mock import patch, MagicMock
+
+        # a) Sem autenticação -> 401
+        self.client.post('/api/auth/logout')
+        self.assertEqual(self.client.post('/api/chat/support', json={'message': 'Olá'}).status_code, 401)
+        self.assertEqual(self.client.post('/api/ads/generate-description', json={'title': 'Pintura'}).status_code, 401)
+
+        # b) Com autenticação, payload vazio -> 400
+        self.client.post('/api/auth/login', json={'email': 'carlos@pertoja.com', 'senha': '123456'})
+        self.assertEqual(self.client.post('/api/chat/support', json={}).status_code, 400)
+        self.assertEqual(self.client.post('/api/chat/support', json={'message': '   '}).status_code, 400)
+        self.assertEqual(self.client.post('/api/ads/generate-description', json={}).status_code, 400)
+        self.assertEqual(self.client.post('/api/ads/generate-description', json={'title': '  '}).status_code, 400)
+
+        # c) Mensagem acima de 2000 caracteres em /api/chat/support -> 400
+        self.assertEqual(self.client.post('/api/chat/support', json={'message': 'a' * 2001}).status_code, 400)
+
+        # d) Conta suspensa (suspenso_cautelar) -> 403 em ambos os endpoints
+        conn = database.get_db_connection()
+        carlos_id = conn.execute("SELECT id FROM users WHERE email = 'carlos@pertoja.com'").fetchone()['id']
+        conn.execute("UPDATE users SET status_conta = 'suspenso_cautelar' WHERE id = ?", (carlos_id,))
+        conn.commit()
+        conn.close()
+        try:
+            self.assertEqual(self.client.post('/api/chat/support', json={'message': 'Ajuda'}).status_code, 403)
+            self.assertEqual(self.client.post('/api/ads/generate-description', json={'title': 'Reparo'}).status_code, 403)
+        finally:
+            conn = database.get_db_connection()
+            conn.execute("UPDATE users SET status_conta = 'ativo' WHERE id = ?", (carlos_id,))
+            conn.commit()
+            conn.close()
+
+        # e) Quando o gateway FreeLLMAPI responde com sucesso (mock _call_llm)
+        captured_prompts = []
+        def fake_call_llm(messages, model, temperature, max_tokens):
+            captured_prompts.append(messages)
+            return 'Resposta gerada pelo FreeLLMAPI com sucesso!'
+
+        with patch('app._call_llm', side_effect=fake_call_llm):
+            res_chat_ok = self.client.post('/api/chat/support', json={
+                'message': 'Como funciona o pagamento via Escrow?',
+                'context': {'pagina': 'portal-prestador', 'plano': 'pro'}
+            })
+            self.assertEqual(res_chat_ok.status_code, 200)
+            chat_body = json.loads(res_chat_ok.data)
+            self.assertEqual(chat_body['reply'], 'Resposta gerada pelo FreeLLMAPI com sucesso!')
+            self.assertFalse(chat_body['fallback'])
+            self.assertIn('model', chat_body)
+            self.assertIn('timestamp', chat_body)
+
+            captured_prompts.clear()
+            res_ad_ok = self.client.post('/api/ads/generate-description', json={
+                'title': 'Instalação de Chuveiro 220V',
+                'category': 'Elétrica',
+                'price': 150.0,
+                'service_type': 'Presencial',
+                'description': 'Com fiação reforçada',
+                'extra': 'Atendo finais de semana'
+            })
+            self.assertEqual(res_ad_ok.status_code, 200)
+            ad_body = json.loads(res_ad_ok.data)
+            self.assertEqual(ad_body['generated_description'], 'Resposta gerada pelo FreeLLMAPI com sucesso!')
+            self.assertEqual(ad_body['description'], 'Resposta gerada pelo FreeLLMAPI com sucesso!')
+            self.assertFalse(ad_body['fallback'])
+            self.assertIn('model_used', ad_body)
+            self.assertEqual(ad_body['length'], len(ad_body['generated_description']))
+            # Verifica que o título NUNCA é omitido do prompt quando category/price estão presentes
+            user_prompt_msg = captured_prompts[0][-1]['content']
+            self.assertIn('Título: Instalação de Chuveiro 220V', user_prompt_msg)
+            self.assertIn('Categoria: Elétrica', user_prompt_msg)
+            self.assertIn('Preço: R$ 150.00', user_prompt_msg)
+
+        # f) Quando o gateway FreeLLMAPI está offline -> fallback inteligente 200 em modo padrão
+        with patch('app._call_llm', side_effect=ConnectionError('Connection refused localhost:3001')):
+            with patch.dict(os.environ, {'LLM_STRICT_MODE': '0'}, clear=False):
+                res_chat_fb = self.client.post('/api/chat/support', json={
+                    'message': 'Quero saber sobre pagamento PIX Escrow, PIN na porta, KYC CREA e LGPD'
+                })
+                self.assertEqual(res_chat_fb.status_code, 200)
+                fb_chat_body = json.loads(res_chat_fb.data)
+                self.assertTrue(fb_chat_body['fallback'])
+                self.assertIn('Escrow', fb_chat_body['reply'])
+                self.assertIn('PIN', fb_chat_body['reply'])
+                self.assertIn('KYC', fb_chat_body['reply'])
+                self.assertIn('LGPD', fb_chat_body['reply'])
+
+                res_ad_fb = self.client.post('/api/ads/generate-description', json={
+                    'titulo': 'Manutenção Elétrica Residencial',
+                    'categoria': 'Elétrica',
+                    'preco': 180.0,
+                    'tipo_servico': 'Emergencial 24h'
+                })
+                self.assertEqual(res_ad_fb.status_code, 200)
+                fb_ad_body = json.loads(res_ad_fb.data)
+                self.assertTrue(fb_ad_body['fallback'])
+                self.assertIn('Manutenção Elétrica Residencial', fb_ad_body['generated_description'])
+                self.assertIn('R$ 180,00', fb_ad_body['generated_description'])
+                self.assertLessEqual(fb_ad_body['length'], 280)
+
+        # g) Quando LLM_STRICT_MODE='1' e _call_llm falha -> ambos retornam 500
+        with patch('app._call_llm', side_effect=RuntimeError('Gateway down')):
+            with patch.dict(os.environ, {'LLM_STRICT_MODE': '1'}, clear=False):
+                self.assertEqual(self.client.post('/api/chat/support', json={'message': 'Teste'}).status_code, 500)
+                self.assertEqual(self.client.post('/api/ads/generate-description', json={'title': 'Teste'}).status_code, 500)
+
+        # h) Resolução dinâmica de variáveis FREELLM_* vs OPENAI_* e fallback HTTP requests
+        with patch.dict(os.environ, {
+            'FREELLM_API_BASE_URL': 'http://127.0.0.1:3001/v1/',
+            'FREELLM_API_KEY': '',
+            'LLM_MODEL': 'gpt-5.3',
+            'OPENAI_BASE_URL': 'http://legacy:9999/v1',
+            'OPENAI_API_KEY': '',
+            'LLAMA_MODEL': 'legacy-model',
+        }, clear=False):
+            self.assertEqual(app_mod._get_llm_base_url(), 'http://127.0.0.1:3001/v1')
+            self.assertEqual(app_mod._get_llm_api_key(), '')
+            self.assertEqual(app_mod._get_llm_model(), 'gpt-5.3')
+            # _get_llm_client() não deve lançar OpenAIError mesmo quando FREELLM_API_KEY=""
+            client_obj = app_mod._get_llm_client()
+            if app_mod.openai is not None:
+                self.assertIsNotNone(client_obj)
+                self.assertEqual(client_obj.api_key, 'freellmapi-local')
+
+            # Fallback HTTP via requests.post quando app.openai é None
+            fake_resp = MagicMock()
+            fake_resp.raise_for_status.return_value = None
+            fake_resp.json.return_value = {
+                'choices': [{'message': {'content': '  Texto via HTTP fallback  '}}]
+            }
+            with patch.object(app_mod, 'openai', None):
+                with patch('app.requests.post', return_value=fake_resp) as mock_post:
+                    out = app_mod._call_llm(
+                        messages=[{'role': 'user', 'content': 'Oi'}],
+                        model='gpt-5.3',
+                        temperature=0.4,
+                        max_tokens=100,
+                    )
+                    self.assertEqual(out, 'Texto via HTTP fallback')
+                    mock_post.assert_called_once()
+                    called_url = mock_post.call_args[0][0]
+                    self.assertEqual(called_url, 'http://127.0.0.1:3001/v1/chat/completions')
+
+        # i) Verificação de contrato DOM no frontend
+        with open(os.path.join(REPO_ROOT, 'public', 'portal-prestador.html'), 'r', encoding='utf-8') as f:
+            html_prest = f.read()
+        for token in ('btnGerarDescricaoIA', 'gerarDescricaoServicoIA', 'modalSuporteIA', 'formSuporteIA'):
+            self.assertIn(token, html_prest)
+
+        with open(os.path.join(REPO_ROOT, 'public', 'portal-cliente.html'), 'r', encoding='utf-8') as f:
+            html_cli = f.read()
+        for token in ('btnAbrirSuporteIA', 'modalSuporteIA', 'formSuporteIA'):
+            self.assertIn(token, html_cli)
+
+
 if __name__ == '__main__':
     unittest.main()
+
