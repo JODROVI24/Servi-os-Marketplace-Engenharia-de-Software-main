@@ -7,6 +7,7 @@ import secrets
 import hashlib
 import hmac
 import requests
+import openai
 import gzip
 import time
 from datetime import datetime, timedelta
@@ -3922,6 +3923,158 @@ def payment_gateway_webhook(gateway=None):
         return jsonify({'status': 'processed', 'event_id': event_id}), 200
     finally:
         conn.close()
+
+
+# ================= Sistema de IA — Suporte e Descrições de Anúncios =================
+
+_OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'http://localhost:3001/v1').rstrip('/')
+_OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+_LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'gemini-3.8-flash')
+
+
+def _get_llm_client():
+    """Retorna um cliente OpenAI-compatible apontando para o FreeLLMAPI."""
+    return openai.OpenAI(base_url=_OPENAI_BASE_URL, api_key=_OPENAI_API_KEY)
+
+
+def _call_llm(messages, model, temperature, max_tokens):
+    """Envia uma mensagem para o FreeLLMAPI e retorna o conteúdo da resposta."""
+    client = _get_llm_client()
+    resp = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return resp.choices[0].message.content.strip()
+
+
+def _chat_system_prompt():
+    return (
+        'Você é o suporte ao cliente do PertoJá Marketplace. '
+        'Responda de forma amigável, objetiva e útil em português do Brasil. '
+        'Cubra serviços, agendamentos, pagamentos, KYC e a política de privacidade do site. '
+        'Se não tiver certeza, oriente o usuário a procurar a seção de ajuda ou entrar em contato.'
+    )
+
+
+@app.route('/api/chat/support', methods=['POST'])
+def chat_support():
+    """Endpoint de suporte: o cliente pergunta e o LLM gera uma resposta.",
+         """
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    message = str(data.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'A mensagem é obrigatória.'}), 400
+
+    # Constrói um contexto opcional (lista de strings ou dicionário) para reforço
+    context_parts = []
+    raw_context = data.get('context')
+    if raw_context is not None:
+        if isinstance(raw_context, list):
+            context_parts = [str(c) for c in raw_context if c]
+        elif isinstance(raw_context, dict):
+            context_parts.append(json.dumps(raw_context, ensure_ascii=False))
+        elif raw_context:
+            context_parts.append(str(raw_context))
+    context_text = '\n'.join(context_parts)
+
+    system_prompt = _chat_system_prompt()
+    messages = [
+        {'role': 'system', 'content': system_prompt},
+    ]
+    if context_text:
+        messages.append({'role': 'user', 'content': 'Contexto adicional:\n' + context_text})
+    messages.append({'role': 'user', 'content': message})
+
+    try:
+        reply = _call_llm(
+            messages=messages,
+            model=_LLAMA_MODEL,
+            temperature=0.4,
+            max_tokens=800,
+        )
+    except Exception:
+        return jsonify({'error': 'Falha ao gerar resposta do suporte.'}), 500
+
+    return jsonify({
+        'reply': reply,
+        'model': _LLAMA_MODEL,
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }), 200
+
+
+@app.route('/api/ads/generate-description', methods=['POST'])
+def generate_ad_description():
+    """Gera/ajusta uma descrição de anúncio a partir dos dados do serviço."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    title = str(data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'O título é obrigatório.'}), 400
+
+    category = str(data.get('category') or '').strip()
+    description = str(data.get('description') or '').strip()
+    price = data.get('price')
+    service_type = str(data.get('service_type') or '').strip()
+    extra = str(data.get('extra') or '').strip()
+
+    # Monta o contexto para o LLM a partir dos campos informados
+    parts = []
+    if category:
+        parts.append('Categoria: ' + category)
+    if price is not None:
+        try:
+            parts.append('Preço: R$ ' + f'{float(price):.2f}')
+        except (TypeError, ValueError):
+            parts.append('Preço: informado')
+    if service_type:
+        parts.append('Tipo: ' + service_type)
+    if description:
+        parts.append('Descrição atual: ' + description)
+    if extra:
+        parts.append('Observações: ' + extra)
+    context = '\n'.join(parts) if parts else ('Título: ' + title)
+
+    system_prompt = (
+        'Você é um gerador de anúncios (descriptions) para o PertoJá Marketplace. '
+        'Escreva uma descrição vencedora de anúncio em português do Brasil, '
+        'apropriada para um anúncio de serviço, com tom atraente, claro e profissional. '
+        'Máximo de ~280 caracteres. Use palavras chamativas e benefícios do serviço. '
+        'Não invente preços, cidades ou categorias que não foram informados. '
+        'Se faltar informação essencial, use um tom genérico e neutro.'
+    )
+    prompt = 'Seu anúncio:\n\n' + context + '\n\nDescrição do anúncio (máx ~280 chars):'
+
+    try:
+        generated = _call_llm(
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': prompt},
+            ],
+            model=_LLAMA_MODEL,
+            temperature=0.35,
+            max_tokens=600,
+        )
+    except Exception:
+        return jsonify({'error': 'Falha ao gerar a descrição do anúncio.'}), 500
+
+    return jsonify({
+        'generated_description': generated,
+        'model_used': _LLAMA_MODEL,
+        'title': title,
+        'category': category or None,
+        'price': price,
+        'service_type': service_type or None,
+        'length': len(generated),
+    }), 200
 
 
 # ================= Inicialização do Servidor =================
