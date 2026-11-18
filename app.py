@@ -3934,7 +3934,11 @@ _LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'gemini-3.8-flash')
 
 def _get_llm_client():
     """Retorna um cliente OpenAI-compatible apontando para o FreeLLMAPI."""
-    return openai.OpenAI(base_url=_OPENAI_BASE_URL, api_key=_OPENAI_API_KEY)
+    return openai.OpenAI(
+        base_url=_OPENAI_BASE_URL,
+        api_key=_OPENAI_API_KEY,
+        max_retries=4,
+    )
 
 
 def _call_llm(messages, model, temperature, max_tokens):
