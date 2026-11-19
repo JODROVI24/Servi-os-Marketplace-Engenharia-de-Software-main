@@ -26,7 +26,8 @@ credentials.*
 # ==============================================================================
 .agents/
 designs/
-docs/
+docs/*
+!docs/baseline.md
 *.log
 reports/
 npm-debug.log*
