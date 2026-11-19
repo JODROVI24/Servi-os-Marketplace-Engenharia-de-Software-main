@@ -292,6 +292,7 @@ class TestVercelPathNormalizerWSGIAdversarial(unittest.TestCase):
             ('/payments/config', '/api/payments/config'),
             ('/payments/intents', '/api/payments/intents'),
             ('/webhooks/payments/sandbox', '/api/webhooks/payments/sandbox'),
+            ('/chat/health', '/api/chat/health'),
             ('/chat/support', '/api/chat/support'),
             ('/ads/generate-description', '/api/ads/generate-description'),
         ]
@@ -412,6 +413,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             ('POST', '__path=services', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
             ('PUT', '__path=services/1', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
             ('DELETE', '__path=services/1', b''),
+            ('GET', '__path=chat/health', b''),
             ('POST', '__path=chat/support', json.dumps({'message': 'Oi'}).encode('utf-8')),
             ('POST', '__path=ads/generate-description', json.dumps({'title': 'Pintura'}).encode('utf-8')),
         ]
@@ -558,7 +560,19 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         )
         self.assertEqual(status, 200)
 
-        # 5. Check /api/chat/support and /api/ads/generate-description through Vercel normalizer
+        # 5. Check /api/chat/health, /api/chat/support and /api/ads/generate-description through Vercel normalizer
+        status, _, _, body, _ = invoke_wsgi(
+            vercel_api.app,
+            path_info='/api/index.py',
+            query_string='__path=chat/health',
+            method='GET',
+            headers=auth_headers
+        )
+        self.assertEqual(status, 200)
+        health_data = json.loads(body.decode('utf-8'))
+        for field in ('configured', 'mode', 'active_provider', 'model', 'available_providers', 'serverless', 'warning', 'hint'):
+            self.assertIn(field, health_data)
+
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
             path_info='/api/index.py',
@@ -584,6 +598,109 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         self.assertIn('generated_description', ad_data)
 
         # 6. Logout
+        status, _, _, _, _ = invoke_wsgi(
+            vercel_api.app,
+            path_info='/api/index.py',
+            query_string='__path=auth/logout',
+            method='POST',
+            headers=auth_headers
+        )
+        self.assertEqual(status, 200)
+
+    def test_10_chat_health_endpoint_via_normalizer(self):
+        from unittest.mock import patch
+
+        # Unauthenticated via both __path=chat/health and stripped /chat/health -> 401
+        for path_info, qs in (('/api/index.py', '__path=chat/health'), ('/chat/health', '')):
+            status, _, _, body, _ = invoke_wsgi(
+                vercel_api.app,
+                path_info=path_info,
+                query_string=qs,
+                method='GET',
+            )
+            self.assertEqual(status, 401, f"Expected 401 for {path_info}?{qs}, got {status}: {body}")
+
+        # Login to obtain session cookie
+        login_payload = json.dumps({'email': 'cliente@pertoja.com', 'senha': '123456'}).encode('utf-8')
+        status, _, headers, body, _ = invoke_wsgi(
+            vercel_api.app,
+            path_info='/api/index.py',
+            query_string='__path=auth/login',
+            method='POST',
+            body=login_payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        self.assertEqual(status, 200, f"Login failed: {body}")
+        cookie_header = next(
+            (v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie'),
+            None
+        )
+        self.assertIsNotNone(cookie_header)
+        auth_headers = {'Cookie': cookie_header, 'Accept': 'application/json'}
+
+        def _serverless_env(**overrides):
+            env = dict(os.environ)
+            for key in (
+                'FREELLM_API_BASE_URL', 'FREELLM_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_API_KEY',
+                'LLM_MODEL', 'LLAMA_MODEL', 'GROQ_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY',
+                'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'MISTRAL_API_KEY', 'APIFREELLM_API_KEY',
+                'GITHUB_MODELS_TOKEN', 'VERCEL', 'VERCEL_ENV', 'AWS_LAMBDA_FUNCTION_NAME',
+            ):
+                env.pop(key, None)
+            env.update(overrides)
+            return env
+
+        expected_keys = {
+            'configured', 'mode', 'active_provider', 'model',
+            'available_providers', 'serverless', 'warning', 'hint',
+        }
+
+        # Serverless with localhost configured and no cloud keys -> fallback + localhost warning
+        with patch.dict(os.environ, _serverless_env(
+            VERCEL='1',
+            FREELLM_API_BASE_URL='http://localhost:3001/v1',
+        ), clear=True):
+            status, _, _, body, _ = invoke_wsgi(
+                vercel_api.app,
+                path_info='/chat/health',
+                query_string='',
+                method='GET',
+                headers=auth_headers
+            )
+            self.assertEqual(status, 200)
+            data_fb = json.loads(body.decode('utf-8'))
+            self.assertTrue(expected_keys.issubset(data_fb.keys()))
+            self.assertFalse(data_fb['configured'])
+            self.assertEqual(data_fb['mode'], 'fallback')
+            self.assertTrue(data_fb['serverless'])
+            self.assertIn('localhost', (data_fb['warning'] or '').lower())
+
+        # Serverless with localhost + GROQ_API_KEY -> skips localhost, uses groq, never leaks key
+        secret_key = 'gsk_vercel_adv_secret_987654'
+        with patch.dict(os.environ, _serverless_env(
+            VERCEL='1',
+            FREELLM_API_BASE_URL='http://localhost:3001/v1',
+            GROQ_API_KEY=secret_key,
+        ), clear=True):
+            status, _, _, body, _ = invoke_wsgi(
+                vercel_api.app,
+                path_info='/api/index.py',
+                query_string='__path=chat/health',
+                method='GET',
+                headers=auth_headers
+            )
+            self.assertEqual(status, 200)
+            raw_text = body.decode('utf-8')
+            self.assertNotIn(secret_key, raw_text)
+            data_live = json.loads(raw_text)
+            self.assertTrue(expected_keys.issubset(data_live.keys()))
+            self.assertTrue(data_live['configured'])
+            self.assertEqual(data_live['mode'], 'live')
+            self.assertEqual(data_live['active_provider'], 'groq')
+            self.assertEqual(data_live['available_providers'], ['groq'])
+            self.assertTrue(data_live['serverless'])
+
+        # Logout cleanup
         status, _, _, _, _ = invoke_wsgi(
             vercel_api.app,
             path_info='/api/index.py',

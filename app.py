@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 from flask import Flask, request, jsonify, session, send_from_directory, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 import database
+import llm_client
 from database import (
     get_db_connection, init_db, get_cached_geocode, save_cached_geocode,
     DBIntegrityError, get_active_engine
@@ -3933,25 +3934,18 @@ def payment_gateway_webhook(gateway=None):
 
 
 def _get_llm_base_url():
-    """Retorna a URL base do gateway FreeLLMAPI / OpenAI-compatible."""
-    raw = (
-        os.environ.get('FREELLM_API_BASE_URL')
-        or os.environ.get('OPENAI_BASE_URL')
-        or 'http://localhost:3001/v1'
-    )
-    return str(raw).strip().rstrip('/')
+    """Retorna a URL base do provedor LLM ativo (delegado para llm_client)."""
+    return llm_client.get_llm_base_url()
 
 
 def _get_llm_api_key():
-    """Retorna a chave de API configurada para o gateway FreeLLMAPI / OpenAI."""
-    raw = os.environ.get('FREELLM_API_KEY') or os.environ.get('OPENAI_API_KEY') or ''
-    return str(raw).strip()
+    """Retorna a chave de API configurada para o provedor LLM ativo (delegado para llm_client)."""
+    return llm_client.get_llm_api_key()
 
 
 def _get_llm_model():
-    """Retorna o modelo padrão configurado para o gateway FreeLLMAPI / OpenAI."""
-    raw = os.environ.get('LLM_MODEL') or os.environ.get('LLAMA_MODEL') or 'gemini-3.8-flash'
-    return str(raw).strip() or 'gemini-3.8-flash'
+    """Retorna o modelo padrão configurado para o provedor LLM ativo (delegado para llm_client)."""
+    return llm_client.get_llm_model()
 
 
 # Variáveis globais mantidas para retrocompatibilidade
@@ -3973,137 +3967,126 @@ def _get_llm_client():
 
 
 def _call_llm(messages, model, temperature, max_tokens):
-    """Envia mensagens para o FreeLLMAPI (via SDK openai ou fallback HTTP requests) e retorna o texto."""
-    client = _get_llm_client()
-    if client is not None:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return resp.choices[0].message.content.strip()
-
-    base_url = _get_llm_base_url()
-    api_key = _get_llm_api_key() or 'freellmapi-local'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {api_key}',
-    }
-    payload = {
-        'model': model,
-        'messages': messages,
-        'temperature': temperature,
-        'max_tokens': max_tokens,
-    }
-    r = requests.post(f'{base_url}/chat/completions', json=payload, headers=headers, timeout=8)
-    r.raise_for_status()
-    body = r.json()
-    return body['choices'][0]['message']['content'].strip()
+    """Envia mensagens para a cadeia de provedores LLM via llm_client e retorna o texto."""
+    return llm_client.call_llm(
+        messages=messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        openai_mod=openai,
+        http_post=requests.post,
+        logger=app.logger,
+    )
 
 
-def _fallback_chat_support_reply(message, context_text=''):
+def _fallback_chat_support_reply(message, context_text='', history=None, user_info=None, reason='unconfigured'):
     """Resposta local inteligente e determinística para o suporte do PertoJá Marketplace quando o gateway LLM está offline."""
-    q = f"{message or ''} {context_text or ''}".lower()
-    topics = []
-
-    if any(k in q for k in ('pagamento', 'pagar', 'pix', 'cartão', 'cartao', 'boleto', 'escrow', 'reembolso', 'estorno', 'garantia')):
-        topics.append(
-            'Pagamentos & Escrow: Seus pagamentos via PIX, Cartão ou Boleto ficam protegidos em custódia (Escrow) '
-            'com garantia de 48h após a conclusão antes do repasse ao prestador.'
-        )
-    if any(k in q for k in ('pin', 'código', 'codigo', 'porta', 'iniciar', 'execução', 'execucao', 'chegada', 'visita')):
-        topics.append(
-            'Check-in com PIN: O prestador só inicia a execução após validar na porta o PIN de 4 dígitos '
-            'exibido no painel do cliente.'
-        )
-    if any(k in q for k in ('kyc', 'verificação', 'verificacao', 'documento', 'crea', 'cft', 'nr-10', 'nr10', 'cau', 'selo', 'tier')):
-        topics.append(
-            'Verificação KYC: Contamos com KYC Tier 1 (identidade e selfie) e Tier 2 para categorias técnicas '
-            '(Elétrica e Encanamento) mediante registro CREA, CFT, CRT, NR-10 ou CAU.'
-        )
-    if any(k in q for k in ('plano', 'taxa', 'comissão', 'comissao', 'básico', 'basico', 'pro', '1800', 'isenção', 'isencao', 'preço')):
-        topics.append(
-            'Planos para Prestadores: O Plano Básico tem taxa de 12% (com isenção de comissão até R$ 1.800/mês) '
-            'e o Plano Pro reduz a taxa para 8% com destaque nas buscas.'
-        )
-    if any(k in q for k in ('sos', 'emergência', 'emergencia', 'segurança', 'seguranca', 'denúncia', 'denuncia', 'ajuda')):
-        topics.append(
-            'Segurança & SOS: Durante o atendimento você conta com botão SOS Emergência (190), '
-            'compartilhamento de rota verificada e suporte a disputas.'
-        )
-    if any(k in q for k in ('avaliação', 'avaliacao', 'review', 'nota', 'estrela', 'lgpd', 'privacidade', 'dados', 'conta')):
-        topics.append(
-            'Avaliações & LGPD: As avaliações são double-blind (publicadas após ambas as partes avaliarem ou após 7 dias) '
-            'e seus dados seguem rigorosamente a LGPD.'
-        )
-
-    if not topics:
-        topics.append(
-            'No PertoJá Marketplace você contrata profissionais verificados (KYC Tier 1 e Tier 2 com CREA/CFT/NR-10/CAU), '
-            'paga com segurança via Escrow (PIX, Cartão ou Boleto com garantia de 48h), valida o início do serviço com '
-            'PIN de 4 dígitos na porta e conta com SOS Emergência, avaliações double-blind e proteção LGPD. '
-            'Para prestadores, oferecemos Plano Básico (12% com isenção até R$ 1.800/mês) e Plano Pro (8%).'
-        )
-
-    intro = 'Olá! Sou o assistente virtual do PertoJá Marketplace. '
-    details = ' '.join(topics)
-    outro = ' Se precisar de auxílio adicional, consulte sua área de pedidos ou nossa central de ajuda!'
-    return f'{intro}{details}{outro}'
+    return llm_client.fallback_chat_support_reply(
+        message,
+        context_text=context_text,
+        history=history,
+        user_info=user_info,
+        reason=reason,
+    )
 
 
 def _fallback_ad_description(title, category='', description='', price=None, service_type='', extra=''):
     """Gera localmente uma descrição comercial atraente e profissional (máx ~280 caracteres) sem inventar dados."""
-    clean_title = str(title or '').strip()
-    clean_cat = str(category or '').strip()
-    clean_desc = str(description or '').strip()
-    clean_type = str(service_type or '').strip()
-    clean_extra = str(extra or '').strip()
-
-    price_str = ''
-    if price is not None and price != '':
-        try:
-            p_val = float(price)
-            if math.isfinite(p_val) and p_val > 0:
-                price_str = f'R$ {p_val:.2f}'.replace('.', ',')
-        except (TypeError, ValueError):
-            price_str = ''
-
-    header = clean_title
-    if clean_cat and clean_cat.lower() not in clean_title.lower():
-        header = f'{clean_title} ({clean_cat})'
-
-    segments = [f'{header}: atendimento profissional com qualidade, pontualidade e garantia pelo PertoJá.']
-
-    if clean_desc:
-        segments.append(clean_desc.rstrip('.') + '.')
-    if clean_extra and clean_extra.lower() not in clean_desc.lower():
-        segments.append(clean_extra.rstrip('.') + '.')
-
-    meta = []
-    if clean_type:
-        meta.append(f'Modalidade: {clean_type}')
-    if price_str:
-        meta.append(f'Valor: {price_str}')
-    if meta:
-        segments.append(' | '.join(meta) + '.')
-
-    segments.append('Agende já com segurança!')
-    result = ' '.join(segments).strip()
-    if len(result) > 280:
-        result = result[:277].rstrip(' ,;:-') + '...'
-    return result
-
-
-def _chat_system_prompt():
-    return (
-        'Você é o suporte ao cliente do PertoJá Marketplace. '
-        'Responda de forma amigável, objetiva e útil em português do Brasil. '
-        'Cubra serviços, agendamentos, pagamentos via Escrow (PIX/Cartão/Boleto com garantia de 48h), '
-        'check-in com PIN de 4 dígitos, verificação KYC Tier 1/Tier 2 (CREA/CFT/NR-10/CAU), '
-        'planos Básico (12% com isenção até R$ 1.800/mês) e Pro (8%), SOS Emergência e política LGPD. '
-        'Se não tiver certeza, oriente o usuário a procurar a seção de ajuda ou entrar em contato.'
+    return llm_client.fallback_ad_description(
+        title=title,
+        category=category,
+        description=description,
+        price=price,
+        service_type=service_type,
+        extra=extra,
     )
+
+
+def _chat_system_prompt(user_info=None, context_text='', recent_orders=None):
+    """Constrói o system prompt oficial do suporte PertoJá via llm_client."""
+    return llm_client.build_support_system_prompt(
+        user_info=user_info,
+        context_text=context_text,
+        recent_orders=recent_orders,
+    )
+
+
+def _safe_llm_log_detail(exc):
+    """Sanitiza detalhes de exceção antes de registrar em log, sem expor chaves de API."""
+    sanitizer = getattr(llm_client, '_sanitize_error_text', None)
+    if callable(sanitizer):
+        try:
+            return sanitizer(exc)
+        except Exception:
+            pass
+    return type(exc).__name__
+
+
+def _build_safe_user_info(user):
+    """Extrai somente campos não sensíveis do usuário autenticado para contexto do suporte."""
+    if not user:
+        return None
+    return {
+        'id': _row_get(user, 'id'),
+        'nome': _row_get(user, 'nome', ''),
+        'tipo': _row_get(user, 'tipo', ''),
+        'plano': _row_get(user, 'plano', ''),
+        'kyc_tier': _row_get(user, 'kyc_tier'),
+    }
+
+
+def _get_user_recent_orders_summary(user_id, limit=3):
+    """Busca resumo read-only dos últimos pedidos do usuário autenticado para contextualizar o suporte."""
+    if not user_id:
+        return []
+    conn = None
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            '''
+            SELECT
+                o.id AS id,
+                o.status AS status,
+                o.escrow_status AS escrow_status,
+                COALESCE(s.titulo, 'Serviço') AS servico_titulo
+            FROM orders o
+            LEFT JOIN services s ON o.servico_id = s.id
+            WHERE o.cliente_id = ? OR o.prestador_id = ?
+            ORDER BY o.criado_em DESC, o.id DESC
+            LIMIT ?
+            ''',
+            (user_id, user_id, int(limit)),
+        ).fetchall()
+        summary = []
+        for row in rows:
+            summary.append({
+                'id': _row_get(row, 'id'),
+                'status': _row_get(row, 'status'),
+                'escrow_status': _row_get(row, 'escrow_status'),
+                'servico_titulo': _row_get(row, 'servico_titulo', 'Serviço'),
+            })
+        return summary
+    except Exception:
+        return []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+@app.route('/api/chat/health', methods=['GET'])
+@rate_limit(30, 60, 'chat_health')
+def chat_health():
+    """Retorna o diagnóstico seguro do status dos provedores LLM para a UI de suporte."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Autenticação obrigatória.'}), 401
+    err_acc = _require_active_account(user)
+    if err_acc:
+        return err_acc
+    return jsonify(llm_client.get_llm_health_status()), 200
 
 
 @app.route('/api/chat/support', methods=['POST'])
@@ -4117,8 +4100,10 @@ def chat_support():
     if err_acc:
         return err_acc
 
-    data = request.get_json(silent=True) or {}
-    message = str(data.get('message') or '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    message = str(data.get('message') or data.get('mensagem') or '').strip()
     if not message:
         return jsonify({'error': 'A mensagem é obrigatória.'}), 400
     if len(message) > 2000:
@@ -4136,35 +4121,63 @@ def chat_support():
             context_parts.append(str(raw_context))
     context_text = '\n'.join(context_parts)
 
-    system_prompt = _chat_system_prompt()
-    messages = [
-        {'role': 'system', 'content': system_prompt},
-    ]
-    if context_text:
-        messages.append({'role': 'user', 'content': 'Contexto adicional:\n' + context_text})
-    messages.append({'role': 'user', 'content': message})
+    raw_history = data.get('history')
+    history = llm_client.sanitize_history(raw_history)
+    user_info = _build_safe_user_info(user)
+    recent_orders = _get_user_recent_orders_summary(_row_get(user, 'id'), limit=3)
+
+    messages = llm_client.build_support_messages(
+        message=message,
+        history=history,
+        user_info=user_info,
+        context_text=context_text,
+        recent_orders=recent_orders,
+    )
 
     model_used = _get_llm_model()
-    fallback_used = False
     try:
+        llm_client.clear_last_call_meta()
         reply = _call_llm(
             messages=messages,
             model=model_used,
             temperature=0.4,
             max_tokens=800,
         )
-    except Exception:
+        meta = llm_client.get_last_call_meta()
+        provider = meta.get('provider') or llm_client.get_active_provider_name()
+        actual_model = meta.get('model') or model_used
+        return jsonify({
+            'reply': reply,
+            'model': actual_model,
+            'provider': provider,
+            'fallback': False,
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+        }), 200
+    except Exception as exc:
+        fallback_reason = getattr(exc, 'reason', None) or 'provider_error'
+        app.logger.warning(
+            'Falha ao consultar LLM em /api/chat/support (motivo=%s, erro=%s): %s',
+            fallback_reason,
+            type(exc).__name__,
+            _safe_llm_log_detail(exc),
+        )
         if os.environ.get('LLM_STRICT_MODE') == '1':
             return jsonify({'error': 'Falha ao gerar resposta do suporte.'}), 500
-        reply = _fallback_chat_support_reply(message, context_text)
-        fallback_used = True
-
-    return jsonify({
-        'reply': reply,
-        'model': model_used,
-        'fallback': fallback_used,
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
-    }), 200
+        reply = _fallback_chat_support_reply(
+            message,
+            context_text,
+            history=history,
+            user_info=user_info,
+            reason=fallback_reason,
+        )
+        return jsonify({
+            'reply': reply,
+            'model': model_used,
+            'provider': 'fallback',
+            'fallback': True,
+            'fallback_reason': fallback_reason,
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+        }), 200
 
 
 @app.route('/api/ads/generate-description', methods=['POST'])
@@ -4178,7 +4191,9 @@ def generate_ad_description():
     if err_acc:
         return err_acc
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
     title = str(data.get('title') or data.get('titulo') or '').strip()
     if not title:
         return jsonify({'error': 'O título é obrigatório.'}), 400
@@ -4218,7 +4233,10 @@ def generate_ad_description():
 
     model_used = _get_llm_model()
     fallback_used = False
+    fallback_reason = None
+    provider = llm_client.get_active_provider_name()
     try:
+        llm_client.clear_last_call_meta()
         generated = _call_llm(
             messages=[
                 {'role': 'system', 'content': system_prompt},
@@ -4228,7 +4246,17 @@ def generate_ad_description():
             temperature=0.35,
             max_tokens=600,
         )
-    except Exception:
+        meta = llm_client.get_last_call_meta()
+        provider = meta.get('provider') or provider
+        model_used = meta.get('model') or model_used
+    except Exception as exc:
+        fallback_reason = getattr(exc, 'reason', None) or 'provider_error'
+        app.logger.warning(
+            'Falha ao consultar LLM em /api/ads/generate-description (motivo=%s, erro=%s): %s',
+            fallback_reason,
+            type(exc).__name__,
+            _safe_llm_log_detail(exc),
+        )
         if os.environ.get('LLM_STRICT_MODE') == '1':
             return jsonify({'error': 'Falha ao gerar a descrição do anúncio.'}), 500
         generated = _fallback_ad_description(
@@ -4240,18 +4268,24 @@ def generate_ad_description():
             extra=extra,
         )
         fallback_used = True
+        provider = 'fallback'
 
-    return jsonify({
+    resp_payload = {
         'generated_description': generated,
         'description': generated,
         'model_used': model_used,
+        'provider': provider,
         'fallback': fallback_used,
         'title': title,
         'category': category or None,
         'price': price,
         'service_type': service_type or None,
         'length': len(generated),
-    }), 200
+    }
+    if fallback_used:
+        resp_payload['fallback_reason'] = fallback_reason
+
+    return jsonify(resp_payload), 200
 
 
 # ================= Inicialização do Servidor =================
