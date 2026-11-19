@@ -163,59 +163,109 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(res_status2.status_code, 200)
 
     def test_05_consulta_cep_e_geocodificacao(self):
-        # 1. Consulta CEP de São Paulo (Avenida Paulista)
-        res_cep = self.client.get('/api/cep/01310100')
-        self.assertEqual(res_cep.status_code, 200)
-        data_cep = json.loads(res_cep.data)
-        self.assertIn('Paulista', data_cep.get('logradouro', ''))
-        self.assertEqual(data_cep.get('uf'), 'SP')
-        self.assertIsNotNone(data_cep.get('lat'))
-        self.assertIsNotNone(data_cep.get('lng'))
+        from unittest.mock import patch, MagicMock
+        from urllib.parse import unquote
 
-        # 2. Consulta CEP de Guarulhos (Rua do Araújo - 07141430)
-        res_guarulhos = self.client.get('/api/cep/07141430')
-        self.assertEqual(res_guarulhos.status_code, 200)
-        data_g = json.loads(res_guarulhos.data)
-        self.assertEqual(data_g.get('localidade'), 'Guarulhos')
-        self.assertIsNotNone(data_g.get('lat'))
-        self.assertIsNotNone(data_g.get('lng'))
-        # Garante que não foi retornado o fallback estático de SP (-23.5653, -46.6517)
-        self.assertNotAlmostEqual(data_g.get('lat'), -23.5653, places=3)
-        self.assertAlmostEqual(data_g.get('lat'), -23.46, delta=0.08)
+        def _mock_resp(status_code, payload):
+            resp = MagicMock()
+            resp.status_code = status_code
+            resp.json.return_value = payload
+            return resp
 
-        # 3. Busca de serviços próximos a Guarulhos com raio de 8 km
-        res_serv_g = self.client.get(f"/api/services?radius=8&lat={data_g['lat']}&lng={data_g['lng']}")
-        self.assertEqual(res_serv_g.status_code, 200)
-        servicos_g = json.loads(res_serv_g.data)
-        self.assertTrue(len(servicos_g) > 0)
-        nomes_prestadores = [s['prestador']['nome'] for s in servicos_g]
-        self.assertIn('Juliana Clean', nomes_prestadores)
+        def fake_http_get(url, *args, **kwargs):
+            decoded = unquote(str(url)).lower()
+            if 'viacep.com.br/ws/01310100/json' in decoded:
+                return _mock_resp(200, {
+                    'cep': '01310-100',
+                    'logradouro': 'Avenida Paulista',
+                    'bairro': 'Bela Vista',
+                    'localidade': 'São Paulo',
+                    'uf': 'SP',
+                })
+            if 'viacep.com.br/ws/07141430/json' in decoded:
+                return _mock_resp(200, {
+                    'cep': '07141-430',
+                    'logradouro': 'Rua do Araújo',
+                    'bairro': 'Jardim Beirute',
+                    'localidade': 'Guarulhos',
+                    'uf': 'SP',
+                })
+            if 'viacep.com.br/ws/02037000/json' in decoded:
+                return _mock_resp(200, {
+                    'cep': '02037-000',
+                    'logradouro': 'Rua Doutor Olavo Egídio',
+                    'bairro': 'Santana',
+                    'localidade': 'São Paulo',
+                    'uf': 'SP',
+                })
+            if 'viacep.com.br/ws/00000000/json' in decoded:
+                return _mock_resp(200, {'erro': True})
+            if 'brasilapi.com.br/api/cep/v2/00000000' in decoded:
+                return _mock_resp(404, {'message': 'CEP não encontrado'})
+            if 'nominatim.openstreetmap.org/search' in decoded:
+                if 'paulista' in decoded:
+                    return _mock_resp(200, [{'lat': '-23.561414', 'lon': '-46.6558819'}])
+                if 'araújo' in decoded or 'araujo' in decoded or 'guarulhos' in decoded:
+                    return _mock_resp(200, [{'lat': '-23.4628', 'lon': '-46.5333'}])
+                if 'olavo' in decoded or 'santana' in decoded:
+                    return _mock_resp(200, [{'lat': '-23.5040', 'lon': '-46.6260'}])
+                return _mock_resp(200, [])
+            return _mock_resp(404, {})
 
-        # 4. Consulta CEP de Santana (Rua Dr. Olavo Egídio - 02037000) próximo ao Beto
-        res_santana = self.client.get('/api/cep/02037000')
-        self.assertEqual(res_santana.status_code, 200)
-        data_s = json.loads(res_santana.data)
-        self.assertEqual(data_s.get('bairro'), 'Santana')
-        self.assertAlmostEqual(data_s.get('lat'), -23.50, delta=0.03)
-        self.assertAlmostEqual(data_s.get('lng'), -46.625, delta=0.03)
+        with patch('app.requests.get', side_effect=fake_http_get):
+            # 1. Consulta CEP de São Paulo (Avenida Paulista)
+            res_cep = self.client.get('/api/cep/01310100')
+            self.assertEqual(res_cep.status_code, 200)
+            data_cep = json.loads(res_cep.data)
+            self.assertIn('Paulista', data_cep.get('logradouro', ''))
+            self.assertEqual(data_cep.get('uf'), 'SP')
+            self.assertIsNotNone(data_cep.get('lat'))
+            self.assertIsNotNone(data_cep.get('lng'))
 
-        res_serv_s = self.client.get(f"/api/services?radius=8&lat={data_s['lat']}&lng={data_s['lng']}")
-        self.assertEqual(res_serv_s.status_code, 200)
-        servicos_s = json.loads(res_serv_s.data)
-        self.assertTrue(len(servicos_s) > 0)
-        self.assertEqual(servicos_s[0]['prestador']['nome'], 'Beto Hidráulica')
-        self.assertLess(servicos_s[0]['distancia_km'], 1.0)
+            # 2. Consulta CEP de Guarulhos (Rua do Araújo - 07141430)
+            res_guarulhos = self.client.get('/api/cep/07141430')
+            self.assertEqual(res_guarulhos.status_code, 200)
+            data_g = json.loads(res_guarulhos.data)
+            self.assertEqual(data_g.get('localidade'), 'Guarulhos')
+            self.assertIsNotNone(data_g.get('lat'))
+            self.assertIsNotNone(data_g.get('lng'))
+            # Garante que não foi retornado o fallback estático de SP (-23.5653, -46.6517)
+            self.assertNotAlmostEqual(data_g.get('lat'), -23.5653, places=3)
+            self.assertAlmostEqual(data_g.get('lat'), -23.46, delta=0.08)
 
-        # 5. CEP inválido / inexistente
-        res_invalido = self.client.get('/api/cep/00000000')
-        self.assertEqual(res_invalido.status_code, 404)
+            # 3. Busca de serviços próximos a Guarulhos com raio de 8 km
+            res_serv_g = self.client.get(f"/api/services?radius=8&lat={data_g['lat']}&lng={data_g['lng']}")
+            self.assertEqual(res_serv_g.status_code, 200)
+            servicos_g = json.loads(res_serv_g.data)
+            self.assertTrue(len(servicos_g) > 0)
+            nomes_prestadores = [s['prestador']['nome'] for s in servicos_g]
+            self.assertIn('Juliana Clean', nomes_prestadores)
 
-        # 5. Geocodificação Nominatim
-        res_geo = self.client.get('/api/geocode?q=Avenida+Paulista+1000+Sao+Paulo')
-        self.assertEqual(res_geo.status_code, 200)
-        data_geo = json.loads(res_geo.data)
-        self.assertIn('lat', data_geo)
-        self.assertIn('lng', data_geo)
+            # 4. Consulta CEP de Santana (Rua Dr. Olavo Egídio - 02037000) próximo ao Beto
+            res_santana = self.client.get('/api/cep/02037000')
+            self.assertEqual(res_santana.status_code, 200)
+            data_s = json.loads(res_santana.data)
+            self.assertEqual(data_s.get('bairro'), 'Santana')
+            self.assertAlmostEqual(data_s.get('lat'), -23.50, delta=0.03)
+            self.assertAlmostEqual(data_s.get('lng'), -46.625, delta=0.03)
+
+            res_serv_s = self.client.get(f"/api/services?radius=8&lat={data_s['lat']}&lng={data_s['lng']}")
+            self.assertEqual(res_serv_s.status_code, 200)
+            servicos_s = json.loads(res_serv_s.data)
+            self.assertTrue(len(servicos_s) > 0)
+            self.assertEqual(servicos_s[0]['prestador']['nome'], 'Beto Hidráulica')
+            self.assertLess(servicos_s[0]['distancia_km'], 1.0)
+
+            # 5. CEP inválido / inexistente
+            res_invalido = self.client.get('/api/cep/00000000')
+            self.assertEqual(res_invalido.status_code, 404)
+
+            # 5. Geocodificação Nominatim
+            res_geo = self.client.get('/api/geocode?q=Avenida+Paulista+1000+Sao+Paulo')
+            self.assertEqual(res_geo.status_code, 200)
+            data_geo = json.loads(res_geo.data)
+            self.assertIn('lat', data_geo)
+            self.assertIn('lng', data_geo)
 
     def test_06_cadastro_e_anuncio_prestador_com_endereco_real(self):
         import uuid
