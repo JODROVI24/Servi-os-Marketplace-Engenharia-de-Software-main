@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import requests
 
 DEFAULT_FREELM_BASE_URL = 'http://localhost:3001/v1'
-DEFAULT_FREELM_MODEL = 'auto'  # NUNCA usar 'gemini-3.8-flash' como default!
+DEFAULT_FREELM_MODEL = 'auto'  # Roteador oficial do FreeLLMAPI
 
 VALID_UNAVAILABLE_REASONS = (
     'unconfigured',
@@ -74,8 +74,8 @@ _CLOUD_PROVIDERS: tuple[_CloudProviderSpec, ...] = (
         name='gemini',
         env_keys=('GEMINI_API_KEY', 'GOOGLE_API_KEY'),
         base_url='https://generativelanguage.googleapis.com/v1beta/openai',
-        default_model='gemini-2.5-flash',
-        fallback_models=('gemini-2.0-flash',),
+        default_model='gemini-3.8-flash',
+        fallback_models=('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'),
     ),
     _CloudProviderSpec(
         name='openrouter',
@@ -599,6 +599,11 @@ def _invoke_candidate(
     protocol = cand.get('protocol', 'openai')
     api_key = cand.get('api_key') or 'freellmapi-local'
     extra_headers = cand.get('extra_headers') or {}
+    is_gemini_thinking = (
+        cand.get('provider') == 'gemini'
+        and str(model_name or '').startswith(('gemini-3', 'gemini-4'))
+    )
+    effective_max_tokens = max(int(max_tokens), 1200) if is_gemini_thinking else max_tokens
 
     if protocol == 'openai' and openai_mod is not None:
         client_kwargs: dict[str, Any] = {
@@ -610,12 +615,15 @@ def _invoke_candidate(
         if extra_headers:
             client_kwargs['default_headers'] = dict(extra_headers)
         client = openai_mod.OpenAI(**client_kwargs)
-        resp = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        create_kwargs: dict[str, Any] = {
+            'model': model_name,
+            'messages': messages,
+            'temperature': temperature,
+            'max_tokens': effective_max_tokens,
+        }
+        if is_gemini_thinking:
+            create_kwargs['reasoning_effort'] = 'low'
+        resp = client.chat.completions.create(**create_kwargs)
         return _extract_openai_sdk_content(resp)
 
     post_fn = http_post or requests.post
@@ -634,7 +642,7 @@ def _invoke_candidate(
             'messages': messages,
             'model': model_name,
             'temperature': temperature,
-            'max_tokens': max_tokens,
+            'max_tokens': effective_max_tokens,
         }
     else:
         endpoint = f"{cand['base_url']}/chat/completions"
@@ -642,8 +650,10 @@ def _invoke_candidate(
             'model': model_name,
             'messages': messages,
             'temperature': temperature,
-            'max_tokens': max_tokens,
+            'max_tokens': effective_max_tokens,
         }
+        if is_gemini_thinking:
+            payload['reasoning_effort'] = 'low'
 
     resp = post_fn(endpoint, json=payload, headers=headers, timeout=timeout)
     status_code = getattr(resp, 'status_code', None)
@@ -687,8 +697,8 @@ def call_llm(
         raise LLMUnavailableError(reason, detail)
 
     serverless = is_serverless_env()
-    timeout = 6.0 if serverless else 12.0
-    max_retries = 1 if serverless else 2
+    timeout = 8.0 if serverless else 12.0
+    max_retries = 0 if serverless else 2
 
     failures: list[tuple[int, str, str]] = []
     if 'localhost_in_serverless' in skip_reasons:
@@ -730,7 +740,7 @@ def call_llm(
                         reason,
                         safe_detail or 'erro sem detalhe',
                     )
-                if reason == 'model_not_found' and idx + 1 < len(models_to_try):
+                if reason in ('model_not_found', 'rate_limited') and idx + 1 < len(models_to_try):
                     continue
                 break
 

@@ -2798,11 +2798,13 @@ class TestMarketplaceFull(unittest.TestCase):
         ), clear=True):
             with patch.object(app_mod, 'openai', None):
                 seen_urls = []
+                gemini_payloads = []
                 def post_failover_groq_to_gemini(url, json=None, headers=None, timeout=None):
                     seen_urls.append(url)
                     if 'api.groq.com' in url:
                         return make_http_resp(429, text=f'rate limit for Bearer {secret_groq}')
                     if 'generativelanguage.googleapis.com' in url:
+                        gemini_payloads.append(dict(json or {}))
                         return make_http_resp(200, {'choices': [{'message': {'content': 'Resposta via Gemini!'}}]})
                     raise AssertionError(f'URL inesperada no failover: {url}')
 
@@ -2812,10 +2814,40 @@ class TestMarketplaceFull(unittest.TestCase):
                     fo_body = json.loads(res_fo.data)
                     self.assertFalse(fo_body['fallback'])
                     self.assertEqual(fo_body['provider'], 'gemini')
-                    self.assertEqual(fo_body['model'], 'gemini-2.5-flash')
+                    self.assertEqual(fo_body['model'], 'gemini-3.8-flash')
                     self.assertEqual(fo_body['reply'], 'Resposta via Gemini!')
                     self.assertNotIn(secret_groq, res_fo.get_data(as_text=True))
-                self.assertEqual(len(seen_urls), 2)
+                self.assertEqual(len(seen_urls), 3)
+                self.assertIn('generativelanguage.googleapis.com', seen_urls[-1])
+                self.assertEqual(len(gemini_payloads), 1)
+                self.assertEqual(gemini_payloads[0].get('reasoning_effort'), 'low')
+                self.assertGreaterEqual(gemini_payloads[0].get('max_tokens', 0), 1200)
+
+        # 3a-bis) Gemini 404/429 em gemini-3.8-flash faz fallback automático para gemini-3.5-flash-lite
+        with patch.dict(os.environ, _clean_llm_env(
+            GEMINI_API_KEY=secret_gemini,
+        ), clear=True):
+            with patch.object(app_mod, 'openai', None):
+                for status_err in (404, 429):
+                    tried_gemini_models = []
+                    def post_gemini_model_fallback(url, json=None, headers=None, timeout=None, _err=status_err):
+                        model_id = (json or {}).get('model')
+                        tried_gemini_models.append(model_id)
+                        if model_id == 'gemini-3.8-flash':
+                            return make_http_resp(_err, {'error': {'message': f'HTTP {_err}'}})
+                        if model_id == 'gemini-3.5-flash-lite':
+                            return make_http_resp(200, {'choices': [{'message': {'content': 'Resposta via Gemini 3.5 Flash-Lite!'}}]})
+                        raise AssertionError(f'Modelo Gemini inesperado: {model_id}')
+
+                    with patch('app.requests.post', side_effect=post_gemini_model_fallback):
+                        res_gf = self.client.post('/api/chat/support', json={'message': 'Como funciona o Escrow?'})
+                        self.assertEqual(res_gf.status_code, 200)
+                        gf_body = json.loads(res_gf.data)
+                        self.assertFalse(gf_body['fallback'])
+                        self.assertEqual(gf_body['provider'], 'gemini')
+                        self.assertEqual(gf_body['model'], 'gemini-3.5-flash-lite')
+                        self.assertEqual(gf_body['reply'], 'Resposta via Gemini 3.5 Flash-Lite!')
+                    self.assertEqual(tried_gemini_models, ['gemini-3.8-flash', 'gemini-3.5-flash-lite'])
 
         # 3b) Provedor 1..3 falham (500/429/500) -> Provedor 4 (ApiFreeLLM) retorna 200
         with patch.dict(os.environ, _clean_llm_env(
