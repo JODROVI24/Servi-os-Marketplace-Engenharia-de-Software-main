@@ -3,7 +3,8 @@
   "cleanUrls": true,
   "functions": {
     "api/index.py": {
-      "includeFiles": "**"
+      "includeFiles": "**",
+      "maxDuration": 30
     }
   },
   "rewrites": [

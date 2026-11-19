@@ -6,6 +6,7 @@ import math
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -67,15 +68,15 @@ _CLOUD_PROVIDERS: tuple[_CloudProviderSpec, ...] = (
         name='groq',
         env_keys=('GROQ_API_KEY',),
         base_url='https://api.groq.com/openai/v1',
-        default_model='llama-3.3-70b-versatile',
-        fallback_models=('llama-3.1-8b-instant',),
+        default_model='openai/gpt-oss-20b',
+        fallback_models=('openai/gpt-oss-120b', 'qwen/qwen3.8-27b'),
     ),
     _CloudProviderSpec(
         name='gemini',
         env_keys=('GEMINI_API_KEY', 'GOOGLE_API_KEY'),
         base_url='https://generativelanguage.googleapis.com/v1beta/openai',
-        default_model='gemini-3.8-flash',
-        fallback_models=('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'),
+        default_model='gemini-3.5-flash-lite',
+        fallback_models=('gemini-3.1-flash-lite', 'gemini-3.8-flash'),
     ),
     _CloudProviderSpec(
         name='openrouter',
@@ -121,6 +122,43 @@ _PROVIDER_DEFAULT_MODELS: dict[str, str] = {
 }
 
 _LAST_CALL_META = threading.local()
+_DISCOVERED_MODELS_CACHE: dict[tuple[str, str], tuple[float, list[str]]] = {}
+_DISCOVERY_LOCK = threading.Lock()
+_DISCOVERY_TTL_SECONDS = 900.0
+
+_NON_CHAT_MODEL_TOKENS = (
+    'whisper',
+    'tts',
+    'speech',
+    'audio',
+    'transcribe',
+    'guard',
+    'safeguard',
+    'moderation',
+    'embed',
+    'image',
+    'imagen',
+    'veo',
+    'omni',
+    'orpheus',
+    'playai',
+    'rerank',
+    'realtime',
+    'live',
+)
+
+_CHAT_MODEL_PRIORITY_TOKENS = (
+    'gpt-oss-20b',
+    'flash-lite',
+    'gpt-oss',
+    'qwen',
+    'llama',
+    'flash',
+    'gemma',
+    'mistral',
+    'kimi',
+    'deepseek',
+)
 
 _SECRET_PATTERNS = (
     re.compile(r'(Bearer\s+)[A-Za-z0-9._\-]+', re.IGNORECASE),
@@ -622,7 +660,7 @@ def _invoke_candidate(
             'max_tokens': effective_max_tokens,
         }
         if is_gemini_thinking:
-            create_kwargs['reasoning_effort'] = 'low'
+            create_kwargs['reasoning_effort'] = 'minimal'
         resp = client.chat.completions.create(**create_kwargs)
         return _extract_openai_sdk_content(resp)
 
@@ -653,7 +691,7 @@ def _invoke_candidate(
             'max_tokens': effective_max_tokens,
         }
         if is_gemini_thinking:
-            payload['reasoning_effort'] = 'low'
+            payload['reasoning_effort'] = 'minimal'
 
     resp = post_fn(endpoint, json=payload, headers=headers, timeout=timeout)
     status_code = getattr(resp, 'status_code', None)
@@ -667,6 +705,109 @@ def _invoke_candidate(
     return _extract_json_content(body, protocol=protocol)
 
 
+def clear_discovered_models_cache() -> None:
+    """Limpa o cache em memória de modelos descobertos via /models."""
+    with _DISCOVERY_LOCK:
+        _DISCOVERED_MODELS_CACHE.clear()
+
+
+def _get_cached_discovered_models(provider: str, base_url: str) -> list[str]:
+    key = (str(provider or ''), normalize_base_url(base_url))
+    now = time.monotonic()
+    with _DISCOVERY_LOCK:
+        entry = _DISCOVERED_MODELS_CACHE.get(key)
+        if not entry:
+            return []
+        expires_at, models = entry
+        if expires_at <= now:
+            _DISCOVERED_MODELS_CACHE.pop(key, None)
+            return []
+        return list(models)
+
+
+def _rank_discovered_chat_model(model_id: str) -> tuple[int, str]:
+    low = model_id.lower()
+    for idx, token in enumerate(_CHAT_MODEL_PRIORITY_TOKENS):
+        if token in low:
+            return idx, low
+    return len(_CHAT_MODEL_PRIORITY_TOKENS), low
+
+
+def _discover_active_chat_models(
+    cand: dict[str, Any],
+    *,
+    http_get: Any = None,
+    timeout: float = 3.0,
+) -> list[str]:
+    """Consulta GET {base_url}/models para descobrir modelos de chat ativos e armazena em cache TTL."""
+    provider = str(cand.get('provider') or '')
+    base_url = normalize_base_url(cand.get('base_url') or '')
+    if not base_url:
+        return []
+
+    cached = _get_cached_discovered_models(provider, base_url)
+    if cached:
+        return cached
+
+    get_fn = http_get or requests.get
+    api_key = cand.get('api_key') or 'freellmapi-local'
+    headers = {'Authorization': f'Bearer {api_key}'}
+    extra_headers = cand.get('extra_headers') or {}
+    if extra_headers:
+        headers.update(extra_headers)
+
+    try:
+        resp = get_fn(f'{base_url}/models', headers=headers, timeout=timeout)
+        status_code = getattr(resp, 'status_code', None)
+        if isinstance(status_code, int) and status_code >= 400:
+            return []
+        body = resp.json()
+    except Exception:
+        return []
+
+    raw_items: Any = None
+    if isinstance(body, dict):
+        raw_items = body.get('data')
+        if not isinstance(raw_items, list):
+            raw_items = body.get('models')
+    elif isinstance(body, list):
+        raw_items = body
+
+    if not isinstance(raw_items, list):
+        return []
+
+    chat_models: list[str] = []
+    for item in raw_items:
+        if isinstance(item, dict):
+            raw_id = item.get('id') or item.get('name') or ''
+            is_active = item.get('active', True)
+            if is_active is False:
+                continue
+        elif isinstance(item, str):
+            raw_id = item
+        else:
+            continue
+
+        model_id = str(raw_id or '').strip()
+        if not model_id:
+            continue
+        if model_id.startswith('models/'):
+            model_id = model_id[len('models/'):]
+        low = model_id.lower()
+        if any(tok in low for tok in _NON_CHAT_MODEL_TOKENS):
+            continue
+        chat_models.append(model_id)
+
+    ranked = _dedupe_str_list(sorted(chat_models, key=_rank_discovered_chat_model))[:3]
+    if ranked:
+        with _DISCOVERY_LOCK:
+            _DISCOVERED_MODELS_CACHE[(provider, base_url)] = (
+                time.monotonic() + _DISCOVERY_TTL_SECONDS,
+                list(ranked),
+            )
+    return ranked
+
+
 def call_llm(
     messages: list[dict[str, Any]],
     model: str | None = None,
@@ -675,6 +816,7 @@ def call_llm(
     *,
     openai_mod: Any = None,
     http_post: Any = None,
+    http_get: Any = None,
     logger: Any = None,
 ) -> str:
     """Executa chamada ao LLM percorrendo a cadeia de provedores e modelos fallback."""
@@ -697,7 +839,7 @@ def call_llm(
         raise LLMUnavailableError(reason, detail)
 
     serverless = is_serverless_env()
-    timeout = 8.0 if serverless else 12.0
+    timeout = 10.0 if serverless else 15.0
     max_retries = 0 if serverless else 2
 
     failures: list[tuple[int, str, str]] = []
@@ -709,11 +851,21 @@ def call_llm(
         ))
 
     for cand in candidates:
-        models_to_try = _dedupe_str_list([cand['model'], *cand.get('fallback_models', [])])
         provider = cand['provider']
+        protocol = cand.get('protocol', 'openai')
         secrets = [cand.get('api_key', '')]
+        cached_discovered = (
+            _get_cached_discovered_models(provider, cand['base_url'])
+            if protocol == 'openai'
+            else []
+        )
+        models_to_try = _dedupe_str_list([*cached_discovered, cand['model'], *cand.get('fallback_models', [])])
+        tried_models: set[str] = set()
+        all_model_not_found = True
+        timeout_retries = 0
 
         for idx, try_model in enumerate(models_to_try):
+            tried_models.add(try_model)
             try:
                 text = _invoke_candidate(
                     cand=cand,
@@ -730,6 +882,8 @@ def call_llm(
                 return text
             except Exception as exc:
                 reason = _classify_exception(exc)
+                if reason != 'model_not_found':
+                    all_model_not_found = False
                 safe_detail = _sanitize_error_text(_extract_response_error_snippet(exc) or exc, secrets)
                 failures.append((_REASON_PRIORITY.get(reason, 99), reason, f'{provider}/{try_model}: {safe_detail}'))
                 if logger is not None:
@@ -742,7 +896,45 @@ def call_llm(
                     )
                 if reason in ('model_not_found', 'rate_limited') and idx + 1 < len(models_to_try):
                     continue
+                if reason == 'timeout' and timeout_retries < 1 and idx + 1 < len(models_to_try):
+                    timeout_retries += 1
+                    continue
                 break
+
+        if all_model_not_found and protocol == 'openai':
+            discovered = _discover_active_chat_models(cand, http_get=http_get)
+            extra_models = [m for m in discovered if m not in tried_models][:2]
+            for extra_model in extra_models:
+                tried_models.add(extra_model)
+                try:
+                    text = _invoke_candidate(
+                        cand=cand,
+                        model_name=extra_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        max_retries=max_retries,
+                        openai_mod=openai_mod,
+                        http_post=http_post,
+                    )
+                    _LAST_CALL_META.meta = {'provider': provider, 'model': extra_model}
+                    return text
+                except Exception as exc:
+                    reason = _classify_exception(exc)
+                    safe_detail = _sanitize_error_text(_extract_response_error_snippet(exc) or exc, secrets)
+                    failures.append((_REASON_PRIORITY.get(reason, 99), reason, f'{provider}/{extra_model}: {safe_detail}'))
+                    if logger is not None:
+                        logger.warning(
+                            'Falha no provedor LLM %s (modelo=%s, motivo=%s): %s',
+                            provider,
+                            extra_model,
+                            reason,
+                            safe_detail or 'erro sem detalhe',
+                        )
+                    if reason in ('model_not_found', 'rate_limited'):
+                        continue
+                    break
 
     if failures:
         failures.sort(key=lambda item: item[0])

@@ -3975,6 +3975,7 @@ def _call_llm(messages, model, temperature, max_tokens):
         max_tokens=max_tokens,
         openai_mod=openai,
         http_post=requests.post,
+        http_get=requests.get,
         logger=app.logger,
     )
 

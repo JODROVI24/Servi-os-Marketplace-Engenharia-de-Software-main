@@ -2730,7 +2730,7 @@ class TestMarketplaceFull(unittest.TestCase):
             self.assertTrue(h_cloud['configured'])
             self.assertEqual(h_cloud['mode'], 'live')
             self.assertEqual(h_cloud['active_provider'], 'groq')
-            self.assertEqual(h_cloud['model'], 'llama-3.3-70b-versatile')
+            self.assertEqual(h_cloud['model'], 'openai/gpt-oss-20b')
             self.assertEqual(h_cloud['available_providers'], ['groq', 'gemini', 'openrouter', 'apifreellm'])
 
         # 2) Histórico multi-turn enviado ao _call_llm: remove role='system', garante alternância e aceita alias 'mensagem'
@@ -2790,6 +2790,7 @@ class TestMarketplaceFull(unittest.TestCase):
             return resp
 
         # 3a) Provedor 1 (Groq) retorna 429 -> Provedor 2 (Gemini) retorna 200
+        llm_client.clear_discovered_models_cache()
         with patch.dict(os.environ, _clean_llm_env(
             GROQ_API_KEY=secret_groq,
             GEMINI_API_KEY=secret_gemini,
@@ -2814,29 +2815,33 @@ class TestMarketplaceFull(unittest.TestCase):
                     fo_body = json.loads(res_fo.data)
                     self.assertFalse(fo_body['fallback'])
                     self.assertEqual(fo_body['provider'], 'gemini')
-                    self.assertEqual(fo_body['model'], 'gemini-3.8-flash')
+                    self.assertEqual(fo_body['model'], 'gemini-3.5-flash-lite')
                     self.assertEqual(fo_body['reply'], 'Resposta via Gemini!')
                     self.assertNotIn(secret_groq, res_fo.get_data(as_text=True))
-                self.assertEqual(len(seen_urls), 3)
+                self.assertEqual(len(seen_urls), 4)
                 self.assertIn('generativelanguage.googleapis.com', seen_urls[-1])
                 self.assertEqual(len(gemini_payloads), 1)
-                self.assertEqual(gemini_payloads[0].get('reasoning_effort'), 'low')
+                self.assertEqual(gemini_payloads[0].get('reasoning_effort'), 'minimal')
                 self.assertGreaterEqual(gemini_payloads[0].get('max_tokens', 0), 1200)
 
-        # 3a-bis) Gemini 404/429 em gemini-3.8-flash faz fallback automático para gemini-3.5-flash-lite
+        # 3a-bis) Gemini 404/429/Timeout em gemini-3.5-flash-lite faz fallback automático para gemini-3.1-flash-lite
+        llm_client.clear_discovered_models_cache()
         with patch.dict(os.environ, _clean_llm_env(
             GEMINI_API_KEY=secret_gemini,
         ), clear=True):
             with patch.object(app_mod, 'openai', None):
-                for status_err in (404, 429):
+                import requests as _req
+                for err_mode in (404, 429, 'timeout'):
                     tried_gemini_models = []
-                    def post_gemini_model_fallback(url, json=None, headers=None, timeout=None, _err=status_err):
+                    def post_gemini_model_fallback(url, json=None, headers=None, timeout=None, _mode=err_mode):
                         model_id = (json or {}).get('model')
                         tried_gemini_models.append(model_id)
-                        if model_id == 'gemini-3.8-flash':
-                            return make_http_resp(_err, {'error': {'message': f'HTTP {_err}'}})
                         if model_id == 'gemini-3.5-flash-lite':
-                            return make_http_resp(200, {'choices': [{'message': {'content': 'Resposta via Gemini 3.5 Flash-Lite!'}}]})
+                            if _mode == 'timeout':
+                                raise _req.exceptions.ReadTimeout('HTTPSConnectionPool read timeout')
+                            return make_http_resp(_mode, {'error': {'message': f'HTTP {_mode}'}})
+                        if model_id == 'gemini-3.1-flash-lite':
+                            return make_http_resp(200, {'choices': [{'message': {'content': 'Resposta via Gemini 3.1 Flash-Lite!'}}]})
                         raise AssertionError(f'Modelo Gemini inesperado: {model_id}')
 
                     with patch('app.requests.post', side_effect=post_gemini_model_fallback):
@@ -2845,9 +2850,55 @@ class TestMarketplaceFull(unittest.TestCase):
                         gf_body = json.loads(res_gf.data)
                         self.assertFalse(gf_body['fallback'])
                         self.assertEqual(gf_body['provider'], 'gemini')
-                        self.assertEqual(gf_body['model'], 'gemini-3.5-flash-lite')
-                        self.assertEqual(gf_body['reply'], 'Resposta via Gemini 3.5 Flash-Lite!')
-                    self.assertEqual(tried_gemini_models, ['gemini-3.8-flash', 'gemini-3.5-flash-lite'])
+                        self.assertEqual(gf_body['model'], 'gemini-3.1-flash-lite')
+                        self.assertEqual(gf_body['reply'], 'Resposta via Gemini 3.1 Flash-Lite!')
+                    self.assertEqual(tried_gemini_models, ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'])
+
+        # 3a-ter) Descoberta dinâmica via GET /models quando modelos estáticos do Groq retornam 404
+        llm_client.clear_discovered_models_cache()
+        try:
+            with patch.dict(os.environ, _clean_llm_env(
+                GROQ_API_KEY=secret_groq,
+            ), clear=True):
+                with patch.object(app_mod, 'openai', None):
+                    groq_post_models = []
+                    groq_get_urls = []
+                    def get_groq_models(url, headers=None, timeout=None):
+                        groq_get_urls.append(url)
+                        return make_http_resp(200, {
+                            'data': [
+                                {'id': 'whisper-large-v3', 'active': True},
+                                {'id': 'meta-llama/llama-prompt-guard-2-86m', 'active': True},
+                                {'id': 'llama-4-scout-17b-16e-instruct', 'active': True},
+                                {'id': 'inactive-old-chat', 'active': False},
+                            ]
+                        })
+
+                    def post_groq_with_discovery(url, json=None, headers=None, timeout=None):
+                        model_id = (json or {}).get('model')
+                        groq_post_models.append(model_id)
+                        if model_id in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'):
+                            return make_http_resp(404, {'error': {'code': 'model_not_found', 'message': 'model not found'}})
+                        if model_id == 'llama-4-scout-17b-16e-instruct':
+                            return make_http_resp(200, {'choices': [{'message': {'content': 'Descoberta dinâmica funcionando!'}}]})
+                        raise AssertionError(f'Modelo inesperado na descoberta: {model_id}')
+
+                    with patch('app.requests.get', side_effect=get_groq_models):
+                        with patch('app.requests.post', side_effect=post_groq_with_discovery):
+                            res_disc = self.client.post('/api/chat/support', json={'message': 'Como abro disputa?'})
+                            self.assertEqual(res_disc.status_code, 200)
+                            disc_body = json.loads(res_disc.data)
+                            self.assertFalse(disc_body['fallback'])
+                            self.assertEqual(disc_body['provider'], 'groq')
+                            self.assertEqual(disc_body['model'], 'llama-4-scout-17b-16e-instruct')
+                            self.assertEqual(disc_body['reply'], 'Descoberta dinâmica funcionando!')
+                    self.assertEqual(groq_get_urls, ['https://api.groq.com/openai/v1/models'])
+                    self.assertEqual(
+                        groq_post_models,
+                        ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'llama-4-scout-17b-16e-instruct'],
+                    )
+        finally:
+            llm_client.clear_discovered_models_cache()
 
         # 3b) Provedor 1..3 falham (500/429/500) -> Provedor 4 (ApiFreeLLM) retorna 200
         with patch.dict(os.environ, _clean_llm_env(
