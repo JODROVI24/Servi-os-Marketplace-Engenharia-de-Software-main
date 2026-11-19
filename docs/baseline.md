@@ -122,5 +122,7 @@ A API pública do PageSpeed Insights retornou `HTTP 429 (Too Many Requests)` e o
 
 ## 7. Status da Tarefa 0.4 (Banco PostgreSQL Dev e Prod)
 
-- **Produção (`Vercel`):** **já conectado ao PostgreSQL** (confirmado via `GET /api/health` -> `"engine": "postgresql", "database": "connected"`).
-- **Desenvolvimento local:** pendente de criação do projeto/branch dev no Neon ou Supabase pelo usuário e preenchimento de `DATABASE_URL=...` no `.env` local (atualmente operando com fallback SQLite `marketplace.db` em dev).
+- **Produção e Preview (`Vercel`):** **Neon Postgres conectado** (`store_KFsLqbfUZm4k2bnq`, com `DATABASE_URL` e `POSTGRES_URL` presentes em ambos os ambientes via integração Vercel, além de `ENABLE_DEMO_SEED=0` e `REQUIRE_SECRET_KEY=1`; confirmado ao vivo via `GET /api/health` -> `"engine": "postgresql", "database": "connected"`).
+- **Desenvolvimento (`Supabase`):** projeto **`pertoja-marketplace-dev`** criado na organização `JODROVI24's Org` (`qpbdruwzaadegdaxaitz`), região `sa-east-1`, `id/ref: skfrnmtdcsdghlstlrgu`, `status: ACTIVE_HEALTHY`, engine confirmada via `SELECT version();`: `PostgreSQL 17.12 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit`.
+  - URI Session Pooler IPv4 pré-configurada comentada no `.env` local (não versionado): `# DATABASE_URL=postgresql://postgres.skfrnmtdcsdghlstlrgu:[SUA_SENHA_DB]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require`.
+  - Próximo passo único para o desenvolvedor ativar Postgres no dev local: definir/copiar a senha do banco em `https://supabase.com/dashboard/project/skfrnmtdcsdghlstlrgu/settings/database`, descomentar `DATABASE_URL` no `.env` local e executar `.\.venv\Scripts\python.exe -m scripts.migrate --dry-run` (e `.\.venv\Scripts\python.exe -m scripts.migrate`).
