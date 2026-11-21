@@ -126,3 +126,44 @@ A API pública do PageSpeed Insights retornou `HTTP 429 (Too Many Requests)` e o
 - **Desenvolvimento (`Supabase`):** projeto **`pertoja-marketplace-dev`** criado na organização `JODROVI24's Org` (`qpbdruwzaadegdaxaitz`), região `sa-east-1`, `id/ref: skfrnmtdcsdghlstlrgu`, `status: ACTIVE_HEALTHY`, engine confirmada via `SELECT version();`: `PostgreSQL 17.12 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit`.
   - URI Session Pooler IPv4 pré-configurada comentada no `.env` local (não versionado): `# DATABASE_URL=postgresql://postgres.skfrnmtdcsdghlstlrgu:[SUA_SENHA_DB]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require`.
   - Próximo passo único para o desenvolvedor ativar Postgres no dev local: definir/copiar a senha do banco em `https://supabase.com/dashboard/project/skfrnmtdcsdghlstlrgu/settings/database`, descomentar `DATABASE_URL` no `.env` local e executar `.\.venv\Scripts\python.exe -m scripts.migrate --dry-run` (e `.\.venv\Scripts\python.exe -m scripts.migrate`).
+
+---
+
+## 8. Comparativo Pós-Fase 2 (Segurança Frontend e Performance)
+
+Coleta executada em ambiente local via Chrome Headless CDP (`1280×800`, banco SQLite temporário com seed ativo) com compressão **`Accept-Encoding: gzip` habilitada** (após correção do bug de `direct_passthrough` na Fase 1) e todas as otimizações dos itens `2.1` a `2.6` + estabilização final aplicadas.
+
+### 8.1 Web Vitals & CSP — Fase 0 vs Pós-Fase 2 (Ambiente Local)
+
+| Página | Fase | TTFB (ms) | FCP (ms) | LCP (ms) | Elem. LCP | CLS | DCL (ms) | Load (ms) | Requests | Transf. (KB) | Console / CSP |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `/` | Fase 0 (sem gzip) | 104 | 1144 | 1144 | `H1` | **0.5687** | 1115 | 2144 | 25 | 1843.9 | 0 / 0 |
+| `/` | **Pós-Fase 2** (com gzip) | **39** | **644** | **644** | `H1` | **0.0304** | **601** | `0*` | 21 | **421.6** | **0 / 0** |
+| `/pedido.html` | Fase 0 (sem gzip) | 2 | 872 | 872 | `H1` | 0.0195 | 1845 | 2186 | 31 | 1809.9 | 1 / **1** |
+| `/pedido.html` | **Pós-Fase 2** (com gzip) | 4 | **376** | **376** | `H1` | **0.0146** | **401** | **1181** | 25 | **391.0** | **0 / 0** |
+| `/portal-cliente.html` (autenticado) | Fase 0 (sem gzip) | 5 | 276 | 276 | `H2` | 0.0264 | 269 | 940 | 16 | 1504.1 | 0 / 0 |
+| `/portal-cliente.html` (autenticado) | **Pós-Fase 2** (com gzip) | 6 | **92** | **92** | `H2` | **0.0193** | **84** | **89** | 16 | **28.6** | **0 / 0** |
+| `/portal-prestador.html` (autenticado) | Fase 0 (sem gzip) | 4 | 288 | 288 | `H2` | **0.2043** | 278 | 572 | 19 | 1556.9 | 0 / 0 |
+| `/portal-prestador.html` (autenticado) | **Pós-Fase 2** (com gzip) | 6 | **64** | **64** | `H1#prestadorNome` | **0.0114** | **54** | **59** | 19 | **40.9** | **0 / 0** |
+
+> `*` Na medição da rota `/`, `domContentLoadedEventEnd` concluiu em `601 ms`, enquanto `loadEventEnd` não havia disparado dentro da janela de coleta de 2,5 s devido a sub-recursos externos, resultando em `0` na fórmula `Math.max(0, loadEventEnd - startTime)`. Todas as 4 páginas ficaram com `CLS < 0.04` (queda de `-94,7%` em `/` e `-94,4%` em `/portal-prestador.html`), `0` HTTP 500, `0` erros de console e `0` violações de CSP.
+
+### 8.2 Latência Local da API & Rate Limiter Sem Banco
+
+Sonda sequencial de 10 requisições `GET /api/services` com `Accept-Encoding: gzip` usando `HybridRateLimiter` (zero queries SQL `DELETE/SELECT/INSERT` em `rate_limit`):
+
+- **Status HTTP 200:** `10 / 10` (`gzip` ativo em `10 / 10`; `/dist/app.css` com `gzip` retornou HTTP `200`)
+- **p50:** `8.49 ms` | **p95:** `15.01 ms` | **Média:** `9.09 ms`
+- **Amostras (ms):** `15.01, 8.56, 8.62, 8.15, 8.07, 8.49, 7.41, 8.37, 8.77, 9.41`
+
+### 8.3 Inventário Estático & Hardening XSS/CSP (Fase 0 → Pós-Fase 2)
+
+| Indicador | Fase 0 | Pós-Fase 2 |
+|---|---|---|
+| Páginas com `cdn.tailwindcss.com` em runtime | `11 / 11` | **`0 / 11`** (build local `public/dist/app.css`) |
+| Blocos `<script>` executáveis inline em HTML | `20` | **`0`** (mantidos apenas `4` JSON-LD `application/ld+json`) |
+| Atributos de evento HTML inline (`on*=`) | `78` | **`0`** (`addEventListener` em `public/js/*.js`) |
+| `'unsafe-inline'` em `script-src` da CSP (`app.py` / `vercel.json`) | Presente | **Removido** |
+| Violações de CSP & erros de runtime (`check_csp.mjs`, 9 rotas) | Violação real em `/pedido.html` | **`0` violações CSP e `0` erros runtime nas 9 rotas** |
+| Auditoria XSS (`scripts/check_xss_lint.js`, 9 arquivos JS) | `80` `.innerHTML` sem lint | **`0` violações no lint** (`0` `.insertAdjacentHTML`/`.outerHTML`/`eval`) |
+| Teste XSS ao vivo no Chrome CDP (`check_xss_live.mjs`) | — | **`anyTriggered: false`**, `rawImgsWithOnerror: 0`, `anyRendered: true` |
