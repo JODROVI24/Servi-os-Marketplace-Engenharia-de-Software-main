@@ -1,4 +1,73 @@
-// auth.js - Gerenciamento global de autenticação, navegação e localização do PertoJá
+// auth.js - Gerenciamento global de autenticação, CSRF, navegação e localização do PertoJá
+
+const PERTOJA_CSRF_COOKIE = 'csrf_token';
+
+function obterCsrfToken() {
+  if (typeof document === 'undefined' || !document.cookie) return '';
+  const pairs = document.cookie.split(';');
+  for (let i = 0; i < pairs.length; i += 1) {
+    const idx = pairs[i].indexOf('=');
+    if (idx === -1) continue;
+    const key = pairs[i].slice(0, idx).trim();
+    if (key === PERTOJA_CSRF_COOKIE) {
+      const rawVal = pairs[i].slice(idx + 1).trim();
+      try {
+        return decodeURIComponent(rawVal);
+      } catch (_) {
+        return rawVal;
+      }
+    }
+  }
+  return '';
+}
+
+function garantirHeadersCsrf(headersInit) {
+  const headers = new Headers(headersInit || undefined);
+  const token = obterCsrfToken();
+  if (token && !headers.has('X-CSRF-Token')) {
+    headers.set('X-CSRF-Token', token);
+  }
+  return headers;
+}
+
+(function instalarFetchCsrfWrapper() {
+  if (typeof window === 'undefined' || typeof window.fetch !== 'function' || window.__pertojaCsrfFetchInstalled) {
+    return;
+  }
+  const originalFetch = window.fetch.bind(window);
+  window.__pertojaCsrfFetchInstalled = true;
+  window.fetch = async function fetchComCsrf(input, init) {
+    const rawUrl = typeof input === 'string'
+      ? input
+      : (input instanceof URL ? input.href : (input && typeof input === 'object' && input.url ? input.url : ''));
+    const method = String((init && init.method) || (input && typeof input === 'object' && !(input instanceof URL) && input.method) || 'GET').toUpperCase();
+
+    let isSameOrigin = false;
+    let targetPath = '';
+    try {
+      const parsed = new URL(rawUrl, window.location.origin);
+      isSameOrigin = parsed.origin === window.location.origin;
+      targetPath = parsed.pathname || '';
+    } catch (_) {
+      isSameOrigin = false;
+    }
+
+    if (isSameOrigin && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      if (!obterCsrfToken() && targetPath !== '/api/auth/csrf') {
+        try {
+          await originalFetch('/api/auth/csrf', { credentials: 'same-origin' });
+        } catch (_) {}
+      }
+      const baseHeaders = (init && init.headers)
+        || (input && typeof input === 'object' && !(input instanceof URL) ? input.headers : undefined);
+      const nextInit = Object.assign({}, init || {});
+      nextInit.headers = garantirHeadersCsrf(baseHeaders);
+      return originalFetch(input, nextInit);
+    }
+
+    return originalFetch(input, init);
+  };
+}());
 
 const PERTOJA_MIN_PASSWORD_LENGTH = 10;
 
@@ -646,6 +715,8 @@ async function inicializarHeaderLocalizacao() {
 }
 
 // Expõe globalmente para controle e testes
+window.obterCsrfToken = obterCsrfToken;
+window.garantirHeadersCsrf = garantirHeadersCsrf;
 window.PERTOJA_MIN_PASSWORD_LENGTH = PERTOJA_MIN_PASSWORD_LENGTH;
 window.validarPoliticaSenhaLocal = validarPoliticaSenhaLocal;
 window.atualizarNavegacao = atualizarNavegacao;

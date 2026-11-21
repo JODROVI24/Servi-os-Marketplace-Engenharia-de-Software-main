@@ -17,6 +17,14 @@ if REPO_ROOT not in sys.path:
 import database
 import payment_adapters
 from app import app
+try:
+    from tests._csrf_test_client import BrowserCSRFTestClient
+except ImportError:
+    from _csrf_test_client import BrowserCSRFTestClient
+
+
+def _make_csrf_client():
+    return BrowserCSRFTestClient(app, app.response_class, use_cookies=True)
 
 
 def _crc16_ccitt(payload: str) -> str:
@@ -77,7 +85,7 @@ class TestPaymentsSystem(unittest.TestCase):
         os.environ.pop('VERCEL', None)
         os.environ.pop('FLASK_ENV', None)
         os.environ.pop('ENABLE_PAYMENT_SANDBOX', None)
-        self.client = app.test_client()
+        self.client = _make_csrf_client()
 
     def tearDown(self):
         for k, v in self._saved_env.items():
@@ -95,7 +103,7 @@ class TestPaymentsSystem(unittest.TestCase):
         return json.loads(res.data)['user']
 
     def _create_user_and_login(self, nome, email, tipo='cliente'):
-        c = app.test_client()
+        c = _make_csrf_client()
         res = c.post('/api/auth/register', json={
             'nome': nome,
             'email': email,
@@ -342,13 +350,13 @@ class TestPaymentsSystem(unittest.TestCase):
         self.assertEqual(intruder.post(f'/api/payments/{payment_id}/refund', json={}).status_code, 404)
 
         # Prestador que NÃO é dono do serviço/pedido -> 404 em payment_ref, 403 em order_id
-        carlos_client = app.test_client()
+        carlos_client = _make_csrf_client()
         self._login('carlos@pertoja.com', client=carlos_client)
         self.assertEqual(carlos_client.get(f'/api/payments/{payment_id}').status_code, 404)
         self.assertEqual(carlos_client.get(f'/api/payments/order/{order_id}').status_code, 403)
 
         # Prestador dono do pedido (marta@pertoja.com) pode visualizar, mas com campos sensíveis redigidos
-        marta_client = app.test_client()
+        marta_client = _make_csrf_client()
         self._login('marta@pertoja.com', client=marta_client)
         res_marta_tx = marta_client.get(f'/api/payments/{payment_id}')
         self.assertEqual(res_marta_tx.status_code, 200)
@@ -1488,6 +1496,51 @@ class TestPaymentsSystem(unittest.TestCase):
             self.assertEqual(tx_end['status'], 'refunded')
         finally:
             conn.close()
+
+    def test_30_csrf_double_submit_and_missing_origin_on_payments(self):
+        raw_client = app.test_client()
+        same_origin = {'Origin': 'http://localhost'}
+
+        # Login sem Origin/Referer -> 403 CSRF_ORIGIN_REQUIRED
+        res_no_origin = raw_client.post('/api/auth/login', json={'email': 'cliente@pertoja.com', 'senha': '123456'})
+        self.assertEqual(res_no_origin.status_code, 403)
+        self.assertEqual(json.loads(res_no_origin.data).get('code'), 'CSRF_ORIGIN_REQUIRED')
+
+        # Login com Origin obtém sessão + csrf_token
+        res_login = raw_client.post(
+            '/api/auth/login',
+            json={'email': 'cliente@pertoja.com', 'senha': '123456'},
+            headers=same_origin,
+        )
+        self.assertEqual(res_login.status_code, 200)
+        csrf_val = raw_client.get_cookie('csrf_token').value
+        valid_headers = {**same_origin, 'X-CSRF-Token': csrf_val}
+
+        servico_id = self._get_service_id_by_provider_email('marta@pertoja.com')
+        res_order = raw_client.post('/api/orders', json={'servico_id': servico_id}, headers=same_origin)
+        self.assertEqual(res_order.status_code, 201)
+        order_id = json.loads(res_order.data)['order_id']
+
+        # Criar intent sem Origin -> 403; com Origin e sem token -> 403; com token válido -> 201
+        self.assertEqual(raw_client.post('/api/payments/intents', json={'order_id': order_id, 'gateway': 'sandbox', 'method': 'pix'}).status_code, 403)
+        self.assertEqual(raw_client.post('/api/payments/intents', json={'order_id': order_id, 'gateway': 'sandbox', 'method': 'pix'}, headers=same_origin).status_code, 403)
+
+        res_int = raw_client.post(
+            '/api/payments/intents',
+            json={'order_id': order_id, 'gateway': 'sandbox', 'method': 'pix'},
+            headers=valid_headers,
+        )
+        self.assertEqual(res_int.status_code, 201)
+        payment_id = json.loads(res_int.data)['payment_id']
+
+        # Confirm e refund também exigem double-submit CSRF token
+        self.assertEqual(raw_client.post(f'/api/payments/{payment_id}/confirm', json={'simulate_outcome': 'paid'}, headers=same_origin).status_code, 403)
+        res_conf = raw_client.post(f'/api/payments/{payment_id}/confirm', json={'simulate_outcome': 'paid'}, headers=valid_headers)
+        self.assertEqual(res_conf.status_code, 200)
+
+        self.assertEqual(raw_client.post(f'/api/payments/{payment_id}/refund', json={}, headers={**same_origin, 'X-CSRF-Token': 'errado'}).status_code, 403)
+        res_ref = raw_client.post(f'/api/payments/{payment_id}/refund', json={}, headers=valid_headers)
+        self.assertEqual(res_ref.status_code, 200)
 
 
 if __name__ == '__main__':

@@ -151,10 +151,17 @@ try:
     assert status == 401, f"Expected 401, got {status}: {body}"
     print(f"  PASS: Unauthenticated GET /api/profile returned 401 Unauthorized: {jdata}")
 
-    # 5c: Dynamic nested route orders pay
+    # 5c: Dynamic nested route orders pay (CSRF without Origin -> 403; with same-origin -> 401)
     status, _, body, jdata = make_wsgi_request('POST', '/api/index.py', '__path=orders/999/pay')
+    assert status == 403, f"Expected 403 without Origin/Referer, got {status}: {body}"
+    print(f"  PASS: POST /api/orders/999/pay without Origin/Referer blocked with 403 CSRF: {jdata}")
+
+    status, _, body, jdata = make_wsgi_request(
+        'POST', '/api/index.py', '__path=orders/999/pay',
+        headers={'Origin': 'https://test-marketplace.vercel.app'}
+    )
     assert status == 401, f"Expected 401, got {status}: {body}"
-    print(f"  PASS: Unauthenticated POST /api/orders/999/pay returned 401 Unauthorized: {jdata}")
+    print(f"  PASS: Unauthenticated POST /api/orders/999/pay with Origin returned 401 Unauthorized: {jdata}")
 
     # Test 6: Adversarial / Malicious WSGI parameters
     print("\n[Test 6] Adversarial parameter stress testing...")

@@ -1,5 +1,24 @@
 // script.js - Lógica interativa de catálogo, mapa geográfico e tracking do PertoJá
 
+function _csrfHeaders(extra = {}) {
+  const out = Object.assign({}, extra || {});
+  if (!Object.keys(out).some((k) => k.toLowerCase() === 'x-csrf-token')) {
+    let token = typeof window.obterCsrfToken === 'function' ? window.obterCsrfToken() : '';
+    if (!token && typeof document !== 'undefined' && document.cookie) {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+      if (m) {
+        try {
+          token = decodeURIComponent(m[1].trim());
+        } catch (_) {
+          token = m[1].trim();
+        }
+      }
+    }
+    if (token) out['X-CSRF-Token'] = token;
+  }
+  return out;
+}
+
 let centerLat = -23.5653;
 let centerLng = -46.6517;
 let currentSearchAddress = 'Avenida Paulista, 1000 · Bela Vista · São Paulo - SP';
@@ -1825,10 +1844,10 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
         try {
           const confRes = await fetch(`/api/payments/${encodeURIComponent(paymentId)}/confirm`, {
             method: 'POST',
-            headers: {
+            headers: _csrfHeaders({
               'Content-Type': 'application/json',
               'Idempotency-Key': gerarIdempotencyKey()
-            },
+            }),
             body: JSON.stringify({ simulate_outcome: 'paid' })
           });
           const confData = await confRes.json().catch(() => ({}));
@@ -1901,10 +1920,10 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
     try {
       const res = await fetch('/api/payments/intents', {
         method: 'POST',
-        headers: {
+        headers: _csrfHeaders({
           'Content-Type': 'application/json',
           'Idempotency-Key': gerarIdempotencyKey()
-        },
+        }),
         body: JSON.stringify({
           order_id: Number(orderDbId),
           method: metodo,
@@ -1959,7 +1978,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
           try {
             const resPay = await fetch(`/api/orders/${encodeURIComponent(orderDbId)}/pay`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
               body: JSON.stringify({
                 escrow_hold: Boolean(!orderSnapshot || String(orderSnapshot.status || '').toLowerCase() !== 'finalizado'),
                 metodo_pagamento: 'escrow'
@@ -2432,7 +2451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           const res = await fetch(`/api/orders/${order.db_id}/pay`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
               escrow_hold: Boolean(currentOrderData && currentOrderData.status !== 'finalizado'),
               metodo_pagamento: (currentOrderData && currentOrderData.metodo_pagamento) || 'escrow'
@@ -2766,10 +2785,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (txPaymentId) {
             const confRes = await fetch(`/api/payments/${encodeURIComponent(txPaymentId)}/confirm`, {
               method: 'POST',
-              headers: {
+              headers: _csrfHeaders({
                 'Content-Type': 'application/json',
                 'Idempotency-Key': gerarIdempotencyKey()
-              },
+              }),
               body: JSON.stringify({})
             });
             if (confRes.ok) {

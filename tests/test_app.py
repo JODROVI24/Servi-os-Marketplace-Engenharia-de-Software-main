@@ -9,6 +9,14 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 from app import app
 from database import init_db
+try:
+    from tests._csrf_test_client import BrowserCSRFTestClient
+except ImportError:
+    from _csrf_test_client import BrowserCSRFTestClient
+
+
+def _make_csrf_client():
+    return BrowserCSRFTestClient(app, app.response_class, use_cookies=True)
 
 class TestMarketplaceFull(unittest.TestCase):
     @classmethod
@@ -49,7 +57,7 @@ class TestMarketplaceFull(unittest.TestCase):
         }
         for k in self._saved_env:
             os.environ.pop(k, None)
-        self.client = app.test_client()
+        self.client = _make_csrf_client()
 
     def tearDown(self):
         for k, v in getattr(self, '_saved_env', {}).items():
@@ -2083,7 +2091,7 @@ class TestMarketplaceFull(unittest.TestCase):
             'aceite_termos': True
         })
         # Save session cookie in a second test client
-        c2 = app.test_client()
+        c2 = _make_csrf_client()
         c2.post('/api/auth/login', json={'email': 'sess_ver@pertoja.com', 'senha': 'password123'})
         self.assertTrue(json.loads(c2.get('/api/auth/me').data)['authenticated'])
 
@@ -3397,6 +3405,91 @@ class TestMarketplaceFull(unittest.TestCase):
         with open(os.path.join(REPO_ROOT, 'public', 'auth.js'), 'r', encoding='utf-8') as f:
             auth_js = f.read()
         self.assertIn('validarPoliticaSenhaLocal', auth_js)
+
+    def test_71_csrf_missing_origin_and_double_submit_cookie(self):
+        from unittest.mock import patch
+        # Cliente cru sem injeção automática de Origin / X-CSRF-Token
+        raw_client = app.test_client()
+
+        # 1. Mutações sem Origin E sem Referer -> 403 CSRF_ORIGIN_REQUIRED
+        for method, path, payload in (
+            ('POST', '/api/auth/login', {'email': 'cliente@pertoja.com', 'senha': '123456'}),
+            ('PUT', '/api/profile', {'nome': 'Teste'}),
+            ('DELETE', '/api/profile', None),
+            ('PATCH', '/api/orders/1/status', {'status': 'confirmado'}),
+        ):
+            res_no_hdr = raw_client.open(path, method=method, json=payload)
+            self.assertEqual(res_no_hdr.status_code, 403, f'{method} {path} sem Origin/Referer deveria retornar 403')
+            self.assertEqual(json.loads(res_no_hdr.data).get('code'), 'CSRF_ORIGIN_REQUIRED')
+
+        # 2. Webhook continua isento mesmo sem Origin e sem Referer (atinge validação HMAC -> 401)
+        with patch.dict(os.environ, {'SANDBOX_WEBHOOK_SECRET': ''}, clear=False):
+            res_wh = raw_client.post(
+                '/api/webhooks/payments/sandbox',
+                data=b'{"event_id":"ev_no_origin"}',
+                content_type='application/json',
+            )
+            self.assertEqual(res_wh.status_code, 401)
+
+        # 3. Login com Origin válido emite cookie csrf_token
+        same_origin = {'Origin': 'http://localhost'}
+        res_login = raw_client.post(
+            '/api/auth/login',
+            json={'email': 'cliente@pertoja.com', 'senha': '123456'},
+            headers=same_origin,
+        )
+        self.assertEqual(res_login.status_code, 200)
+        csrf_cookie = raw_client.get_cookie('csrf_token')
+        self.assertIsNotNone(csrf_cookie)
+        self.assertGreaterEqual(len(csrf_cookie.value), 32)
+        self.assertFalse(csrf_cookie.http_only)
+
+        # 4. Double-submit cookie nas rotas de perfil e pagamento (autenticado)
+        res_order = raw_client.post(
+            '/api/orders',
+            json={'servico_id': 1, 'metodo_pagamento': 'escrow'},
+            headers=same_origin,
+        )
+        self.assertEqual(res_order.status_code, 201)
+        order_id = json.loads(res_order.data)['order_id']
+
+        for method, path, payload in (
+            ('PUT', '/api/profile', {'nome': 'Ana Paula Atualizada'}),
+            ('POST', f'/api/orders/{order_id}/pay', {'metodo_pagamento': 'escrow', 'escrow_hold': True}),
+            ('POST', '/api/payments/intents', {'order_id': order_id, 'gateway': 'sandbox', 'method': 'pix'}),
+            ('DELETE', '/api/profile', None),
+        ):
+            # 4a) Sem X-CSRF-Token -> 403 CSRF_TOKEN_INVALID
+            r_miss = raw_client.open(path, method=method, json=payload, headers=same_origin)
+            self.assertEqual(r_miss.status_code, 403, f'{method} {path} sem X-CSRF-Token deveria falhar com 403')
+            self.assertEqual(json.loads(r_miss.data).get('code'), 'CSRF_TOKEN_INVALID')
+
+            # 4b) X-CSRF-Token errado -> 403 CSRF_TOKEN_INVALID
+            r_bad = raw_client.open(
+                path,
+                method=method,
+                json=payload,
+                headers={**same_origin, 'X-CSRF-Token': 'token-csrf-invalido'},
+            )
+            self.assertEqual(r_bad.status_code, 403, f'{method} {path} com X-CSRF-Token errado deveria falhar com 403')
+            self.assertEqual(json.loads(r_bad.data).get('code'), 'CSRF_TOKEN_INVALID')
+
+        # 4c) Com X-CSRF-Token válido em perfil e pagamentos -> 200 / 201
+        valid_headers = {**same_origin, 'X-CSRF-Token': csrf_cookie.value}
+        res_prof_ok = raw_client.put('/api/profile', json={'nome': 'Ana Paula Verificada'}, headers=valid_headers)
+        self.assertEqual(res_prof_ok.status_code, 200)
+
+        res_pay_ok = raw_client.post(
+            '/api/payments/intents',
+            json={'order_id': order_id, 'gateway': 'sandbox', 'method': 'pix'},
+            headers=valid_headers,
+        )
+        self.assertEqual(res_pay_ok.status_code, 201)
+
+        # 5. GET /api/auth/csrf retorna o token ativo do cookie
+        res_csrf_ep = raw_client.get('/api/auth/csrf')
+        self.assertEqual(res_csrf_ep.status_code, 200)
+        self.assertEqual(json.loads(res_csrf_ep.data).get('csrf_token'), csrf_cookie.value)
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse
-from flask import Flask, request, jsonify, session, send_from_directory, make_response
+from flask import Flask, request, jsonify, session, send_from_directory, make_response, g
 from werkzeug.security import generate_password_hash, check_password_hash
 import database
 import llm_client
@@ -177,6 +177,38 @@ app.config.update(
 # ================= Otimização de Performance, Caching e Segurança =================
 
 
+CSRF_COOKIE_NAME = 'csrf_token'
+CSRF_HEADER_NAME = 'X-CSRF-Token'
+CSRF_ORDER_PAY_RE = re.compile(r'^/api/orders/\d+/pay$')
+
+
+def _is_csrf_double_submit_path(path):
+    """Retorna True para rotas sensíveis de perfil e pagamento protegidas por double-submit cookie."""
+    if not path:
+        return False
+    if path == '/api/profile' or path.startswith('/api/profile/'):
+        return True
+    if path.startswith('/api/payments/'):
+        return True
+    return bool(CSRF_ORDER_PAY_RE.match(path))
+
+
+def _set_csrf_cookie(response, token=None):
+    """Emite cookie csrf_token legível pelo JS same-origin para validação double-submit."""
+    value = (token or secrets.token_urlsafe(32)).strip()
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        value,
+        max_age=int(app.config.get('PERMANENT_SESSION_LIFETIME', 43200)),
+        httponly=False,
+        samesite='Lax',
+        secure=bool(app.config.get('SESSION_COOKIE_SECURE', False)),
+        path='/',
+    )
+    g._csrf_cookie_set = True
+    return value
+
+
 @app.before_request
 def _csrf_origin_check():
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
@@ -184,6 +216,11 @@ def _csrf_origin_check():
             return None
         origin = request.headers.get('Origin')
         referer = request.headers.get('Referer')
+        if origin is None and referer is None:
+            return jsonify({
+                'error': 'Cabeçalho Origin ou Referer obrigatório para esta requisição.',
+                'code': 'CSRF_ORIGIN_REQUIRED',
+            }), 403
         host = (urlparse(f'//{request.host}').hostname or '').lower() if request.host else ''
         for hdr in (origin, referer):
             if hdr is not None:
@@ -191,6 +228,14 @@ def _csrf_origin_check():
                 hdr_host = (parsed.hostname or '').lower()
                 if not hdr_host or (host and hdr_host != host):
                     return jsonify({'error': 'Origem da requisição não autorizada.'}), 403
+        if _is_csrf_double_submit_path(request.path) and session.get('user_id'):
+            cookie_token = (request.cookies.get(CSRF_COOKIE_NAME) or '').strip()
+            header_token = (request.headers.get(CSRF_HEADER_NAME) or '').strip()
+            if not cookie_token or not header_token or not hmac.compare_digest(cookie_token, header_token):
+                return jsonify({
+                    'error': 'Token CSRF ausente ou inválido.',
+                    'code': 'CSRF_TOKEN_INVALID',
+                }), 403
 
 
 @app.after_request
@@ -223,6 +268,27 @@ def add_performance_and_security_headers(response):
         response.headers['Cache-Control'] = 'private, no-cache, must-revalidate'
 
     # Compressão Gzip automática (somente fora da Vercel, pois o Edge da Vercel já comprime nativamente)
+    is_static_asset = any(
+        path.endswith(ext) for ext in ('.css', '.js', '.webp', '.jpg', '.png', '.svg', '.ico', '.woff2', '.woff')
+    )
+    is_html_route = (
+        path == '/'
+        or path.endswith('.html')
+        or path in (
+            '/pedido', '/portal-cliente', '/portal-prestador', '/login', '/cadastro',
+            '/como-funciona', '/sobre-nos', '/termos', '/privacidade'
+        )
+    )
+    if (
+        not is_static_asset
+        and (path.startswith('/api/') or is_html_route)
+        and path != '/api/auth/logout'
+        and not path.startswith('/api/webhooks/')
+        and not request.cookies.get(CSRF_COOKIE_NAME)
+        and not getattr(g, '_csrf_cookie_set', False)
+    ):
+        _set_csrf_cookie(response)
+
     is_vercel = os.environ.get('VERCEL') == '1' or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
     accept_encoding = request.headers.get('Accept-Encoding', '')
     if (
@@ -939,7 +1005,7 @@ def register():
         session['user_nome'] = nome
         session['session_version'] = 1
 
-        return jsonify({
+        resp = make_response(jsonify({
             'message': 'Cadastro realizado com sucesso!',
             'user': {
                 'id': user_id,
@@ -963,7 +1029,9 @@ def register():
                 'cpf': cpf_limpo,
                 'status_conta': 'ativo'
             }
-        }), 201
+        }), 201)
+        _set_csrf_cookie(resp)
+        return resp
     except Exception as e:
         print(f"[register] error: {e}", file=sys.stderr)
         return jsonify({'error': 'Erro interno ao cadastrar usuário.'}), 500
@@ -1001,7 +1069,7 @@ def login():
     session['user_nome'] = user['nome']
     session['session_version'] = int(_row_get(user, 'session_version', 1) or 1)
 
-    return jsonify({
+    resp = make_response(jsonify({
         'message': 'Login realizado com sucesso!',
         'user': {
             'id': user['id'],
@@ -1026,13 +1094,28 @@ def login():
             'registro_profissional': _row_get(user, 'registro_profissional'),
             'status_conta': _row_get(user, 'status_conta', 'ativo')
         }
-    })
+    }))
+    _set_csrf_cookie(resp)
+    return resp
 
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
     session.clear()
-    return jsonify({'message': 'Sessão encerrada com sucesso.'})
+    resp = make_response(jsonify({'message': 'Sessão encerrada com sucesso.'}))
+    resp.delete_cookie(CSRF_COOKIE_NAME, path='/', samesite='Lax')
+    g._csrf_cookie_set = True
+    return resp
+
+
+@app.route('/api/auth/csrf', methods=['GET'])
+def get_csrf_token():
+    existing = (request.cookies.get(CSRF_COOKIE_NAME) or '').strip()
+    token = existing or secrets.token_urlsafe(32)
+    resp = make_response(jsonify({'csrf_token': token}), 200)
+    if not existing:
+        _set_csrf_cookie(resp, token=token)
+    return resp
 
 
 @app.route('/api/auth/forgot-password', methods=['POST'])

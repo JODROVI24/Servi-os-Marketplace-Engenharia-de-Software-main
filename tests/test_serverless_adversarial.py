@@ -440,13 +440,16 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             ('POST', '__path=ads/generate-description', json.dumps({'title': 'Pintura'}).encode('utf-8')),
         ]
         for method, qs, body in unauth_routes:
+            req_headers = {'Content-Type': 'application/json'}
+            if method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+                req_headers['Origin'] = 'http://localhost'
             status, _, _, resp_body, _ = invoke_wsgi(
                 vercel_api.app,
                 path_info='/api/index.py',
                 query_string=qs,
                 method=method,
                 body=body,
-                headers={'Content-Type': 'application/json'}
+                headers=req_headers
             )
             self.assertIn(
                 status,
@@ -462,7 +465,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             query_string='__path=auth/login',
             method='POST',
             body=payload,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
         )
         self.assertEqual(status, 401)
         data = json.loads(body.decode('utf-8'))
@@ -476,7 +479,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             query_string='__path=auth/register',
             method='POST',
             body=b'{}',
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
         )
         self.assertIn(status, [400, 422])
 
@@ -488,7 +491,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             query_string='__path=auth/register',
             method='POST',
             body=incomplete,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
         )
         self.assertIn(status, [400, 422])
 
@@ -537,17 +540,14 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             query_string='__path=auth/login',
             method='POST',
             body=login_payload,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
         )
         self.assertEqual(status, 200, f"Login failed: {body}")
-        cookie_header = None
-        for k, v in headers:
-            if k.lower() == 'set-cookie':
-                cookie_header = v.split(';')[0]
-                break
-        self.assertIsNotNone(cookie_header, "No Set-Cookie header received upon login.")
+        cookie_parts = [v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie']
+        self.assertTrue(cookie_parts, "No Set-Cookie header received upon login.")
+        cookie_header = '; '.join(cookie_parts)
 
-        auth_headers = {'Cookie': cookie_header, 'Content-Type': 'application/json'}
+        auth_headers = {'Cookie': cookie_header, 'Content-Type': 'application/json', 'Origin': 'http://localhost'}
 
         # 2. Check /api/auth/me with session
         status, _, _, body, _ = invoke_wsgi(
@@ -650,15 +650,13 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             query_string='__path=auth/login',
             method='POST',
             body=login_payload,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
         )
         self.assertEqual(status, 200, f"Login failed: {body}")
-        cookie_header = next(
-            (v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie'),
-            None
-        )
-        self.assertIsNotNone(cookie_header)
-        auth_headers = {'Cookie': cookie_header, 'Accept': 'application/json'}
+        cookie_parts = [v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie']
+        self.assertTrue(cookie_parts)
+        cookie_header = '; '.join(cookie_parts)
+        auth_headers = {'Cookie': cookie_header, 'Accept': 'application/json', 'Origin': 'http://localhost'}
 
         def _serverless_env(**overrides):
             env = dict(os.environ)
