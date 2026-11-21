@@ -64,11 +64,13 @@ Plataforma web completa desenvolvida para conectar clientes a profissionais e pr
 
 ---
 
-## 🔑 Credenciais de Demonstração (Seed Inicial)
+## 🔑 Credenciais de Demonstração (Somente Ambiente Local)
 
-O banco de dados SQLite (`marketplace.db`) já é inicializado automaticamente com os prestadores e serviços de exemplo:
+Por segurança, o seed de contas de demonstração vem **desabilitado por padrão (`ENABLE_DEMO_SEED=0`)** e é **estritamente proibido em produção (`VERCEL=1` ou `FLASK_ENV=production`)**.
 
-| Perfil | E-mail | Senha Padrão | Especialidade |
+Para popular contas de exemplo **apenas no seu ambiente local de desenvolvimento**, defina `ENABLE_DEMO_SEED=1` no seu `.env` local antes de inicializar o banco:
+
+| Perfil | E-mail (somente local) | Senha Local | Especialidade |
 | :--- | :--- | :--- | :--- |
 | **Prestador** | `carlos@pertoja.com` | `123456` | Limpeza Residencial |
 | **Prestador** | `joao@pertoja.com` | `123456` | Elétrica e Instalações |

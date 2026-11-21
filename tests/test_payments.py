@@ -41,7 +41,18 @@ class TestPaymentsSystem(unittest.TestCase):
         cls.temp_file.close()
         os.environ['MARKETPLACE_DB'] = cls.temp_file.name
         database.DB_PATH = cls.temp_file.name
-        database.init_db()
+        saved = {k: os.environ.get(k) for k in ('ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV')}
+        try:
+            os.environ['ENABLE_DEMO_SEED'] = '1'
+            os.environ.pop('VERCEL', None)
+            os.environ.pop('FLASK_ENV', None)
+            database.init_db()
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     @classmethod
     def tearDownClass(cls):

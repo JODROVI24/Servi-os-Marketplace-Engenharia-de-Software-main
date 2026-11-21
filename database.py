@@ -107,6 +107,23 @@ def get_active_engine():
     return engine
 
 
+def is_production_env():
+    """Retorna True quando executando em ambiente de produção (VERCEL=1/true ou FLASK_ENV=production)."""
+    vercel_flag = str(os.environ.get('VERCEL', '')).strip().lower()
+    flask_env = str(os.environ.get('FLASK_ENV', '')).strip().lower()
+    return vercel_flag in ('1', 'true') or flask_env == 'production'
+
+
+def is_demo_seed_enabled():
+    """
+    Contas e dados de demonstração são desabilitados por padrão ('0')
+    e estritamente proibidos em ambiente de produção.
+    """
+    if is_production_env():
+        return False
+    return str(os.environ.get('ENABLE_DEMO_SEED', '0')).strip().lower() in ('1', 'true', 'yes')
+
+
 def _resolve_db_path():
     """
     Resolve o caminho do banco SQLite.
@@ -1547,8 +1564,8 @@ def init_db():
         cursor.execute("DELETE FROM geocode_cache WHERE origem IN ('nominatim', 'seed')")
         conn.commit()
 
-        # Seed inicial e sincronização completa dos prestadores (condicionado a ENABLE_DEMO_SEED)
-        if os.environ.get('ENABLE_DEMO_SEED', '1') != '0':
+        # Seed inicial e sincronização completa dos prestadores (desabilitado por padrão e proibido em produção)
+        if is_demo_seed_enabled():
             cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
             if not cursor.fetchone():
                 pwd_hash = generate_password_hash('123456')
@@ -1645,6 +1662,8 @@ PRESTADORES_SEED_35 = [
 
 
 def sincronizar_todos_prestadores(conn):
+    if is_production_env():
+        return
     cursor = conn.cursor()
 
     # Otimização para serverless cold-starts: se já existem 35 prestadores, pula batch redundante

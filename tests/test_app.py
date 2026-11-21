@@ -19,7 +19,18 @@ class TestMarketplaceFull(unittest.TestCase):
         cls.temp_file.close()
         os.environ['MARKETPLACE_DB'] = cls.temp_file.name
         database.DB_PATH = cls.temp_file.name
-        database.init_db()
+        saved = {k: os.environ.get(k) for k in ('ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV')}
+        try:
+            os.environ['ENABLE_DEMO_SEED'] = '1'
+            os.environ.pop('VERCEL', None)
+            os.environ.pop('FLASK_ENV', None)
+            database.init_db()
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     @classmethod
     def tearDownClass(cls):
@@ -3104,6 +3115,64 @@ class TestMarketplaceFull(unittest.TestCase):
         ):
             self.assertIn(token, html_prest, f'Contrato DOM ausente em portal-prestador.html: {token}')
         self.assertNotIn('🤖 Assistente PertoJá (FreeLLMAPI)', html_prest)
+
+    def test_67_demo_seed_default_off_and_forbidden_in_production(self):
+        import tempfile
+        import database
+        from unittest.mock import patch
+
+        # 1. Padrão ENABLE_DEMO_SEED deve ser '0' (desabilitado)
+        clean_env = {k: v for k, v in os.environ.items() if k not in ('ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV')}
+        with patch.dict(os.environ, clean_env, clear=True):
+            self.assertFalse(database.is_demo_seed_enabled())
+
+        # 2. Habilitado apenas quando ENABLE_DEMO_SEED=1 fora de produção
+        with patch.dict(os.environ, {**clean_env, 'ENABLE_DEMO_SEED': '1'}, clear=True):
+            self.assertTrue(database.is_demo_seed_enabled())
+
+        # 3. Estritamente proibido em produção (VERCEL=1 ou FLASK_ENV=production), mesmo com ENABLE_DEMO_SEED=1
+        for prod_vars in ({'VERCEL': '1'}, {'FLASK_ENV': 'production'}):
+            with patch.dict(os.environ, {**clean_env, 'ENABLE_DEMO_SEED': '1', **prod_vars}, clear=True):
+                self.assertTrue(database.is_production_env())
+                self.assertFalse(database.is_demo_seed_enabled())
+
+        # 4. init_db() sem ENABLE_DEMO_SEED e em modo produção não popula contas demo e impede login demo
+        fd, tmp_db = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        orig_db = database.DB_PATH
+        try:
+            database.DB_PATH = tmp_db
+
+            # 4a) Default sem ENABLE_DEMO_SEED -> 0 usuários
+            with patch.dict(os.environ, {**clean_env, 'MARKETPLACE_DB': tmp_db}, clear=True):
+                database.init_db()
+                conn = database.get_db_connection()
+                try:
+                    cnt = conn.execute('SELECT COUNT(*) AS c FROM users').fetchone()['c']
+                finally:
+                    conn.close()
+                self.assertEqual(cnt, 0)
+
+            # 4b) Modo produção com ENABLE_DEMO_SEED=1 -> seed bloqueado, carlos@pertoja.com não loga
+            with patch.dict(os.environ, {**clean_env, 'MARKETPLACE_DB': tmp_db, 'FLASK_ENV': 'production', 'ENABLE_DEMO_SEED': '1'}, clear=True):
+                database.init_db()
+                conn = database.get_db_connection()
+                try:
+                    database.sincronizar_todos_prestadores(conn)
+                    cnt_prod = conn.execute('SELECT COUNT(*) AS c FROM users').fetchone()['c']
+                finally:
+                    conn.close()
+                self.assertEqual(cnt_prod, 0)
+
+                res_login = self.client.post(
+                    '/api/auth/login',
+                    json={'email': 'carlos@pertoja.com', 'senha': '123456'},
+                )
+                self.assertEqual(res_login.status_code, 401)
+        finally:
+            database.DB_PATH = orig_db
+            if os.path.exists(tmp_db):
+                os.remove(tmp_db)
 
 
 if __name__ == '__main__':

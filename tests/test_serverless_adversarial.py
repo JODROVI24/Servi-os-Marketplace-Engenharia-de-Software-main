@@ -313,13 +313,35 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         # Ensure temporary test DB
         cls.db_fd, cls.db_path = tempfile.mkstemp(suffix='.db')
         os.close(cls.db_fd)
+        cls._orig_db_path = None
+        cls._saved_env = {k: os.environ.get(k) for k in ('MARKETPLACE_DB', 'ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV')}
         os.environ['MARKETPLACE_DB'] = cls.db_path
         import database
+        cls._orig_db_path = database.DB_PATH
         database.DB_PATH = cls.db_path
-        database.init_db()
+        try:
+            os.environ['ENABLE_DEMO_SEED'] = '1'
+            os.environ.pop('VERCEL', None)
+            os.environ.pop('FLASK_ENV', None)
+            database.init_db()
+        finally:
+            for k in ('ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV'):
+                v = cls._saved_env[k]
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     @classmethod
     def tearDownClass(cls):
+        import database
+        if getattr(cls, '_orig_db_path', None) is not None:
+            database.DB_PATH = cls._orig_db_path
+        orig_mkt = getattr(cls, '_saved_env', {}).get('MARKETPLACE_DB')
+        if orig_mkt is None:
+            os.environ.pop('MARKETPLACE_DB', None)
+        else:
+            os.environ['MARKETPLACE_DB'] = orig_mkt
         try:
             if os.path.exists(cls.db_path):
                 os.remove(cls.db_path)
