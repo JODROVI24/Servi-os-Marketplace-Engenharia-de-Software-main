@@ -2394,3 +2394,14 @@ footer {
     }
 }
 
+/* Reserva de espaço mínimo para contêineres assíncronos (redução de CLS) */
+#destaques-home {
+    min-height: 220px;
+}
+
+#listaServicos,
+#listaPedidosRecebidos,
+#listaPedidosCliente {
+    min-height: 240px;
+}
+

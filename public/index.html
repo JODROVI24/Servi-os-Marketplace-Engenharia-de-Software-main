@@ -68,6 +68,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" href="img/eletrica.webp" type="image/webp" fetchpriority="high">
 
   <!-- CSS Global do Projeto + Tailwind CSS Compilado -->
   <link rel="stylesheet" href="style.css">
@@ -172,6 +173,13 @@
             <span class="text-xs font-extrabold uppercase tracking-wider text-perto-ok">A caminho · Chegada em <span class="tabular-nums">18 min</span></span>
           </div>
           <span class="text-xs font-bold text-perto-sea bg-perto-sea/10 px-2.5 py-0.5 rounded-full tabular-nums">1,2 km</span>
+        </div>
+
+        <div class="mb-3 overflow-hidden rounded-xl border border-perto-road bg-perto-bg">
+          <picture>
+            <source srcset="img/eletrica.webp" type="image/webp">
+            <img src="img/eletrica.jpg" alt="Atendimento elétrico profissional em andamento pelo PertoJá" width="340" height="120" loading="eager" decoding="async" fetchpriority="high" class="w-full h-[120px] object-cover block">
+          </picture>
         </div>
 
         <div class="flex items-center justify-between gap-3 mb-4">

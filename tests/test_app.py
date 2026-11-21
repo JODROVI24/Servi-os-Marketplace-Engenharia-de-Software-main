@@ -3756,6 +3756,64 @@ class TestMarketplaceFull(unittest.TestCase):
                 else:
                     os.environ[k] = v
 
+    def test_77_images_picture_webp_dimensions_and_fetchpriority(self):
+        import glob
+        import re
+
+        index_path = os.path.join(REPO_ROOT, 'public', 'index.html')
+        with open(index_path, 'r', encoding='utf-8') as f:
+            index_html = f.read()
+
+        # 1. Preload da imagem hero WebP com fetchpriority="high"
+        self.assertRegex(
+            index_html,
+            r'<link[^>]+rel=["\']preload["\'][^>]+as=["\']image["\'][^>]+href=["\']img/eletrica\.webp["\'][^>]+fetchpriority=["\']high["\']',
+        )
+
+        # 2. Todas as tags <img> em todas as páginas HTML devem declarar width e height explícitos
+        for html_path in sorted(glob.glob(os.path.join(REPO_ROOT, 'public', '*.html'))):
+            name = os.path.basename(html_path)
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_text = f.read()
+            for idx, m in enumerate(re.finditer(r'<img\b([^>]*)>', html_text, flags=re.IGNORECASE), start=1):
+                attrs = m.group(1)
+                self.assertRegex(attrs, r'\bwidth\s*=\s*["\']\d+["\']', f'{name} <img> #{idx} sem width explícito')
+                self.assertRegex(attrs, r'\bheight\s*=\s*["\']\d+["\']', f'{name} <img> #{idx} sem height explícito')
+
+        # 3. Cada <picture> em index.html deve conter <source type="image/webp"> existente em public/img/ e <img>
+        pictures = re.findall(r'<picture\b[^>]*>([\s\S]*?)</picture>', index_html, flags=re.IGNORECASE)
+        imgs_in_index = re.findall(r'<img\b[^>]*>', index_html, flags=re.IGNORECASE)
+        self.assertEqual(len(pictures), 8, f'Esperados 8 <picture> (1 hero + 7 categorias) em index.html; encontrado {len(pictures)}')
+        self.assertEqual(len(imgs_in_index), len(pictures), 'Todas as imagens de index.html devem usar <picture>')
+
+        for pic_inner in pictures:
+            m_src = re.search(r'<source[^>]+srcset=["\']([^"\']+\.webp)["\'][^>]+type=["\']image/webp["\']', pic_inner, flags=re.IGNORECASE)
+            self.assertIsNotNone(m_src, f'<picture> sem <source type="image/webp">: {pic_inner}')
+            webp_rel = m_src.group(1)
+            webp_abs = os.path.join(REPO_ROOT, 'public', webp_rel.replace('/', os.sep))
+            self.assertTrue(os.path.isfile(webp_abs), f'Arquivo WebP ausente: {webp_rel}')
+
+        # Hero eager + fetchpriority=high; 7 categorias abaixo da dobra lazy
+        self.assertEqual(
+            len(re.findall(r'<img\b[^>]*loading=["\']eager["\'][^>]*fetchpriority=["\']high["\']', index_html, flags=re.IGNORECASE)),
+            1,
+        )
+        self.assertEqual(
+            len(re.findall(r'<img\b[^>]*loading=["\']lazy["\']', index_html, flags=re.IGNORECASE)),
+            7,
+        )
+
+        # 4. Reserva de min-height para contêineres dinâmicos em public/style.css (redução de CLS)
+        style_path = os.path.join(REPO_ROOT, 'public', 'style.css')
+        with open(style_path, 'r', encoding='utf-8') as f:
+            css_text = f.read()
+        for selector_id in ('#destaques-home', '#listaServicos', '#listaPedidosRecebidos', '#listaPedidosCliente'):
+            self.assertRegex(
+                css_text,
+                re.escape(selector_id) + r'[^{]*\{[^}]*min-height\s*:',
+                f'Reserva min-height ausente para {selector_id} em public/style.css',
+            )
+
 
 if __name__ == '__main__':
     unittest.main()
