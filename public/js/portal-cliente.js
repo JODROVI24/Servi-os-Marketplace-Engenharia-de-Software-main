@@ -169,7 +169,7 @@
   }
 
   function escapeHtml(str) {
-    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function' && window.escapeHtml !== escapeHtml) {
       return window.escapeHtml(str);
     }
     if (str == null) return '';
@@ -182,13 +182,16 @@
   }
 
   function sanitizarUrlSegura(url, fallback = '#') {
-    if (typeof window !== 'undefined' && typeof window.sanitizarUrlSegura === 'function') {
+    if (typeof window !== 'undefined' && typeof window.sanitizarUrlSegura === 'function' && window.sanitizarUrlSegura !== sanitizarUrlSegura) {
       return window.sanitizarUrlSegura(url, fallback);
     }
-    if (typeof url !== 'string' || /^(javascript|data|vbscript):/i.test(url.trim()) || url.trim().startsWith('//')) {
+    if (typeof url !== 'string') return fallback;
+    const trimmed = url.trim();
+    if (!trimmed || /[\u0000-\u001F\u007F\\]/.test(trimmed)) return fallback;
+    if (/^(javascript|data|vbscript|file):/i.test(trimmed) || trimmed.startsWith('//')) {
       return fallback;
     }
-    return url.trim() || fallback;
+    return trimmed;
   }
 
   function setStatusText(el, text, className = 'text-xs text-perto-ink/80') {

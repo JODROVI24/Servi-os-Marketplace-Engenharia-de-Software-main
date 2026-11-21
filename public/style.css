@@ -133,6 +133,10 @@ input[type="number"],
 .material-symbols-outlined {
     font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
     display: inline-block;
+    width: 1em;
+    height: 1em;
+    overflow: hidden;
+    white-space: nowrap;
     vertical-align: -0.15em;
     line-height: 1;
     flex-shrink: 0;
@@ -204,6 +208,8 @@ header.site-header {
     background: var(--card);
     color: var(--ink);
     padding: 14px 5%;
+    min-height: 70px;
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -231,6 +237,8 @@ header.site-header {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
     font-weight: 900;
     font-size: 1.5rem;
     letter-spacing: -0.5px;
@@ -274,6 +282,32 @@ header.site-header {
     align-items: center;
     gap: 6px;
     transition: all 0.2s ease;
+}
+
+@media (min-width: 769px) {
+    header.site-header {
+        min-height: 72px;
+    }
+
+    header.site-header #formBuscaHeader {
+        min-width: 0;
+        max-width: 240px;
+        margin-left: 12px;
+        margin-right: 12px;
+    }
+
+    .menu-principal {
+        flex-wrap: nowrap;
+        flex-shrink: 0;
+        gap: 6px;
+    }
+
+    .menu-principal a {
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding: 8px 12px;
+        font-size: 0.875rem;
+    }
 }
 
 .menu-principal a:hover,
@@ -2403,5 +2437,32 @@ footer {
 #listaPedidosRecebidos,
 #listaPedidosCliente {
     min-height: 240px;
+}
+
+#prestadorNome {
+    min-height: 36px;
+}
+
+#prestadorEmail {
+    min-height: 20px;
+    line-height: 20px;
+}
+
+#kpiIsencaoTexto {
+    display: block;
+    min-height: 34px;
+    line-height: 17px;
+}
+
+.kpi-grid .kpi-card {
+    min-height: 132px;
+}
+
+.product-preview-frame {
+    min-height: 396px;
+}
+
+.product-preview-frame > div:nth-child(3) {
+    min-height: 58px;
 }
 

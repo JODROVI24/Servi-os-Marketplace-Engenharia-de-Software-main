@@ -41,7 +41,7 @@
   const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   function escapeHtml(texto) {
-    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function' && window.escapeHtml !== escapeHtml) {
       return window.escapeHtml(texto);
     }
     return String(texto ?? '')
