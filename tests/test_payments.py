@@ -172,7 +172,8 @@ class TestPaymentsSystem(unittest.TestCase):
                 self.assertTrue(by_id[gid]['configured'])
 
         # VERCEL=1 sem ENABLE_PAYMENT_SANDBOX -> sandbox desabilitado (fail-closed)
-        with patch.dict(os.environ, {'VERCEL': '1'}, clear=False):
+        with patch.dict(os.environ, {'VERCEL': '1'}, clear=False), \
+             patch('database.ensure_production_database'):
             os.environ.pop('ENABLE_PAYMENT_SANDBOX', None)
             res_prod = self.client.get('/api/payments/config')
             self.assertEqual(res_prod.status_code, 200)
@@ -422,7 +423,8 @@ class TestPaymentsSystem(unittest.TestCase):
         self.assertEqual(res_intent.status_code, 201)
         payment_id = json.loads(res_intent.data)['payment_id']
 
-        with patch.dict(os.environ, {'VERCEL': '1'}, clear=False):
+        with patch.dict(os.environ, {'VERCEL': '1'}, clear=False), \
+             patch('database.ensure_production_database'):
             os.environ.pop('ENABLE_PAYMENT_SANDBOX', None)
             res_new_intent = self.client.post('/api/payments/intents', json={
                 'order_id': order_id,

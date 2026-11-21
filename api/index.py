@@ -13,7 +13,7 @@ marketplace_dir = root_dir
 if marketplace_dir not in sys.path:
     sys.path.insert(0, marketplace_dir)
 
-# Sinaliza ambiente Vercel para fallback automático do SQLite em /tmp
+# Sinaliza ambiente Vercel para guardrails de produção (PostgreSQL e SECRET_KEY obrigatórios)
 if os.environ.get('VERCEL') == '1' or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ:
     os.environ['VERCEL'] = '1'
 
@@ -69,10 +69,14 @@ class VercelPathNormalizerWSGI:
 def _init_marketplace_app():
     """
     Carrega a aplicação Flask do Marketplace e acopla o middleware WSGI.
-    Retorna a instância Flask ou uma aplicação de erro estruturada caso ocorra exceção.
+    Retorna a instância Flask ou uma aplicação de erro estruturada caso ocorra exceção inesperada.
+    Falhas explícitas de configuração em produção (RuntimeError) recusam a inicialização.
     """
     try:
         app_file = os.path.join(marketplace_dir, 'app.py')
+        if os.path.isfile(app_file):
+            import database
+            database.ensure_production_database()
         spec = importlib.util.spec_from_file_location("pertoja_marketplace_backend", app_file)
         backend_module = importlib.util.module_from_spec(spec)
         sys.modules["pertoja_marketplace_backend"] = backend_module
@@ -81,6 +85,8 @@ def _init_marketplace_app():
         if not isinstance(target_app.wsgi_app, VercelPathNormalizerWSGI):
             target_app.wsgi_app = VercelPathNormalizerWSGI(target_app.wsgi_app)
         return target_app
+    except RuntimeError:
+        raise
     except Exception as exc:
         err_detail = str(exc)
         err_tb = traceback.format_exc()

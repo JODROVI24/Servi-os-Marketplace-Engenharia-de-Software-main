@@ -681,7 +681,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         with patch.dict(os.environ, _serverless_env(
             VERCEL='1',
             FREELLM_API_BASE_URL='http://localhost:3001/v1',
-        ), clear=True):
+        ), clear=True), patch('database.ensure_production_database'):
             status, _, _, body, _ = invoke_wsgi(
                 vercel_api.app,
                 path_info='/chat/health',
@@ -703,7 +703,7 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             VERCEL='1',
             FREELLM_API_BASE_URL='http://localhost:3001/v1',
             GROQ_API_KEY=secret_key,
-        ), clear=True):
+        ), clear=True), patch('database.ensure_production_database'):
             status, _, _, body, _ = invoke_wsgi(
                 vercel_api.app,
                 path_info='/api/index.py',

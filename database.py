@@ -82,6 +82,11 @@ def resolve_database_url():
     if url.startswith('postgres://'):
         url = 'postgresql://' + url[len('postgres://'):]
 
+    if not url.startswith('postgresql://'):
+        raise RuntimeError(
+            'DATABASE_URL inválida: apenas URLs PostgreSQL (postgresql:// ou postgres://) são suportadas.'
+        )
+
     parsed = urllib.parse.urlsplit(url)
     hostname = parsed.hostname or ''
     is_local = hostname in ('localhost', '127.0.0.1', '')
@@ -122,6 +127,21 @@ def is_demo_seed_enabled():
     if is_production_env():
         return False
     return str(os.environ.get('ENABLE_DEMO_SEED', '0')).strip().lower() in ('1', 'true', 'yes')
+
+
+def ensure_production_database():
+    """
+    Em produção (VERCEL=1 ou FLASK_ENV=production), exige PostgreSQL configurado
+    e proíbe fallback silencioso para SQLite efêmero em /tmp.
+    """
+    if not is_production_env():
+        return
+    url, engine = resolve_database_url()
+    if engine != 'postgresql' or not url:
+        raise RuntimeError(
+            'DATABASE_URL (ou POSTGRES_URL / POSTGRES_URL_NON_POOLING) com PostgreSQL é obrigatória em produção '
+            '(VERCEL=1 ou FLASK_ENV=production). Fallback para SQLite em /tmp não é permitido em produção.'
+        )
 
 
 def _resolve_db_path():
@@ -460,7 +480,9 @@ def get_db_connection():
     if engine == 'postgresql' and url:
         return _connect_postgres(url)
 
-    # Fallback transparente para SQLite local
+    ensure_production_database()
+
+    # Fallback transparente para SQLite local (apenas desenvolvimento/testes)
     db_abs = os.path.abspath(DB_PATH)
     parent_dir = os.path.dirname(db_abs)
     if parent_dir:
@@ -1526,6 +1548,7 @@ def _cleanup_legacy_payment_tables(conn, cursor, engine):
 
 
 def init_db():
+    ensure_production_database()
     engine = get_active_engine()
     conn = get_db_connection()
     cursor = conn.cursor()

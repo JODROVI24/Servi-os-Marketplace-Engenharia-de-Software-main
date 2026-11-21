@@ -2711,7 +2711,7 @@ class TestMarketplaceFull(unittest.TestCase):
         with patch.dict(os.environ, _clean_llm_env(
             VERCEL='1',
             FREELLM_API_BASE_URL='http://localhost:3001/v1',
-        ), clear=True):
+        ), clear=True), patch('database.ensure_production_database'):
             res_h_sv_local = self.client.get('/api/chat/health')
             self.assertEqual(res_h_sv_local.status_code, 200)
             h_sv = json.loads(res_h_sv_local.data)
@@ -2989,7 +2989,7 @@ class TestMarketplaceFull(unittest.TestCase):
             VERCEL='1',
             FREELLM_API_BASE_URL='http://localhost:3001/v1',
             LLM_STRICT_MODE='0',
-        ), clear=True):
+        ), clear=True), patch('database.ensure_production_database'):
             with patch.object(app_mod, 'openai', None):
                 with patch('app.requests.post') as mock_post_sv:
                     res_sv_block = self.client.post('/api/chat/support', json={
@@ -3006,7 +3006,7 @@ class TestMarketplaceFull(unittest.TestCase):
             VERCEL='1',
             FREELLM_API_BASE_URL='http://localhost:3001/v1',
             GROQ_API_KEY=secret_groq,
-        ), clear=True):
+        ), clear=True), patch('database.ensure_production_database'):
             with patch.object(app_mod, 'openai', None):
                 called_sv_urls = []
                 def post_sv_cloud_only(url, json=None, headers=None, timeout=None):
@@ -3153,7 +3153,8 @@ class TestMarketplaceFull(unittest.TestCase):
                 self.assertEqual(cnt, 0)
 
             # 4b) Modo produção com ENABLE_DEMO_SEED=1 -> seed bloqueado, carlos@pertoja.com não loga
-            with patch.dict(os.environ, {**clean_env, 'MARKETPLACE_DB': tmp_db, 'FLASK_ENV': 'production', 'ENABLE_DEMO_SEED': '1'}, clear=True):
+            with patch.dict(os.environ, {**clean_env, 'MARKETPLACE_DB': tmp_db, 'FLASK_ENV': 'production', 'ENABLE_DEMO_SEED': '1'}, clear=True), \
+                 patch('database.ensure_production_database'):
                 database.init_db()
                 conn = database.get_db_connection()
                 try:
@@ -3238,6 +3239,62 @@ class TestMarketplaceFull(unittest.TestCase):
                 app_mod._hash_ip('127.0.0.1')
         finally:
             app.secret_key = orig_secret
+
+    def test_69_production_requires_postgres_database_url(self):
+        import subprocess
+        import database
+        from unittest.mock import patch
+
+        clean_base = {
+            k: v for k, v in os.environ.items()
+            if k not in ('DATABASE_URL', 'POSTGRES_URL', 'POSTGRES_URL_NON_POOLING', 'VERCEL', 'FLASK_ENV')
+        }
+
+        # 1. VERCEL=1 sem DATABASE_URL/POSTGRES_URL -> falha fechada (RuntimeError)
+        with patch.dict(os.environ, {**clean_base, 'VERCEL': '1'}, clear=True):
+            with self.assertRaises(RuntimeError):
+                database.ensure_production_database()
+            with self.assertRaises(RuntimeError):
+                database.init_db()
+            with self.assertRaises(RuntimeError):
+                database.get_db_connection()
+
+        # 2. FLASK_ENV=production sem PostgreSQL -> RuntimeError
+        with patch.dict(os.environ, {**clean_base, 'FLASK_ENV': 'production'}, clear=True):
+            with self.assertRaises(RuntimeError):
+                database.ensure_production_database()
+
+        # 3. URL SQLite inválida em DATABASE_URL -> rejeitada em resolve_database_url()
+        with patch.dict(os.environ, {**clean_base, 'VERCEL': '1', 'DATABASE_URL': 'sqlite:///tmp/fake.db'}, clear=True):
+            with self.assertRaises(RuntimeError):
+                database.resolve_database_url()
+
+        # 4. PostgreSQL configurado (ex.: Neon / Supabase) -> aceito em produção
+        with patch.dict(os.environ, {**clean_base, 'VERCEL': '1', 'DATABASE_URL': 'postgres://user:pass@ep-demo.neon.tech/neondb'}, clear=True):
+            database.ensure_production_database()
+            norm_url, eng = database.resolve_database_url()
+            self.assertEqual(eng, 'postgresql')
+            self.assertTrue(norm_url.startswith('postgresql://'))
+            self.assertIn('sslmode=require', norm_url)
+
+        # 5. Subprocesso isolado: app e api.index recusam subir em produção sem Postgres URL
+        for stmt in ('import app', 'import api.index'):
+            sub_env = os.environ.copy()
+            sub_env['VERCEL'] = '1'
+            sub_env['SECRET_KEY'] = 's' * 40
+            sub_env['DATABASE_URL'] = ''
+            sub_env['POSTGRES_URL'] = ''
+            sub_env['POSTGRES_URL_NON_POOLING'] = ''
+            sub_env.pop('FLASK_ENV', None)
+            res_sub = subprocess.run(
+                [sys.executable, '-c', stmt],
+                cwd=REPO_ROOT,
+                env=sub_env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(res_sub.returncode, 0, f'{stmt} deveria falhar sem Postgres em produção')
+            self.assertIn('RuntimeError', res_sub.stderr)
 
 
 if __name__ == '__main__':
