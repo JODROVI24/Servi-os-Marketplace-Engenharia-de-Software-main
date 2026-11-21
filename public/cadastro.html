@@ -106,7 +106,7 @@
         <div class="campo-form mb-4">
           <div class="tipo-conta-selector grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Tipo de conta">
             <label class="radio-card ativo flex items-start gap-3 p-3.5 border-2 border-perto-sea bg-[#eef6f9] rounded-xl cursor-pointer transition-all" id="lblCliente">
-              <input type="radio" name="tipo" value="cliente" checked onchange="alternarTipo('cliente')" class="mt-1 text-perto-sea focus:ring-perto-sea">
+              <input type="radio" name="tipo" value="cliente" checked class="mt-1 text-perto-sea focus:ring-perto-sea">
               <div>
                 <b class="text-sm text-perto-ink block">Sou Cliente</b>
                 <small class="text-xs text-perto-ink/85 font-body">Quero encontrar e contratar profissionais.</small>
@@ -114,7 +114,7 @@
             </label>
 
             <label class="radio-card flex items-start gap-3 p-3.5 border-2 border-perto-road bg-white rounded-xl cursor-pointer transition-all" id="lblPrestador">
-              <input type="radio" name="tipo" value="prestador" onchange="alternarTipo('prestador')" class="mt-1 text-perto-sea focus:ring-perto-sea">
+              <input type="radio" name="tipo" value="prestador" class="mt-1 text-perto-sea focus:ring-perto-sea">
               <div>
                 <b class="text-sm text-perto-ink block">Sou Prestador</b>
                 <small class="text-xs text-perto-ink/85 font-body">Quero oferecer meus serviços e definir preços.</small>
@@ -177,7 +177,7 @@
           </div>
 
           <div id="step1Actions" class="pt-2 flex justify-end" style="display: none;">
-            <button type="button" id="btnStep1Next" onclick="irParaEtapa(2)" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
+            <button type="button" id="btnStep1Next" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
               Continuar
               <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
             </button>
@@ -197,7 +197,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div class="campo-form sm:col-span-1">
               <label for="cep" class="text-xs font-bold text-perto-ink uppercase tracking-wider">CEP</label>
-              <input type="text" id="cep" maxlength="9" placeholder="Ex: 01310-100" class="input-form text-sm font-bold text-perto-ink tabular-nums" onblur="buscarCEP(this.value)">
+              <input type="text" id="cep" maxlength="9" placeholder="Ex: 01310-100" class="input-form text-sm font-bold text-perto-ink tabular-nums">
             </div>
             <div class="campo-form sm:col-span-2">
               <label for="endereco" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Rua / Avenida</label>
@@ -227,11 +227,11 @@
           <input type="hidden" id="lng">
 
           <div id="step2Actions" class="pt-3 flex items-center justify-between gap-3" style="display: none;">
-            <button type="button" id="btnStep2Back" onclick="irParaEtapa(1)" class="btn-neutral px-5 py-3 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
+            <button type="button" id="btnStep2Back" class="btn-neutral px-5 py-3 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
               <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
               Voltar
             </button>
-            <button type="button" id="btnStep2Next" onclick="irParaEtapa(3)" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
+            <button type="button" id="btnStep2Next" class="btn px-6 py-3 rounded-full text-sm font-extrabold text-perto-ink">
               Continuar
               <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
             </button>
@@ -252,7 +252,7 @@
 
           <div class="campo-form">
             <label for="plano" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Plano de Parceiro</label>
-            <select id="plano" class="input-form text-sm font-bold" onchange="atualizarBadgePlano()">
+            <select id="plano" class="input-form text-sm font-bold">
               <option value="basico">Plano Básico (Taxa 12% · Isento até R$ 1.800/mês)</option>
               <option value="pro">Plano Pro (Taxa 8% · Gestão Avançada · 1º mês grátis)</option>
             </select>
@@ -305,7 +305,7 @@
           </div>
 
           <div id="step3Actions" class="pt-1 flex items-center justify-start">
-            <button type="button" id="btnStep3Back" onclick="irParaEtapa(2)" class="btn-neutral px-5 py-2.5 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
+            <button type="button" id="btnStep3Back" class="btn-neutral px-5 py-2.5 rounded-full text-sm font-bold inline-flex items-center gap-1.5">
               <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
               Voltar
             </button>
@@ -376,333 +376,9 @@
   </footer>
 
   <!-- Scripts do PertoJá -->
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const redirectParam = urlParams.get('redirect');
-    const tipoParam = urlParams.get('tipo');
-    const planoParam = urlParams.get('plano');
-    const emailParam = urlParams.get('email');
-    const hasPendingOrder = urlParams.get('pending_order') === 'true' || !!sessionStorage.getItem('pertoja_pending_order');
-
-    function sanitizarRedirectInterno(raw, fallback = 'portal-cliente.html') {
-      if (typeof raw !== 'string' || !raw) return fallback;
-      if (/^[\s\u0000-\u001F\u007F]/.test(raw) || /[\u0000-\u001F\u007F\\]/.test(raw)) {
-        return fallback;
-      }
-      if (/^(javascript|data|vbscript):/i.test(raw) || raw.startsWith('//')) {
-        return fallback;
-      }
-      try {
-        const url = new URL(raw, window.location.origin);
-        if (url.origin !== window.location.origin) return fallback;
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') return fallback;
-        const paginasPermitidas = new Set([
-          '/index.html', '/index',
-          '/pedido.html', '/pedido',
-          '/portal-cliente.html', '/portal-cliente',
-          '/portal-prestador.html', '/portal-prestador',
-          '/como-funciona.html', '/como-funciona',
-          '/cadastro.html', '/cadastro',
-          '/sobre-nos.html', '/sobre-nos',
-          '/termos.html', '/termos',
-          '/privacidade.html', '/privacidade'
-        ]);
-        if (!paginasPermitidas.has(url.pathname)) return fallback;
-        return url.pathname + url.search + url.hash;
-      } catch (e) {
-        return fallback;
-      }
-    }
-
-    let etapaAtualPrestador = 1;
-
-    if (redirectParam || hasPendingOrder) {
-      const alerta = document.getElementById('alerta-redirect');
-      if (alerta) alerta.style.display = 'flex';
-
-      const linkLogin = document.getElementById('linkParaLogin');
-      if (linkLogin) {
-        const dest = redirectParam ? sanitizarRedirectInterno(redirectParam, 'pedido.html') : 'pedido.html';
-        linkLogin.href = `login.html?redirect=${encodeURIComponent(dest)}${hasPendingOrder ? '&pending_order=true' : ''}`;
-      }
-    }
-
-    function atualizarBadgePlano() {
-      const planoEl = document.getElementById('plano');
-      const badgeEl = document.getElementById('planoSelecionadoBadge');
-      if (!planoEl || !badgeEl) return;
-      const isPro = planoEl.value === 'pro';
-      badgeEl.textContent = isPro ? 'Plano Pro · Taxa 8%' : 'Plano Básico · Taxa 12%';
-    }
-
-    function atualizarVisualStepper() {
-      const tipo = document.querySelector('input[name="tipo"]:checked')?.value || 'cliente';
-      const stepper = document.getElementById('stepperPrestador');
-      const s1 = document.getElementById('step1Campos');
-      const s2 = document.getElementById('step2Campos');
-      const s3 = document.getElementById('campos-prestador');
-      const a1 = document.getElementById('step1Actions');
-      const a2 = document.getElementById('step2Actions');
-      const btnSubmit = document.getElementById('btnSubmitCadastro');
-
-      if (tipo !== 'prestador') {
-        if (stepper) stepper.style.display = 'none';
-        if (s1) s1.style.display = 'block';
-        if (s2) s2.style.display = 'block';
-        if (s3) s3.style.display = 'none';
-        if (a1) a1.style.display = 'none';
-        if (a2) a2.style.display = 'none';
-        if (btnSubmit) btnSubmit.style.display = 'flex';
-        return;
-      }
-
-      if (stepper) {
-        stepper.style.display = 'flex';
-        stepper.querySelectorAll('.stepper-step').forEach((el) => {
-          const stepNum = parseInt(el.dataset.step, 10);
-          el.classList.toggle('active', stepNum === etapaAtualPrestador);
-          el.classList.toggle('done', stepNum < etapaAtualPrestador);
-        });
-      }
-
-      if (s1) s1.style.display = etapaAtualPrestador === 1 ? 'block' : 'none';
-      if (s2) s2.style.display = etapaAtualPrestador === 2 ? 'block' : 'none';
-      if (s3) s3.style.display = etapaAtualPrestador === 3 ? 'block' : 'none';
-      if (a1) a1.style.display = etapaAtualPrestador === 1 ? 'flex' : 'none';
-      if (a2) a2.style.display = etapaAtualPrestador === 2 ? 'flex' : 'none';
-      if (btnSubmit) btnSubmit.style.display = etapaAtualPrestador === 3 ? 'flex' : 'none';
-    }
-
-    function validarEtapaAtual(etapa) {
-      const erroDiv = document.getElementById('mensagem-erro');
-      if (erroDiv) erroDiv.style.display = 'none';
-
-      if (etapa === 1) {
-        const nome = document.getElementById('nome');
-        const email = document.getElementById('email');
-        const telefone = document.getElementById('telefone');
-        const senha = document.getElementById('senha');
-        for (const field of [nome, email, telefone, senha]) {
-          if (field && !field.checkValidity()) {
-            field.reportValidity();
-            return false;
-          }
-        }
-        const checkPwd = typeof window.validarPoliticaSenhaLocal === 'function'
-          ? window.validarPoliticaSenhaLocal(senha ? senha.value : '', 'A senha')
-          : { valid: Boolean(senha && senha.value.length >= 10), message: 'A senha deve conter no mínimo 10 caracteres.' };
-        if (!checkPwd.valid) {
-          if (erroDiv) {
-            erroDiv.textContent = checkPwd.message;
-            erroDiv.style.display = 'block';
-          }
-          return false;
-        }
-      } else if (etapa === 2) {
-        const step2Inputs = document.querySelectorAll('#step2Campos input');
-        for (const field of step2Inputs) {
-          if (field.type !== 'hidden' && !field.checkValidity()) {
-            field.reportValidity();
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
-    function irParaEtapa(novaEtapa) {
-      if (novaEtapa > etapaAtualPrestador && !validarEtapaAtual(etapaAtualPrestador)) {
-        return;
-      }
-      etapaAtualPrestador = Math.max(1, Math.min(3, novaEtapa));
-      atualizarVisualStepper();
-    }
-
-    function alternarTipo(tipo) {
-      const lblCliente = document.getElementById('lblCliente');
-      const lblPrestador = document.getElementById('lblPrestador');
-
-      if (tipo === 'prestador') {
-        etapaAtualPrestador = 1;
-        lblPrestador.classList.add('ativo');
-        lblPrestador.style.borderColor = 'var(--sea)';
-        lblPrestador.style.background = '#eef6f9';
-        lblCliente.classList.remove('ativo');
-        lblCliente.style.borderColor = 'var(--road)';
-        lblCliente.style.background = '#ffffff';
-      } else {
-        lblCliente.classList.add('ativo');
-        lblCliente.style.borderColor = 'var(--sea)';
-        lblCliente.style.background = '#eef6f9';
-        lblPrestador.classList.remove('ativo');
-        lblPrestador.style.borderColor = 'var(--road)';
-        lblPrestador.style.background = '#ffffff';
-      }
-      atualizarVisualStepper();
-    }
-
-    // Pré-preenchimento via querystring (?tipo=, ?plano=, ?email=) (PA-03)
-    if (emailParam) {
-      const emailEl = document.getElementById('email');
-      if (emailEl) emailEl.value = emailParam;
-    }
-    if (planoParam === 'pro' || planoParam === 'basico') {
-      const planoEl = document.getElementById('plano');
-      if (planoEl) planoEl.value = planoParam;
-    }
-    atualizarBadgePlano();
-    if (tipoParam === 'prestador' || planoParam) {
-      const radioPrestador = document.querySelector('input[name="tipo"][value="prestador"]');
-      if (radioPrestador) radioPrestador.checked = true;
-      alternarTipo('prestador');
-    }
-
-    async function buscarCEP(cepVal) {
-      if (!cepVal) return;
-      const cepClean = cepVal.replace(/\D/g, '');
-      if (cepClean.length !== 8) return;
-
-      const statusEl = document.getElementById('cepStatus');
-      if (statusEl) statusEl.textContent = 'Buscando CEP...';
-
-      try {
-        const res = await fetch(`/api/cep/${cepClean}`);
-        if (res.ok) {
-          const d = await res.json();
-          document.getElementById('endereco').value = d.logradouro || '';
-          document.getElementById('bairro').value = d.bairro || '';
-          document.getElementById('cidade').value = d.localidade || '';
-          document.getElementById('estado').value = d.uf || '';
-          if (d.lat && d.lng) {
-            document.getElementById('lat').value = d.lat;
-            document.getElementById('lng').value = d.lng;
-          }
-          if (statusEl) statusEl.textContent = '✓ Endereço preenchido!';
-          document.getElementById('numero').focus();
-        } else {
-          if (statusEl) statusEl.textContent = 'CEP não encontrado.';
-        }
-      } catch (err) {
-        if (statusEl) statusEl.textContent = 'Falha ao buscar CEP.';
-      }
-    }
-
-    document.getElementById('formCadastro').onsubmit = async (e) => {
-      e.preventDefault();
-      const erroDiv = document.getElementById('mensagem-erro');
-      erroDiv.style.display = 'none';
-
-      const aceiteEl = document.getElementById('aceiteTermos');
-      if (!aceiteEl || !aceiteEl.checked) {
-        erroDiv.textContent = 'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar sua conta.';
-        erroDiv.style.display = 'block';
-        if (aceiteEl) aceiteEl.focus();
-        return;
-      }
-
-      const tipo = document.querySelector('input[name="tipo"]:checked').value;
-      const payload = {
-        nome: document.getElementById('nome').value,
-        email: document.getElementById('email').value,
-        telefone: document.getElementById('telefone').value,
-        senha: document.getElementById('senha').value,
-        tipo: tipo,
-        cep: document.getElementById('cep').value,
-        endereco: document.getElementById('endereco').value,
-        numero: document.getElementById('numero').value,
-        bairro: document.getElementById('bairro').value,
-        cidade: document.getElementById('cidade').value,
-        estado: document.getElementById('estado').value,
-        lat: document.getElementById('lat').value ? parseFloat(document.getElementById('lat').value) : null,
-        lng: document.getElementById('lng').value ? parseFloat(document.getElementById('lng').value) : null,
-        aceite_termos: Boolean(aceiteEl.checked),
-        versao_termos: '2026.1'
-      };
-
-      if (!payload.nome || !payload.email || !payload.telefone) {
-        if (tipo === 'prestador') {
-          etapaAtualPrestador = 1;
-          atualizarVisualStepper();
-        }
-        erroDiv.textContent = 'Preencha nome, e-mail e telefone para continuar.';
-        erroDiv.style.display = 'block';
-        return;
-      }
-
-      const checkPwdSubmit = typeof window.validarPoliticaSenhaLocal === 'function'
-        ? window.validarPoliticaSenhaLocal(payload.senha, 'A senha')
-        : { valid: Boolean(payload.senha && payload.senha.length >= 10), message: 'A senha deve conter no mínimo 10 caracteres.' };
-      if (!checkPwdSubmit.valid) {
-        if (tipo === 'prestador') {
-          etapaAtualPrestador = 1;
-          atualizarVisualStepper();
-        }
-        erroDiv.textContent = checkPwdSubmit.message;
-        erroDiv.style.display = 'block';
-        return;
-      }
-
-      if (tipo === 'prestador') {
-        payload.categoria = document.getElementById('categoria').value;
-        const precoVal = parseFloat(document.getElementById('preco_inicial').value);
-        payload.preco_inicial = (!isNaN(precoVal) && precoVal > 0) ? precoVal : 100.0;
-        payload.bio = document.getElementById('bio').value;
-        payload.plano = document.getElementById('plano')?.value || 'basico';
-        payload.kyc_documento_tipo = document.getElementById('kycDocumentoTipo')?.value || 'RG';
-        const regProf = (document.getElementById('registroProfissional')?.value || '').trim();
-        if (regProf) payload.registro_profissional = regProf;
-      }
-
-      try {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const rawText = await res.text();
-        let data = {};
-        try {
-          data = rawText ? JSON.parse(rawText) : {};
-        } catch (parseErr) {
-          erroDiv.textContent = `Erro na resposta da API (HTTP ${res.status}).`;
-          erroDiv.style.display = 'block';
-          return;
-        }
-
-        if (!res.ok) {
-          if (data.code === 'PASSWORD_TOO_SHORT' || data.code === 'PASSWORD_PWNED') {
-            if (tipo === 'prestador') {
-              etapaAtualPrestador = 1;
-              atualizarVisualStepper();
-            }
-            const senhaEl = document.getElementById('senha');
-            if (senhaEl) senhaEl.focus();
-          }
-          erroDiv.textContent = data.error || `Erro ao realizar cadastro (HTTP ${res.status}).`;
-          erroDiv.style.display = 'block';
-          return;
-        }
-
-        if (tipo === 'prestador') {
-          window.location.href = 'portal-prestador.html';
-        } else {
-          // Validação estrita contra open-redirect e pseudo-esquemas
-          if (redirectParam) {
-            window.location.href = sanitizarRedirectInterno(redirectParam, 'portal-cliente.html');
-          } else if (hasPendingOrder) {
-            window.location.href = 'pedido.html?restore_order=true';
-          } else {
-            window.location.href = 'portal-cliente.html';
-          }
-        }
-      } catch (err) {
-        erroDiv.textContent = 'Erro ao conectar ao servidor.';
-        erroDiv.style.display = 'block';
-      }
-    };
-  </script>
   <!-- Scripts do PertoJá com execução diferida -->
   <script src="auth.js" defer></script>
+  <script src="js/cadastro.js" defer></script>
 </body>
 
 </html>

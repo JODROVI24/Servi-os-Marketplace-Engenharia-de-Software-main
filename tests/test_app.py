@@ -2611,13 +2611,19 @@ class TestMarketplaceFull(unittest.TestCase):
         # i) Verificação de contrato DOM no frontend
         with open(os.path.join(REPO_ROOT, 'public', 'portal-prestador.html'), 'r', encoding='utf-8') as f:
             html_prest = f.read()
+        with open(os.path.join(REPO_ROOT, 'public', 'js', 'portal-prestador.js'), 'r', encoding='utf-8') as f:
+            js_prest = f.read()
+        prest_bundle = html_prest + '\n' + js_prest
         for token in ('btnGerarDescricaoIA', 'gerarDescricaoServicoIA', 'modalSuporteIA', 'formSuporteIA'):
-            self.assertIn(token, html_prest)
+            self.assertIn(token, prest_bundle)
 
         with open(os.path.join(REPO_ROOT, 'public', 'portal-cliente.html'), 'r', encoding='utf-8') as f:
             html_cli = f.read()
+        with open(os.path.join(REPO_ROOT, 'public', 'js', 'portal-cliente.js'), 'r', encoding='utf-8') as f:
+            js_cli = f.read()
+        cli_bundle = html_cli + '\n' + js_cli
         for token in ('btnAbrirSuporteIA', 'modalSuporteIA', 'formSuporteIA'):
-            self.assertIn(token, html_cli)
+            self.assertIn(token, cli_bundle)
 
     def test_65_ui_design_system_20_rules_compliance(self):
         # 1. Tokens do Design System e Cor de Destaque em public/style.css
@@ -3082,9 +3088,12 @@ class TestMarketplaceFull(unittest.TestCase):
                 self.assertNotIn('CREA', oi_reply)
                 self.assertNotIn('double-blind', oi_reply)
 
-        # 6) Contrato DOM dos novos elementos em portal-cliente.html e portal-prestador.html
+        # 6) Contrato DOM dos novos elementos em portal-cliente.html/js e portal-prestador.html/js
         with open(os.path.join(REPO_ROOT, 'public', 'portal-cliente.html'), 'r', encoding='utf-8') as f:
             html_cli = f.read()
+        with open(os.path.join(REPO_ROOT, 'public', 'js', 'portal-cliente.js'), 'r', encoding='utf-8') as f:
+            js_cli = f.read()
+        cli_bundle = html_cli + '\n' + js_cli
         for token in (
             'badgeStatusSuporteIA',
             '/api/chat/health',
@@ -3100,11 +3109,14 @@ class TestMarketplaceFull(unittest.TestCase):
             'Como funciona o PIN de 4 dígitos?',
             'Como abrir disputa no Escrow?',
         ):
-            self.assertIn(token, html_cli, f'Contrato DOM ausente em portal-cliente.html: {token}')
-        self.assertNotIn('🤖 Assistente PertoJá (FreeLLMAPI)', html_cli)
+            self.assertIn(token, cli_bundle, f'Contrato DOM ausente em portal-cliente: {token}')
+        self.assertNotIn('🤖 Assistente PertoJá (FreeLLMAPI)', cli_bundle)
 
         with open(os.path.join(REPO_ROOT, 'public', 'portal-prestador.html'), 'r', encoding='utf-8') as f:
             html_prest = f.read()
+        with open(os.path.join(REPO_ROOT, 'public', 'js', 'portal-prestador.js'), 'r', encoding='utf-8') as f:
+            js_prest = f.read()
+        prest_bundle = html_prest + '\n' + js_prest
         for token in (
             'badgeStatusSuporteIA',
             '/api/chat/health',
@@ -3120,8 +3132,8 @@ class TestMarketplaceFull(unittest.TestCase):
             'Qual a diferença do Plano Básico e Pro?',
             'Como obter KYC Tier 2?',
         ):
-            self.assertIn(token, html_prest, f'Contrato DOM ausente em portal-prestador.html: {token}')
-        self.assertNotIn('🤖 Assistente PertoJá (FreeLLMAPI)', html_prest)
+            self.assertIn(token, prest_bundle, f'Contrato DOM ausente em portal-prestador: {token}')
+        self.assertNotIn('🤖 Assistente PertoJá (FreeLLMAPI)', prest_bundle)
 
     def test_67_demo_seed_default_off_and_forbidden_in_production(self):
         import tempfile
@@ -3521,6 +3533,43 @@ class TestMarketplaceFull(unittest.TestCase):
         res_gz_css = self.client.get('/dist/app.css', headers={'Accept-Encoding': 'gzip'})
         self.assertEqual(res_gz_css.status_code, 200)
         res_gz_css.close()
+
+    def test_73_no_inline_scripts_or_event_handlers_in_html(self):
+        import glob
+        import re
+
+        html_files = sorted(glob.glob(os.path.join(REPO_ROOT, 'public', '*.html')))
+        self.assertEqual(len(html_files), 11)
+
+        script_open_re = re.compile(r'<script\b([^>]*)>', re.IGNORECASE)
+        inline_handler_re = re.compile(r'\son[a-z]+\s*=', re.IGNORECASE)
+
+        for html_path in html_files:
+            name = os.path.basename(html_path)
+            with open(html_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            for match in script_open_re.finditer(content):
+                attrs = match.group(1) or ''
+                has_src = bool(re.search(r'\bsrc\s*=', attrs, re.IGNORECASE))
+                is_json_ld = bool(re.search(r'type\s*=\s*["\']application/ld\+json["\']', attrs, re.IGNORECASE))
+                self.assertTrue(
+                    has_src or is_json_ld,
+                    f'Tag <script> executável inline encontrada em {name}: <script{attrs}>'
+                )
+
+            handler_match = inline_handler_re.search(content)
+            self.assertIsNone(
+                handler_match,
+                f'Atributo de evento inline encontrado em {name}: {handler_match.group(0) if handler_match else ""}'
+            )
+
+        for js_name in ('cadastro.js', 'como-funciona.js', 'index.js', 'login.js', 'pedido.js', 'portal-cliente.js', 'portal-prestador.js'):
+            res_js = self.client.get(f'/js/{js_name}')
+            self.assertEqual(res_js.status_code, 200, f'Falha ao servir /js/{js_name}')
+            js_body = res_js.data.decode('utf-8')
+            res_js.close()
+            self.assertGreater(len(js_body), 100)
 
 
 if __name__ == '__main__':
