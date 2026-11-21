@@ -102,22 +102,65 @@ def _load_dotenv():
 
 _load_dotenv()
 
-def _resolve_secret_key():
-    env_key = os.environ.get('SECRET_KEY')
-    if env_key and env_key.strip():
-        return env_key.strip()
-    if os.environ.get('REQUIRE_SECRET_KEY') == '1':
-        raise RuntimeError('SECRET_KEY é obrigatória quando REQUIRE_SECRET_KEY=1.')
-    db_url = (
-        os.environ.get('POSTGRES_URL')
-        or os.environ.get('DATABASE_URL')
-        or os.environ.get('POSTGRES_URL_NON_POOLING')
-    )
-    if db_url and db_url.strip():
-        return hmac.new(db_url.strip().encode('utf-8'), b'pertoja-session-key-v1', hashlib.sha256).hexdigest()
-    if os.environ.get('VERCEL') == '1' or os.environ.get('FLASK_ENV') == 'production':
-        return secrets.token_hex(32)
-    return 'pertoja-dev-local-secret-key-2026'
+
+def _persist_dev_secret_key(secret_key, env_path=None):
+    """Grava SECRET_KEY gerada automaticamente no .env local de desenvolvimento."""
+    target_path = env_path or os.path.join(BASE_DIR, '.env')
+    try:
+        if os.path.isfile(target_path):
+            with open(target_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            replaced = False
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped and not stripped.startswith('#') and '=' in stripped:
+                    k, v = stripped.split('=', 1)
+                    if k.strip() == 'SECRET_KEY' and not v.strip().strip('"').strip("'"):
+                        new_lines.append(f'SECRET_KEY={secret_key}\n')
+                        replaced = True
+                        continue
+                new_lines.append(line)
+            if not replaced:
+                if new_lines and not new_lines[-1].endswith('\n'):
+                    new_lines[-1] += '\n'
+                new_lines.append(f'SECRET_KEY={secret_key}\n')
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+        else:
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write('# Gerado automaticamente para desenvolvimento local\n')
+                f.write(f'SECRET_KEY={secret_key}\n')
+    except OSError as exc:
+        print(f"[auth] Aviso: não foi possível persistir SECRET_KEY no .env local: {exc}", file=sys.stderr)
+
+
+def _resolve_secret_key(env_path=None):
+    """
+    Resolve a SECRET_KEY da aplicação:
+    - Em produção (VERCEL=1, FLASK_ENV=production ou REQUIRE_SECRET_KEY=1):
+      exige SECRET_KEY configurada com no mínimo 32 caracteres (falha fechada com RuntimeError).
+    - Em desenvolvimento local: gera chave aleatória segura e persiste no .env local se ausente.
+    """
+    is_prod = database.is_production_env()
+    require_strong = is_prod or os.environ.get('REQUIRE_SECRET_KEY') == '1'
+    env_key = (os.environ.get('SECRET_KEY') or '').strip()
+
+    if require_strong:
+        if not env_key or len(env_key) < 32:
+            raise RuntimeError(
+                'SECRET_KEY obrigatória com no mínimo 32 caracteres em produção '
+                '(VERCEL=1, FLASK_ENV=production ou REQUIRE_SECRET_KEY=1).'
+            )
+        return env_key
+
+    if env_key:
+        return env_key
+
+    generated = secrets.token_hex(32)
+    os.environ['SECRET_KEY'] = generated
+    _persist_dev_secret_key(generated, env_path=env_path)
+    return generated
 
 
 app = Flask(__name__, static_folder=STATIC_DIR)
@@ -241,7 +284,9 @@ def _check_email_rate_limit(endpoint_name, email, limit=10, window_seconds=60):
 
 
 def _hash_ip(ip):
-    secret = str(app.secret_key or 'pertoja-dev-local-secret-key-2026').encode('utf-8')
+    if not app.secret_key:
+        raise RuntimeError('app.secret_key não configurada para hash de IP.')
+    secret = str(app.secret_key).encode('utf-8')
     return hmac.new(secret, str(ip or '').encode('utf-8'), hashlib.sha256).hexdigest()[:32]
 
 

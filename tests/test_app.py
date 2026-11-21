@@ -2022,12 +2022,11 @@ class TestMarketplaceFull(unittest.TestCase):
         import app as app_mod
         from unittest.mock import patch
 
-        with patch.dict(os.environ, {'VERCEL': '1', 'SECRET_KEY': '', 'DATABASE_URL': '', 'POSTGRES_URL': '', 'POSTGRES_URL_NON_POOLING': ''}, clear=False):
+        with patch.dict(os.environ, {'VERCEL': '1', 'DATABASE_URL': 'postgresql://u:p@host/db'}, clear=False):
             os.environ.pop('SECRET_KEY', None)
             os.environ.pop('REQUIRE_SECRET_KEY', None)
-            sk = app_mod._resolve_secret_key()
-            self.assertNotEqual(sk, 'pertoja-dev-local-secret-key-2026')
-            self.assertEqual(len(sk), 64)
+            with self.assertRaises(RuntimeError):
+                app_mod._resolve_secret_key()
 
         # api/index.py 500 error must not expose traceback or detail
         import api.index as idx_mod
@@ -3173,6 +3172,72 @@ class TestMarketplaceFull(unittest.TestCase):
             database.DB_PATH = orig_db
             if os.path.exists(tmp_db):
                 os.remove(tmp_db)
+
+    def test_68_secret_key_hardening_and_dev_dotenv_persistence(self):
+        import subprocess
+        import tempfile
+        import app as app_mod
+        from unittest.mock import patch
+
+        # 1. Em produção (VERCEL=1) sem SECRET_KEY (mesmo com DATABASE_URL presente) -> RuntimeError
+        clean_base = {
+            k: v for k, v in os.environ.items()
+            if k not in ('SECRET_KEY', 'VERCEL', 'FLASK_ENV', 'REQUIRE_SECRET_KEY')
+        }
+        with patch.dict(os.environ, {**clean_base, 'VERCEL': '1', 'DATABASE_URL': 'postgresql://u:p@host/db'}, clear=True):
+            with self.assertRaises(RuntimeError):
+                app_mod._resolve_secret_key()
+
+        # 2. Em produção (FLASK_ENV=production) com SECRET_KEY < 32 caracteres -> RuntimeError
+        with patch.dict(os.environ, {**clean_base, 'FLASK_ENV': 'production', 'SECRET_KEY': 'a' * 31}, clear=True):
+            with self.assertRaises(RuntimeError):
+                app_mod._resolve_secret_key()
+
+        # 3. Em produção (VERCEL=1) com SECRET_KEY >= 32 caracteres -> retorna chave configurada
+        valid_prod_key = 'x' * 32
+        with patch.dict(os.environ, {**clean_base, 'VERCEL': '1', 'SECRET_KEY': valid_prod_key}, clear=True):
+            self.assertEqual(app_mod._resolve_secret_key(), valid_prod_key)
+
+        # 4. Subprocesso isolado: importar app em produção sem SECRET_KEY recusa subir
+        sub_env = os.environ.copy()
+        sub_env['VERCEL'] = '1'
+        sub_env['SECRET_KEY'] = ''
+        sub_env.pop('FLASK_ENV', None)
+        res_sub = subprocess.run(
+            [sys.executable, '-c', 'import app'],
+            cwd=REPO_ROOT,
+            env=sub_env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(res_sub.returncode, 0)
+        self.assertIn('RuntimeError', res_sub.stderr)
+
+        # 5. Em modo dev sem SECRET_KEY: gera chave aleatória (64 hex) e persiste no .env local temporário
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_env_path = os.path.join(tmp_dir, '.env')
+            with open(tmp_env_path, 'w', encoding='utf-8') as f:
+                f.write('MARKETPLACE_DB=marketplace.db\nSECRET_KEY=\n')
+            with patch.dict(os.environ, clean_base, clear=True):
+                dev_key = app_mod._resolve_secret_key(env_path=tmp_env_path)
+                self.assertEqual(len(dev_key), 64)
+                with open(tmp_env_path, 'r', encoding='utf-8') as f:
+                    env_contents = f.read()
+                self.assertIn('MARKETPLACE_DB=marketplace.db', env_contents)
+                self.assertIn(f'SECRET_KEY={dev_key}', env_contents)
+
+        # 6. Chave hardcoded legada removida e _hash_ip exige app.secret_key configurada
+        with open(os.path.join(REPO_ROOT, 'app.py'), 'r', encoding='utf-8') as f:
+            app_source = f.read()
+        self.assertNotIn('pertoja-dev-local-secret-key-2026', app_source)
+
+        orig_secret = app.secret_key
+        try:
+            app.secret_key = ''
+            with self.assertRaises(RuntimeError):
+                app_mod._hash_ip('127.0.0.1')
+        finally:
+            app.secret_key = orig_secret
 
 
 if __name__ == '__main__':
