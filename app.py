@@ -248,11 +248,11 @@ def add_performance_and_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://www.mercadopago.com https://sdk.mercadopago.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.tailwindcss.com; "
+        "script-src 'self' https://unpkg.com https://www.mercadopago.com https://sdk.mercadopago.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https: blob:; "
-        "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org https://api.mercadopago.com https://www.mercadopago.com; "
+        "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org https://api.mercadopago.com https://www.mercadopago.com https://www.mercadolibre.com https://*.mercadolibre.com; "
         "base-uri 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'"
     )
 

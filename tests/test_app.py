@@ -3571,6 +3571,36 @@ class TestMarketplaceFull(unittest.TestCase):
             res_js.close()
             self.assertGreater(len(js_body), 100)
 
+    def test_74_strict_csp_without_unsafe_inline_scripts_or_tailwind_cdn(self):
+        import re
+
+        res_home = self.client.get('/')
+        self.assertEqual(res_home.status_code, 200)
+        csp_app = res_home.headers.get('Content-Security-Policy', '')
+        res_home.close()
+
+        with open(os.path.join(REPO_ROOT, 'vercel.json'), 'r', encoding='utf-8') as f:
+            vc = json.load(f)
+        vc_headers = vc['headers'][0]['headers']
+        csp_vercel = next((h['value'] for h in vc_headers if h['key'] == 'Content-Security-Policy'), '')
+
+        self.assertEqual(csp_app, csp_vercel, 'CSP de app.py e vercel.json devem estar sincronizadas')
+        for label, csp in (('app.py', csp_app), ('vercel.json', csp_vercel)):
+            self.assertNotIn('cdn.tailwindcss.com', csp, f'{label} ainda referencia cdn.tailwindcss.com')
+            m_script = re.search(r"script-src\s+([^;]+)", csp)
+            self.assertIsNotNone(m_script, f'script-src ausente em {label}')
+            script_src = m_script.group(1)
+            self.assertNotIn("'unsafe-inline'", script_src, f"script-src em {label} não pode conter 'unsafe-inline'")
+            self.assertNotIn("'unsafe-eval'", script_src, f"script-src em {label} não pode conter 'unsafe-eval'")
+            self.assertIn('https://www.mercadolibre.com', csp)
+            self.assertIn('https://*.mercadolibre.com', csp)
+            self.assertIn("object-src 'none'", csp)
+            self.assertIn("base-uri 'self'", csp)
+
+        with open(os.path.join(REPO_ROOT, 'public', '404.html'), 'r', encoding='utf-8') as f:
+            html_404 = f.read()
+        self.assertNotRegex(html_404, r'<style\b', 'public/404.html não deve conter <style> inline')
+
 
 if __name__ == '__main__':
     unittest.main()
