@@ -1,5 +1,19 @@
 // auth.js - Gerenciamento global de autenticação, navegação e localização do PertoJá
 
+const PERTOJA_MIN_PASSWORD_LENGTH = 10;
+
+function validarPoliticaSenhaLocal(senha, rotulo = 'A senha') {
+  const valor = String(senha || '');
+  if (valor.length < PERTOJA_MIN_PASSWORD_LENGTH) {
+    return {
+      valid: false,
+      code: 'PASSWORD_TOO_SHORT',
+      message: `${rotulo} deve conter no mínimo ${PERTOJA_MIN_PASSWORD_LENGTH} caracteres. Evite senhas fáceis ou já expostas em vazamentos.`,
+    };
+  }
+  return { valid: true, code: null, message: '' };
+}
+
 let _usuarioLogadoPromessa = null;
 let _usuarioLogadoAtual = null;
 
@@ -632,6 +646,8 @@ async function inicializarHeaderLocalizacao() {
 }
 
 // Expõe globalmente para controle e testes
+window.PERTOJA_MIN_PASSWORD_LENGTH = PERTOJA_MIN_PASSWORD_LENGTH;
+window.validarPoliticaSenhaLocal = validarPoliticaSenhaLocal;
 window.atualizarNavegacao = atualizarNavegacao;
 window.inicializarDrawerNavegacao = inicializarDrawerNavegacao;
 window.inicializarHeaderLocalizacao = inicializarHeaderLocalizacao;

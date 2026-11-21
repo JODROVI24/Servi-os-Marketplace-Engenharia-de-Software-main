@@ -760,6 +760,61 @@ def geocode_endpoint():
 
 # ================= Rotas de Autenticação =================
 
+MIN_PASSWORD_LENGTH = 10
+HIBP_RANGE_API_URL = 'https://api.pwnedpasswords.com/range/'
+HIBP_TIMEOUT_SECONDS = 2.5
+
+
+def _is_password_pwned(password):
+    """
+    Verifica via k-anonymity na API HaveIBeenPwned se a senha consta em vazamentos.
+    Envia apenas os 5 primeiros caracteres do hash SHA-1 em caixa alta.
+    Em caso de falha de rede ou timeout, faz fallback gracioso (retorna False).
+    """
+    if not password:
+        return False
+    sha1_hex = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+    prefix, suffix = sha1_hex[:5], sha1_hex[5:]
+    try:
+        resp = requests.get(
+            f'{HIBP_RANGE_API_URL}{prefix}',
+            headers={'User-Agent': 'PertoJa-Marketplace/2.0', 'Add-Padding': 'true'},
+            timeout=HIBP_TIMEOUT_SECONDS,
+        )
+        if getattr(resp, 'status_code', None) != 200:
+            return False
+        for line in (resp.text or '').splitlines():
+            if ':' not in line:
+                continue
+            cand_suffix, count_str = line.split(':', 1)
+            if cand_suffix.strip().upper() == suffix:
+                try:
+                    return int(count_str.strip()) > 0
+                except ValueError:
+                    return False
+        return False
+    except Exception as exc:
+        app.logger.warning('Falha ao consultar HaveIBeenPwned (fallback gracioso): %s', type(exc).__name__)
+        return False
+
+
+def _validate_password_policy(password, field_label='A senha'):
+    """Valida comprimento mínimo (>= 10 caracteres) e checagem k-anonymity no HaveIBeenPwned."""
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        return (
+            f'{field_label} deve conter no mínimo {MIN_PASSWORD_LENGTH} caracteres.',
+            'PASSWORD_TOO_SHORT',
+        )
+    hibp_enabled = app.config.get('HIBP_CHECK_ENABLED')
+    if hibp_enabled is None:
+        hibp_enabled = not app.config.get('TESTING', False)
+    if hibp_enabled and _is_password_pwned(password):
+        return (
+            f'{field_label} escolhida aparece em vazamentos públicos de dados. Por favor, escolha uma senha diferente e mais forte.',
+            'PASSWORD_PWNED',
+        )
+    return None, None
+
 
 @app.route('/api/auth/register', methods=['POST'])
 @rate_limit(10, 60)
@@ -794,8 +849,9 @@ def register():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({'error': 'Formato de e-mail inválido.'}), 400
 
-    if len(senha) < 6:
-        return jsonify({'error': 'A senha deve conter no mínimo 6 caracteres.'}), 400
+    pwd_err, pwd_code = _validate_password_policy(senha, 'A senha')
+    if pwd_err:
+        return jsonify({'error': pwd_err, 'code': pwd_code}), 400
 
     if tipo not in ('cliente', 'prestador'):
         return jsonify({'error': 'Tipo de usuário inválido. Escolha cliente ou prestador.'}), 400
@@ -1018,8 +1074,9 @@ def reset_password():
 
     if not token:
         return jsonify({'error': 'Token de redefinição obrigatório.'}), 400
-    if len(nova_senha) < 6:
-        return jsonify({'error': 'A nova senha deve conter no mínimo 6 caracteres.'}), 400
+    pwd_err, pwd_code = _validate_password_policy(nova_senha, 'A nova senha')
+    if pwd_err:
+        return jsonify({'error': pwd_err, 'code': pwd_code}), 400
 
     token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     conn = get_db_connection()

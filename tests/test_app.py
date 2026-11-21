@@ -3296,6 +3296,108 @@ class TestMarketplaceFull(unittest.TestCase):
             self.assertNotEqual(res_sub.returncode, 0, f'{stmt} deveria falhar sem Postgres em produção')
             self.assertIn('RuntimeError', res_sub.stderr)
 
+    def test_70_password_policy_min_length_and_hibp_k_anonymity(self):
+        import hashlib
+        import requests
+        from unittest.mock import MagicMock, patch
+
+        # 1. Cadastro com senha < 10 caracteres rejeitado (400 PASSWORD_TOO_SHORT)
+        for bad_pwd in ('123456', '123456789'):
+            res_short = self.client.post('/api/auth/register', json={
+                'nome': 'Senha Curta',
+                'email': f'short_{len(bad_pwd)}@pertoja.com',
+                'senha': bad_pwd,
+                'tipo': 'cliente',
+                'aceite_termos': True,
+            })
+            self.assertEqual(res_short.status_code, 400)
+            body_short = json.loads(res_short.data)
+            self.assertEqual(body_short.get('code'), 'PASSWORD_TOO_SHORT')
+            self.assertIn('10', body_short.get('error', ''))
+
+        # 2. Reset de senha com < 10 caracteres rejeitado (400 PASSWORD_TOO_SHORT)
+        res_reset_short = self.client.post('/api/auth/reset-password', json={
+            'token': 'qualquer-token',
+            'nova_senha': '9chars123',
+        })
+        self.assertEqual(res_reset_short.status_code, 400)
+        self.assertEqual(json.loads(res_reset_short.data).get('code'), 'PASSWORD_TOO_SHORT')
+
+        # 3. HaveIBeenPwned k-anonymity check + timeout fallback
+        leaked_pwd = 'SenhaVazadaTeste2026!'
+        sha1_hex = hashlib.sha1(leaked_pwd.encode('utf-8')).hexdigest().upper()
+        prefix, suffix = sha1_hex[:5], sha1_hex[5:]
+
+        strong_pwd = 'SenhaForteInedita!2026#91'
+        sha1_strong = hashlib.sha1(strong_pwd.encode('utf-8')).hexdigest().upper()
+        suffix_strong = sha1_strong[5:]
+
+        app.config['HIBP_CHECK_ENABLED'] = True
+        try:
+            # 3a) Senha vazada (count > 0) -> 400 PASSWORD_PWNED e prefix-only na URL HIBP
+            mock_resp_pwned = MagicMock(status_code=200, text=f'00000AAAAA:1\r\n{suffix}:42\r\n')
+            with patch('app.requests.get', return_value=mock_resp_pwned) as mock_get:
+                res_pwned = self.client.post('/api/auth/register', json={
+                    'nome': 'User Vazado',
+                    'email': 'hibp_leaked@pertoja.com',
+                    'senha': leaked_pwd,
+                    'tipo': 'cliente',
+                    'aceite_termos': True,
+                })
+                self.assertEqual(res_pwned.status_code, 400)
+                pwned_body = json.loads(res_pwned.data)
+                self.assertEqual(pwned_body.get('code'), 'PASSWORD_PWNED')
+                self.assertIn('vazamentos', pwned_body.get('error', '').lower())
+
+                called_url = mock_get.call_args[0][0]
+                self.assertTrue(called_url.endswith(f'/range/{prefix}'))
+                self.assertNotIn(leaked_pwd, called_url)
+                self.assertNotIn(suffix, called_url)
+
+                # Reset de senha também barra senha vazada
+                res_reset_pwned = self.client.post('/api/auth/reset-password', json={
+                    'token': 'tok-valido-nao-alcancado',
+                    'nova_senha': leaked_pwd,
+                })
+                self.assertEqual(res_reset_pwned.status_code, 400)
+                self.assertEqual(json.loads(res_reset_pwned.data).get('code'), 'PASSWORD_PWNED')
+
+            # 3b) Resposta HIBP com padding (:0) -> não considera vazada -> 201
+            mock_resp_clean = MagicMock(status_code=200, text=f'{suffix_strong}:0\r\n')
+            with patch('app.requests.get', return_value=mock_resp_clean):
+                res_ok = self.client.post('/api/auth/register', json={
+                    'nome': 'User Limpo',
+                    'email': 'hibp_clean@pertoja.com',
+                    'senha': strong_pwd,
+                    'tipo': 'cliente',
+                    'aceite_termos': True,
+                })
+                self.assertEqual(res_ok.status_code, 201)
+
+            # 3c) Timeout / erro de rede na API HIBP -> fallback gracioso permite cadastro -> 201
+            with patch('app.requests.get', side_effect=requests.Timeout('hibp timeout')):
+                res_timeout = self.client.post('/api/auth/register', json={
+                    'nome': 'User Offline',
+                    'email': 'hibp_timeout@pertoja.com',
+                    'senha': 'OutraSenhaForte!2026#88',
+                    'tipo': 'cliente',
+                    'aceite_termos': True,
+                })
+                self.assertEqual(res_timeout.status_code, 201)
+        finally:
+            app.config.pop('HIBP_CHECK_ENABLED', None)
+
+        # 4. Contrato no frontend (cadastro.html, login.html e auth.js)
+        with open(os.path.join(REPO_ROOT, 'public', 'cadastro.html'), 'r', encoding='utf-8') as f:
+            cad_html = f.read()
+        self.assertIn('minlength="10"', cad_html)
+        with open(os.path.join(REPO_ROOT, 'public', 'login.html'), 'r', encoding='utf-8') as f:
+            log_html = f.read()
+        self.assertIn('minlength="10"', log_html)
+        with open(os.path.join(REPO_ROOT, 'public', 'auth.js'), 'r', encoding='utf-8') as f:
+            auth_js = f.read()
+        self.assertIn('validarPoliticaSenhaLocal', auth_js)
+
 
 if __name__ == '__main__':
     unittest.main()

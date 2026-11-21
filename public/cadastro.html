@@ -193,8 +193,11 @@
             <label for="senha" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Senha</label>
             <div class="relative">
               <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-perto-ink/85 text-lg pointer-events-none">key</span>
-              <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres" class="input-form pl-11 text-sm font-medium">
+              <input type="password" id="senha" required minlength="10" autocomplete="new-password" aria-describedby="senhaAjuda" placeholder="Mínimo 10 caracteres" class="input-form pl-11 text-sm font-medium">
             </div>
+            <p id="senhaAjuda" class="text-[11px] text-perto-ink/85 font-body mt-1">
+              Use no mínimo 10 caracteres. Verificamos automaticamente se a senha já apareceu em vazamentos públicos.
+            </p>
           </div>
 
           <div id="step1Actions" class="pt-2 flex justify-end" style="display: none;">
@@ -509,9 +512,12 @@
             return false;
           }
         }
-        if (!senha || senha.value.length < 6) {
+        const checkPwd = typeof window.validarPoliticaSenhaLocal === 'function'
+          ? window.validarPoliticaSenhaLocal(senha ? senha.value : '', 'A senha')
+          : { valid: Boolean(senha && senha.value.length >= 10), message: 'A senha deve conter no mínimo 10 caracteres.' };
+        if (!checkPwd.valid) {
           if (erroDiv) {
-            erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
+            erroDiv.textContent = checkPwd.message;
             erroDiv.style.display = 'block';
           }
           return false;
@@ -647,12 +653,15 @@
         return;
       }
 
-      if (!payload.senha || payload.senha.length < 6) {
+      const checkPwdSubmit = typeof window.validarPoliticaSenhaLocal === 'function'
+        ? window.validarPoliticaSenhaLocal(payload.senha, 'A senha')
+        : { valid: Boolean(payload.senha && payload.senha.length >= 10), message: 'A senha deve conter no mínimo 10 caracteres.' };
+      if (!checkPwdSubmit.valid) {
         if (tipo === 'prestador') {
           etapaAtualPrestador = 1;
           atualizarVisualStepper();
         }
-        erroDiv.textContent = 'A senha deve conter no mínimo 6 caracteres.';
+        erroDiv.textContent = checkPwdSubmit.message;
         erroDiv.style.display = 'block';
         return;
       }
@@ -685,6 +694,14 @@
         }
 
         if (!res.ok) {
+          if (data.code === 'PASSWORD_TOO_SHORT' || data.code === 'PASSWORD_PWNED') {
+            if (tipo === 'prestador') {
+              etapaAtualPrestador = 1;
+              atualizarVisualStepper();
+            }
+            const senhaEl = document.getElementById('senha');
+            if (senhaEl) senhaEl.focus();
+          }
           erroDiv.textContent = data.error || `Erro ao realizar cadastro (HTTP ${res.status}).`;
           erroDiv.style.display = 'block';
           return;
