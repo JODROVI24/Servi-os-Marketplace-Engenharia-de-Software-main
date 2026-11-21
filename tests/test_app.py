@@ -3678,6 +3678,84 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(prof_data.get('bio'), payload)
         self.assertEqual(prof_data.get('endereco'), payload)
 
+    def test_76_upstash_redis_and_inmemory_rate_limiter(self):
+        from unittest.mock import patch, MagicMock
+        import requests
+        import app as app_mod
+
+        limiter = app_mod.rate_limiter
+        self.assertIsInstance(limiter, app_mod.HybridRateLimiter)
+
+        saved_env = {
+            k: os.environ.get(k)
+            for k in ('UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_URL', 'KV_REST_API_TOKEN')
+        }
+        try:
+            for k in saved_env:
+                os.environ.pop(k, None)
+
+            limiter.reset()
+            # 1. Caminho em memória: zero chamadas SQL a get_db_connection
+            with patch('app.get_db_connection', side_effect=AssertionError('DB nao deve ser chamado pelo rate limiter')):
+                self.assertTrue(limiter.is_allowed('mem:key', 2, 60))
+                self.assertTrue(limiter.is_allowed('mem:key', 2, 60))
+                self.assertFalse(limiter.is_allowed('mem:key', 2, 60))
+                limiter.reset()
+                self.assertTrue(limiter.is_allowed('mem:key', 2, 60))
+
+            # 2. Caminho Upstash Redis REST (/pipeline)
+            os.environ['UPSTASH_REDIS_REST_URL'] = 'https://mock-upstash.example.com'
+            os.environ['UPSTASH_REDIS_REST_TOKEN'] = 'token-secreto-teste'
+
+            ok_resp = MagicMock()
+            ok_resp.status_code = 200
+            ok_resp.json.return_value = [
+                {'result': 0},
+                {'result': 1},
+                {'result': 2},
+                {'result': 1},
+            ]
+            over_resp = MagicMock()
+            over_resp.status_code = 200
+            over_resp.json.return_value = [
+                {'result': 0},
+                {'result': 1},
+                {'result': 3},
+                {'result': 1},
+            ]
+            zrem_resp = MagicMock()
+            zrem_resp.status_code = 200
+            zrem_resp.json.return_value = [{'result': 1}]
+
+            with patch('app.get_db_connection', side_effect=AssertionError('DB nao deve ser chamado')), \
+                 patch('app.requests.post', side_effect=[ok_resp, over_resp, zrem_resp]) as mock_post:
+                self.assertTrue(limiter.is_allowed('upstash:key', 2, 60))
+                self.assertFalse(limiter.is_allowed('upstash:key', 2, 60))
+                self.assertEqual(mock_post.call_count, 3)
+
+                first_call = mock_post.call_args_list[0]
+                self.assertEqual(first_call.args[0], 'https://mock-upstash.example.com/pipeline')
+                self.assertEqual(first_call.kwargs['headers']['Authorization'], 'Bearer token-secreto-teste')
+                cmds = first_call.kwargs['json']
+                self.assertEqual([c[0] for c in cmds], ['ZREMRANGEBYSCORE', 'ZADD', 'ZCARD', 'PEXPIRE'])
+
+                cleanup_call = mock_post.call_args_list[2]
+                self.assertEqual(cleanup_call.kwargs['json'][0][0], 'ZREM')
+
+            # 3. Fallback transparente para memória se Upstash falhar
+            limiter.reset()
+            with patch('app.get_db_connection', side_effect=AssertionError('DB nao deve ser chamado')), \
+                 patch('app.requests.post', side_effect=requests.ConnectionError('Upstash offline')):
+                self.assertTrue(limiter.is_allowed('fallback:key', 1, 60))
+                self.assertFalse(limiter.is_allowed('fallback:key', 1, 60))
+        finally:
+            limiter.reset()
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
 
 if __name__ == '__main__':
     unittest.main()

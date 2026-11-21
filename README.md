@@ -143,7 +143,7 @@ vercel --prod
 
 > **💡 Nota sobre Persistência e Rate Limiting em Serverless:**  
 > Em desenvolvimento local e testes automatizados, o sistema usa SQLite (`marketplace.db`) quando `DATABASE_URL` não está definida. Em produção (`VERCEL=1` ou `FLASK_ENV=production`), PostgreSQL via `DATABASE_URL` / `POSTGRES_URL` (**Neon** ou **Supabase**) é **obrigatório** para garantir integridade e sobrevivência dos dados entre instâncias recicladas e redeploys.  
-> O rate limiting da API persiste na tabela `rate_limit` do banco configurado; em produção serverless de alto tráfego, recomenda-se complementar com um WAF/proxy de borda (como **Vercel Firewall**, **Cloudflare** ou **Akamai**).
+> O rate limiting da API utiliza **Upstash Redis REST** (`UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN`, ou `KV_REST_API_URL` e `KV_REST_API_TOKEN` via Vercel KV) com fallback automático em memória (`InMemoryRateLimiter`), eliminando queries SQL `DELETE/SELECT/INSERT` por requisição no banco relacional; em produção de alto tráfego, recomenda-se complementar com WAF/proxy de borda (como **Vercel Firewall**, **Cloudflare** ou **Akamai**).
 
 ---
 

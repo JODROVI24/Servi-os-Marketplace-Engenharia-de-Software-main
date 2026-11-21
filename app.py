@@ -13,6 +13,8 @@ except ImportError:
     openai = None
 import gzip
 import time
+import threading
+from collections import deque
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse
@@ -316,10 +318,9 @@ def add_performance_and_security_headers(response):
 # Garantir inicialização do banco de dados na inicialização
 init_db()
 
-# ================= Rate Limiter Persistente em Banco (Janela Deslizante) =================
-# Nota de arquitetura serverless: Em produção na nuvem (Vercel/Lambda), recomenda-se
-# complementar este rate limiter em banco (tabela rate_limit) com um WAF/proxy de borda
-# (como Cloudflare ou Akamai) para mitigar picos antes mesmo da invocação da função.
+# ================= Rate Limiter Híbrido (Upstash Redis + Fallback em Memória) =================
+# Usa Upstash Redis REST / Vercel KV em produção distribuída (zero queries DELETE/INSERT no banco)
+# e janela deslizante thread-safe em memória (collections.deque) em desenvolvimento local ou fallback.
 
 
 def _get_client_ip():
@@ -357,38 +358,120 @@ def _hash_ip(ip):
     return hmac.new(secret, str(ip or '').encode('utf-8'), hashlib.sha256).hexdigest()[:32]
 
 
-class DatabaseRateLimiter:
-    """Limitador de requisições por janela deslizante persistido na tabela rate_limit (SQLite e PostgreSQL)."""
+class InMemoryRateLimiter:
+    """Limitador de requisições por janela deslizante em memória (thread-safe via collections.deque)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._buckets = {}
+
+    def _prune_stale_locked(self, now):
+        stale_keys = [
+            k for k, dq in self._buckets.items()
+            if not dq or dq[-1] <= now - 86400
+        ]
+        for k in stale_keys:
+            del self._buckets[k]
 
     def is_allowed(self, key, limit, window_seconds):
-        now = time.time()
+        now = time.monotonic()
         cutoff = now - window_seconds
-        purge_cutoff = now - 86400
-        conn = get_db_connection()
-        try:
-            conn.execute('DELETE FROM rate_limit WHERE ts <= ?', (purge_cutoff,))
-            conn.execute('DELETE FROM rate_limit WHERE rate_key = ? AND ts <= ?', (key, cutoff))
-            row = conn.execute('SELECT COUNT(*) FROM rate_limit WHERE rate_key = ?', (key,)).fetchone()
-            count = row[0] if row is not None else 0
-            if count >= limit:
-                conn.commit()
+        with self._lock:
+            dq = self._buckets.get(key)
+            if dq is None:
+                dq = deque()
+                self._buckets[key] = dq
+            while dq and dq[0] <= cutoff:
+                dq.popleft()
+            if len(dq) >= limit:
                 return False
-            conn.execute('INSERT INTO rate_limit (rate_key, ts) VALUES (?, ?)', (key, now))
-            conn.commit()
+            dq.append(now)
+            if len(self._buckets) > 2048:
+                self._prune_stale_locked(now)
             return True
-        finally:
-            conn.close()
 
     def reset(self):
-        conn = get_db_connection()
-        try:
-            conn.execute('DELETE FROM rate_limit')
-            conn.commit()
-        finally:
-            conn.close()
+        with self._lock:
+            self._buckets.clear()
 
 
-rate_limiter = DatabaseRateLimiter()
+class UpstashRedisRateLimiter:
+    """Limitador distribuído via Upstash Redis REST API (/pipeline) por janela deslizante."""
+
+    def __init__(self, rest_url, rest_token, timeout=1.5):
+        self.rest_url = (rest_url or '').rstrip('/')
+        self.rest_token = rest_token or ''
+        self.timeout = timeout
+
+    def _post_pipeline(self, commands):
+        return requests.post(
+            f"{self.rest_url}/pipeline",
+            headers={
+                'Authorization': f"Bearer {self.rest_token}",
+                'Content-Type': 'application/json',
+            },
+            json=commands,
+            timeout=self.timeout,
+        )
+
+    def is_allowed(self, key, limit, window_seconds):
+        redis_key = f"rl:{key}"
+        now_ms = int(time.time() * 1000)
+        window_ms = max(1000, int(window_seconds * 1000))
+        cutoff_ms = now_ms - window_ms
+        member = f"{now_ms}:{secrets.token_hex(6)}"
+
+        resp = self._post_pipeline([
+            ['ZREMRANGEBYSCORE', redis_key, 0, cutoff_ms],
+            ['ZADD', redis_key, now_ms, member],
+            ['ZCARD', redis_key],
+            ['PEXPIRE', redis_key, window_ms + 5000],
+        ])
+        if resp.status_code != 200:
+            raise ValueError(f"HTTP {resp.status_code} do Upstash Redis")
+
+        results = resp.json()
+        if not isinstance(results, list) or len(results) < 4:
+            raise ValueError('Resposta inesperada do pipeline Upstash Redis')
+        for item in results:
+            if isinstance(item, dict) and item.get('error'):
+                raise ValueError(f"Erro Redis no pipeline: {item.get('error')}")
+
+        count = int(results[2]['result'])
+        if count > limit:
+            try:
+                self._post_pipeline([['ZREM', redis_key, member]])
+            except requests.RequestException:
+                pass
+            return False
+        return True
+
+
+class HybridRateLimiter:
+    """Rate limiter híbrido: Upstash Redis / Vercel KV quando configurado, ou InMemoryRateLimiter."""
+
+    def __init__(self):
+        self._memory = InMemoryRateLimiter()
+
+    def _get_upstash_credentials(self):
+        url = (os.environ.get('UPSTASH_REDIS_REST_URL') or os.environ.get('KV_REST_API_URL') or '').strip()
+        token = (os.environ.get('UPSTASH_REDIS_REST_TOKEN') or os.environ.get('KV_REST_API_TOKEN') or '').strip()
+        return url, token
+
+    def is_allowed(self, key, limit, window_seconds):
+        url, token = self._get_upstash_credentials()
+        if url and token:
+            try:
+                return UpstashRedisRateLimiter(url, token).is_allowed(key, limit, window_seconds)
+            except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+                app.logger.warning('Falha no rate limiter Upstash Redis (%s); utilizando fallback em memória.', exc)
+        return self._memory.is_allowed(key, limit, window_seconds)
+
+    def reset(self):
+        self._memory.reset()
+
+
+rate_limiter = HybridRateLimiter()
 
 
 def rate_limit(limit, window_seconds=60, key_prefix=None):
