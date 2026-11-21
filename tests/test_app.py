@@ -3491,6 +3491,37 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertEqual(res_csrf_ep.status_code, 200)
         self.assertEqual(json.loads(res_csrf_ep.data).get('csrf_token'), csrf_cookie.value)
 
+    def test_72_tailwind_build_no_cdn_and_dist_css_served(self):
+        import glob
+
+        for rel in ('package.json', 'tailwind.config.js', os.path.join('src', 'input.css'), os.path.join('public', 'dist', 'app.css')):
+            self.assertTrue(os.path.isfile(os.path.join(REPO_ROOT, rel)), f'Arquivo de build ausente: {rel}')
+
+        html_files = sorted(glob.glob(os.path.join(REPO_ROOT, 'public', '*.html')))
+        self.assertEqual(len(html_files), 11)
+        for html_path in html_files:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            self.assertNotIn('cdn.tailwindcss.com', content, f'CDN ainda presente em {os.path.basename(html_path)}')
+            self.assertNotIn('tailwind.config', content, f'Config inline ainda presente em {os.path.basename(html_path)}')
+            self.assertIn('/dist/app.css', content, f'Link /dist/app.css ausente em {os.path.basename(html_path)}')
+
+        res_css = self.client.get('/dist/app.css')
+        self.assertEqual(res_css.status_code, 200)
+        css_text = res_css.data.decode('utf-8')
+        res_css.close()
+        self.assertGreater(len(css_text), 10000)
+        self.assertIn('#10243e', css_text)
+        self.assertIn('perto-sun', css_text)
+
+        # Regressão do bug de gzip/direct_passthrough no Flask local
+        res_gz_html = self.client.get('/', headers={'Accept-Encoding': 'gzip'})
+        self.assertEqual(res_gz_html.status_code, 200)
+        res_gz_html.close()
+        res_gz_css = self.client.get('/dist/app.css', headers={'Accept-Encoding': 'gzip'})
+        self.assertEqual(res_gz_css.status_code, 200)
+        res_gz_css.close()
+
 
 if __name__ == '__main__':
     unittest.main()

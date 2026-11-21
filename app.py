@@ -301,6 +301,7 @@ def add_performance_and_security_headers(response):
             'application/javascript', 'application/json', 'image/svg+xml'
         )
     ):
+        response.direct_passthrough = False
         response_data = response.get_data()
         if len(response_data) > 500:
             compressed_data = gzip.compress(response_data, compresslevel=6)
