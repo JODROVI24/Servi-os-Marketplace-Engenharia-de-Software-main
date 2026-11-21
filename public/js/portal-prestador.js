@@ -41,12 +41,23 @@
   const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   function escapeHtml(texto) {
+    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+      return window.escapeHtml(texto);
+    }
     return String(texto ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function setStatusText(el, text, className = 'text-perto-ink/80') {
+    if (!el) return;
+    const p = document.createElement('p');
+    p.className = className;
+    p.textContent = text;
+    el.replaceChildren(p);
   }
 
   function formatarMetodoPagamento(metodo) {
@@ -172,7 +183,9 @@
     const blocoRecurso = document.getElementById('blocoRecursoConta');
     if (statusConta !== 'ativo') {
       if (alertaConta) {
-        alertaConta.innerHTML = `Status da conta: <b>${escapeHtml(statusConta)}</b>. Você pode enviar um recurso na aba "Dados de Perfil & GPS".`;
+        const bStatus = document.createElement('b');
+        bStatus.textContent = String(statusConta);
+        alertaConta.replaceChildren('Status da conta: ', bStatus, '. Você pode enviar um recurso na aba "Dados de Perfil & GPS".');
         alertaConta.style.display = 'block';
       }
       if (blocoRecurso) blocoRecurso.style.display = 'block';
@@ -296,7 +309,13 @@
 
     if (tbody) {
       if (!listaPedidos.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-4 px-4 text-center text-perto-ink/80">Nenhum atendimento registrado ainda.</td></tr>';
+        const trEmpty = document.createElement('tr');
+        const tdEmpty = document.createElement('td');
+        tdEmpty.colSpan = 5;
+        tdEmpty.className = 'py-4 px-4 text-center text-perto-ink/80';
+        tdEmpty.textContent = 'Nenhum atendimento registrado ainda.';
+        trEmpty.appendChild(tdEmpty);
+        tbody.replaceChildren(trEmpty);
       } else {
         tbody.innerHTML = listaPedidos.map(p => {
           const bruto = Number(p.preco_total || 0);
@@ -308,25 +327,25 @@
           } else if (escrowSt === 'estornado_parcial') {
             liquido = Math.max(0, bruto - estornado) * (1 - taxaPct);
           }
-          let situacao = '<span class="tag">Aguardando Pagamento do Cliente</span>';
+          let situacaoHtml = '<span class="tag">Aguardando Pagamento do Cliente</span>';
           if (escrowSt === 'estornado_total' || escrowSt === 'estornado_parcial') {
-            situacao = '<span class="tag off">Estornado</span>';
+            situacaoHtml = '<span class="tag off">Estornado</span>';
           } else if (p.status === 'cancelado') {
-            situacao = '<span class="tag off">Cancelado</span>';
+            situacaoHtml = '<span class="tag off">Cancelado</span>';
           } else if (escrowSt === 'liberado') {
-            situacao = '<span class="tag">Liberado</span>';
+            situacaoHtml = '<span class="tag">Liberado</span>';
           } else if (escrowSt === 'aguardando_liberacao') {
-            situacao = '<span class="badge-novo">Em Garantia 48h</span>';
+            situacaoHtml = '<span class="badge-novo">Em Garantia 48h</span>';
           } else if (escrowSt === 'retido' || Number(p.pago) === 1) {
-            situacao = '<span class="badge-novo">Retido em Escrow</span>';
+            situacaoHtml = '<span class="badge-novo">Retido em Escrow</span>';
           }
           return `
             <tr>
-              <td class="py-3 px-4 font-semibold text-perto-ink tabular-nums">#${escapeHtml(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
+              <td class="py-3 px-4 font-semibold text-perto-ink tabular-nums">#${Number(p.order_id)} · ${escapeHtml(p.servico_titulo)}</td>
               <td class="py-3 px-4 text-perto-ink/80">${escapeHtml(p.cliente_nome)}</td>
-              <td class="py-3 px-4 font-semibold tabular-nums">${brl(bruto)}</td>
-              <td class="py-3 px-4 font-bold text-perto-ok tabular-nums">${brl(liquido)}</td>
-              <td class="py-3 px-4">${situacao}</td>
+              <td class="py-3 px-4 font-semibold tabular-nums">${brl(Number(bruto || 0))}</td>
+              <td class="py-3 px-4 font-bold text-perto-ok tabular-nums">${brl(Number(liquido || 0))}</td>
+              <td class="py-3 px-4">${situacaoHtml}</td>
             </tr>
           `;
         }).join('');
@@ -342,17 +361,21 @@
       atualizarKPIsEFinanceiro();
 
       if (!listaMeusServicos.length) {
-        div.innerHTML = '<p class="text-sm text-perto-ink/80">Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!</p>';
+        setStatusText(div, 'Você ainda não cadastrou nenhum serviço. Clique acima para adicionar o primeiro!', 'text-sm text-perto-ink/80');
         return;
       }
 
       div.innerHTML = listaMeusServicos.map(s => {
-        const endSvc = s.endereco ? `${s.endereco}${s.numero ? ', ' + s.numero : ''} · ${s.bairro || ''} · ${s.cidade || 'SP'}` : (dadosPrestador && dadosPrestador.endereco ? `${dadosPrestador.endereco}, ${dadosPrestador.numero || ''} · ${dadosPrestador.cidade || 'SP'}` : 'São Paulo - SP');
+        const endSvc = s.endereco
+          ? [s.endereco + (s.numero ? ', ' + s.numero : ''), s.bairro || '', s.cidade || 'SP'].filter(Boolean).join(' · ')
+          : (dadosPrestador && dadosPrestador.endereco
+            ? [dadosPrestador.endereco + (dadosPrestador.numero ? ', ' + dadosPrestador.numero : ''), dadosPrestador.cidade || 'SP'].filter(Boolean).join(' · ')
+            : 'São Paulo - SP');
         return `
         <div class="svc border-l-4 border-perto-sea">
           <div class="top">
             <span class="font-bold text-perto-ink">${escapeHtml(s.titulo)}</span>
-            <span class="price text-xl tabular-nums">${brl(s.preco)}</span>
+            <span class="price text-xl tabular-nums">${brl(Number(s.preco || 0))}</span>
           </div>
           <p class="text-sm text-perto-ink/80 my-1.5 font-body">${s.descricao ? escapeHtml(s.descricao) : 'Sem descrição informada.'}</p>
           <p class="text-xs text-perto-sea font-semibold my-1">📍 ${escapeHtml(endSvc)}</p>
@@ -361,7 +384,7 @@
             <span class="tag ${s.ativo ? '' : 'off'}">${s.ativo ? 'Ativo' : 'Pausado'}</span>
           </div>
           <div class="flex flex-wrap gap-2 mt-3 justify-end">
-            <button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="toggle-service" data-service-id="${Number(s.id)}" data-next-ativo="${!s.ativo}">
+            <button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="toggle-service" data-service-id="${Number(s.id)}" data-next-ativo="${s.ativo ? 'false' : 'true'}">
               ${s.ativo ? 'Pausar' : 'Ativar'}
             </button>
             <button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="edit-service" data-service-id="${Number(s.id)}">✏️ Alterar Preço / Detalhes</button>
@@ -370,7 +393,7 @@
         </div>
       `;}).join('');
     } catch (e) {
-      div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar serviços.</p>';
+      setStatusText(div, 'Erro ao carregar serviços.', 'text-sm text-perto-ink/80');
     }
   }
 
@@ -599,7 +622,7 @@
     });
 
     if (!filtrados.length) {
-      div.innerHTML = '<p class="text-sm text-perto-ink/80">Nenhum chamado encontrado para este filtro.</p>';
+      setStatusText(div, 'Nenhum chamado encontrado para este filtro.', 'text-sm text-perto-ink/80');
       return;
     }
 
@@ -608,74 +631,79 @@
       const enderecoRegiao = [p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(' / ');
       const enderecoCompleto = [p.endereco_cliente, p.numero_cliente, p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(', ');
       const localTexto = enderecoProtegido
-        ? `${enderecoRegiao || 'Região do cliente'} (endereço exato liberado após confirmação)`
-        : (enderecoCompleto ? `${enderecoCompleto}${p.cep_cliente ? ` (CEP ${p.cep_cliente})` : ''}` : enderecoRegiao);
+        ? String(enderecoRegiao || 'Região do cliente') + ' (endereço exato liberado após confirmação)'
+        : (enderecoCompleto ? String(enderecoCompleto) + (p.cep_cliente ? ' (CEP ' + String(p.cep_cliente) + ')' : '') : enderecoRegiao);
       const isNovo = p.status === 'solicitado';
 
       let acoesHtml = '';
       const orderIdNum = Number(p.order_id);
       if (p.status === 'solicitado') {
         acoesHtml = `
-          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="confirmado">Confirmar Atendimento</button>
-          <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${orderIdNum}">Recusar</button>
+          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${Number(orderIdNum)}" data-status="confirmado">Confirmar Atendimento</button>
+          <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${Number(orderIdNum)}">Recusar</button>
         `;
       } else if (p.status === 'confirmado') {
         acoesHtml = `
-          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="em_transito">A Caminho</button>
-          <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${orderIdNum}">Cancelar</button>
+          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${Number(orderIdNum)}" data-status="em_transito">A Caminho</button>
+          <button type="button" class="btn-danger-soft px-4 py-2 rounded-full text-xs font-bold" data-action="motivo" data-order-id="${Number(orderIdNum)}">Cancelar</button>
         `;
       } else if (p.status === 'em_transito') {
         acoesHtml = `
-          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="pin" data-order-id="${orderIdNum}">Iniciar Execução</button>
+          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="pin" data-order-id="${Number(orderIdNum)}">Iniciar Execução</button>
         `;
       } else if (p.status === 'em_execucao') {
         acoesHtml = `
-          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${orderIdNum}" data-status="finalizado">Finalizar Serviço</button>
+          <button type="button" class="btn px-4 py-2 rounded-full text-xs font-extrabold" data-action="status" data-order-id="${Number(orderIdNum)}" data-status="finalizado">Finalizar Serviço</button>
         `;
       } else {
-        acoesHtml = `<span class="text-xs font-semibold text-perto-ink/80">${p.motivo_cancelamento ? `Motivo: ${escapeHtml(p.motivo_cancelamento)}` : 'Atendimento encerrado.'}</span>`;
+        acoesHtml = `<span class="text-xs font-semibold text-perto-ink/80">${p.motivo_cancelamento ? escapeHtml('Motivo: ' + String(p.motivo_cancelamento)) : 'Atendimento encerrado.'}</span>`;
       }
 
       const acoesContextuais = [];
       if (['solicitado', 'confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(p.status)) {
-        acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="chat" data-order-id="${orderIdNum}" data-order-status="${escapeHtml(String(p.status || ''))}">Chat Protegido</button>`);
+        acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="chat" data-order-id="${Number(orderIdNum)}" data-order-status="${escapeHtml(String(p.status || ''))}">Chat Protegido</button>`);
       }
       if (['confirmado', 'em_transito', 'em_execucao'].includes(p.status)) {
-        acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="sos" data-order-id="${orderIdNum}">SOS Emergência</button>`);
+        acoesContextuais.push(`<button type="button" class="btn-danger-soft px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="sos" data-order-id="${Number(orderIdNum)}">SOS Emergência</button>`);
       }
       if (['confirmado', 'em_transito', 'em_execucao', 'finalizado'].includes(p.status)) {
-        acoesContextuais.push(`<button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="disputa" data-order-id="${orderIdNum}">Abrir Disputa</button>`);
+        acoesContextuais.push(`<button type="button" class="btn-neutral px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="disputa" data-order-id="${Number(orderIdNum)}">Abrir Disputa</button>`);
       }
       if (p.status === 'em_disputa') {
-        acoesContextuais.push(`<span class="dispute-badge">Em Disputa</span>`);
+        acoesContextuais.push('<span class="dispute-badge">Em Disputa</span>');
       }
       if (p.status === 'finalizado' && !p.ja_avaliado) {
-        acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" data-action="avaliar" data-order-id="${orderIdNum}"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
+        acoesContextuais.push(`<button type="button" class="btn px-3.5 py-1.5 rounded-full text-xs font-bold text-perto-ink inline-flex items-center gap-1" data-action="avaliar" data-order-id="${Number(orderIdNum)}"><span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span> Avaliar Cliente</button>`);
       }
       if (p.status === 'finalizado') {
-        acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="ver-reviews" data-order-id="${orderIdNum}">Ver Avaliações</button>`);
+        acoesContextuais.push(`<button type="button" class="btn2 px-3.5 py-1.5 rounded-full text-xs font-bold" data-action="ver-reviews" data-order-id="${Number(orderIdNum)}">Ver Avaliações</button>`);
       }
       const reviewIdNum = Number(p.cliente_review_id || p.review_id || 0);
       if (reviewIdNum > 0) {
         const jaReplicada = Boolean(p.cliente_review_replied);
         const jaContestada = Boolean(p.cliente_review_contestada);
-        acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-reply" data-review-id="${reviewIdNum}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>`);
-        acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-contest" data-review-id="${reviewIdNum}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>`);
+        acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-reply" data-review-id="${Number(reviewIdNum)}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>`);
+        acoesContextuais.push(`<button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="review-contest" data-review-id="${Number(reviewIdNum)}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>`);
       }
+      const acoesContextuaisHtml = acoesContextuais.join('');
 
       const escrowSt = String(p.escrow_status || '').toLowerCase();
       let escrowBadgeHtml = '';
       if (escrowSt === 'estornado_total' || escrowSt === 'estornado_parcial') {
-        escrowBadgeHtml = `<span class="tag off">Estornado</span>`;
+        escrowBadgeHtml = '<span class="tag off">Estornado</span>';
       } else if (escrowSt === 'liberado') {
-        escrowBadgeHtml = `<span class="tag">Liberado</span>`;
+        escrowBadgeHtml = '<span class="tag">Liberado</span>';
       } else if (escrowSt === 'aguardando_liberacao') {
-        escrowBadgeHtml = `<span class="badge-novo">Em Garantia 48h — aguardando cliente ou prazo</span>`;
+        escrowBadgeHtml = '<span class="badge-novo">Em Garantia 48h — aguardando cliente ou prazo</span>';
       } else if (escrowSt === 'retido' || Number(p.pago) === 1) {
-        escrowBadgeHtml = `<span class="badge-novo">Retido em Escrow</span>`;
+        escrowBadgeHtml = '<span class="badge-novo">Retido em Escrow</span>';
       } else if (p.status !== 'cancelado') {
-        escrowBadgeHtml = `<span class="tag">Aguardando Pagamento do Cliente</span>`;
+        escrowBadgeHtml = '<span class="tag">Aguardando Pagamento do Cliente</span>';
       }
+
+      const telefoneHtml = p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat';
+      const localHtml = localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 ${escapeHtml(localTexto)}</div>` : '';
+      const obsHtml = p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">${escapeHtml(p.observacoes)}</p>` : '';
 
       return `
       <div class="svc mb-3.5 ${isNovo ? 'order-card-new' : 'border-l-4 border-perto-sun'}">
@@ -685,20 +713,20 @@
             <span class="tag">${escapeHtml(p.servico_categoria)}</span>
             ${isNovo ? '<span class="badge-novo">Novo</span>' : ''}
           </span>
-          <span class="price tabular-nums">${brl(p.preco_total)}</span>
+          <span class="price tabular-nums">${brl(Number(p.preco_total || 0))}</span>
         </div>
         <div class="meta my-1.5 text-perto-ink/80">
           <span>👤 <b>${escapeHtml(p.cliente_nome)}</b></span>
-          <span class="tabular-nums">📞 ${p.cliente_telefone ? escapeHtml(p.cliente_telefone) : 'Protegido / Chat'}</span>
+          <span class="tabular-nums">📞 ${telefoneHtml}</span>
           <span>💳 <b>${escapeHtml(formatarMetodoPagamento(p.metodo_pagamento))}</b></span>
           <b class="tag ${p.status === 'cancelado' ? 'off' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</b>
           ${escrowBadgeHtml}
         </div>
-        ${localTexto ? `<div class="text-xs sm:text-sm text-perto-sea font-semibold my-1">📍 ${escapeHtml(localTexto)}</div>` : ''}
-        ${p.observacoes ? `<p class="text-xs sm:text-sm text-perto-ink/80 font-body">${escapeHtml(p.observacoes)}</p>` : ''}
+        ${localHtml}
+        ${obsHtml}
         <div class="flex gap-2 mt-3 flex-wrap items-center">
           ${acoesHtml}
-          ${acoesContextuais.join('')}
+          ${acoesContextuaisHtml}
         </div>
       </div>
     `;}).join('');
@@ -726,7 +754,7 @@
       carregarFinancialSummary();
       renderizarPedidos();
     } catch (e) {
-      div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar chamados.</p>';
+      setStatusText(div, 'Erro ao carregar chamados.', 'text-sm text-perto-ink/80');
     }
   }
 
@@ -981,30 +1009,41 @@
   async function carregarMensagensChat(orderId) {
     const box = document.getElementById('listaMensagensChat');
     if (!box) return;
-    box.innerHTML = '<p class="text-perto-ink/80">Carregando mensagens...</p>';
+    setStatusText(box, 'Carregando mensagens...');
     try {
       const res = await fetch(`/api/orders/${orderId}/messages`);
       if (!res.ok) {
-        box.innerHTML = '<p class="text-perto-ink/80">Chat indisponível para este chamado.</p>';
+        setStatusText(box, 'Chat indisponível para este chamado.');
         return;
       }
       const msgs = await res.json();
       if (!Array.isArray(msgs) || !msgs.length) {
-        box.innerHTML = '<p class="text-perto-ink/80">Nenhuma mensagem ainda. Inicie a conversa abaixo.</p>';
+        setStatusText(box, 'Nenhuma mensagem ainda. Inicie a conversa abaixo.');
         return;
       }
-      box.innerHTML = msgs.map(m => `
-        <div class="p-2.5 rounded-xl bg-white border border-perto-road">
-          <div class="flex items-center justify-between text-[11px] text-perto-ink/80 mb-0.5">
-            <b>${escapeHtml(m.sender_nome || m.sender_tipo || 'Participante')}</b>
-            <span class="tabular-nums">${escapeHtml(m.criado_em || m.created_at || '')}</span>
-          </div>
-          <p class="m-0 text-perto-ink">${escapeHtml(m.mensagem || m.conteudo || m.texto || '')}</p>
-        </div>
-      `).join('');
+      const msgNodes = msgs.map(m => {
+        const card = document.createElement('div');
+        card.className = 'p-2.5 rounded-xl bg-white border border-perto-road';
+        const hdr = document.createElement('div');
+        hdr.className = 'flex items-center justify-between text-[11px] text-perto-ink/80 mb-0.5';
+        const senderB = document.createElement('b');
+        senderB.textContent = String(m.sender_nome || m.sender_tipo || 'Participante');
+        const tsSpan = document.createElement('span');
+        tsSpan.className = 'tabular-nums';
+        tsSpan.textContent = String(m.criado_em || m.created_at || '');
+        hdr.append(senderB, tsSpan);
+
+        const bodyP = document.createElement('p');
+        bodyP.className = 'm-0 text-perto-ink';
+        bodyP.textContent = String(m.mensagem || m.conteudo || m.texto || '');
+
+        card.append(hdr, bodyP);
+        return card;
+      });
+      box.replaceChildren(...msgNodes);
       box.scrollTop = box.scrollHeight;
     } catch (e) {
-      box.innerHTML = '<p class="text-perto-ink/80">Erro ao carregar mensagens.</p>';
+      setStatusText(box, 'Erro ao carregar mensagens.');
     }
   }
 
@@ -1217,19 +1256,19 @@
   async function abrirModalVerReviewsPrestador(orderId) {
     const box = document.getElementById('verReviewsPrestadorConteudo');
     if (!box) return;
-    box.innerHTML = '<p class="text-perto-ink/80">Carregando avaliações...</p>';
+    setStatusText(box, 'Carregando avaliações...');
     abrirModalAcessivel('modalVerReviewsPrestador');
     try {
       const res = await fetch(`/api/orders/${orderId}/reviews`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        box.innerHTML = `<p class="text-perto-ink/80">${escapeHtml(data.error || 'Não foi possível carregar as avaliações.')}</p>`;
+        setStatusText(box, data.error || 'Não foi possível carregar as avaliações.');
         return;
       }
       const minha = data.minha_avaliacao;
       const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_cliente || data.review_recebida || null;
       const oculta = Boolean(data.oculta_double_blind);
-      const renderStatusModeracao = (stMod) => {
+      const formatarStatusModeracaoHtml = (stMod) => {
         const mod = String(stMod || '').trim();
         if (!mod || mod.toLowerCase() === 'publicada') return '';
         return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">${escapeHtml(mod)}</div>`;
@@ -1240,7 +1279,7 @@
             <div class="font-bold text-perto-ink mb-1 tabular-nums">Sua avaliação ao cliente (★ ${escapeHtml(String(minha.nota || 5))})</div>
             <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
             ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
-            ${renderStatusModeracao(minha.status_moderacao)}
+            ${formatarStatusModeracaoHtml(minha.status_moderacao)}
           </div>
         `
         : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">Você ainda não avaliou este cliente.</div>`;
@@ -1263,11 +1302,11 @@
             <div class="font-bold text-perto-ink tabular-nums">Avaliação do cliente (★ ${escapeHtml(String(contraparte.nota || 5))})</div>
             <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
             ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Sua réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
-            ${renderStatusModeracao(contraparte.status_moderacao)}
+            ${formatarStatusModeracaoHtml(contraparte.status_moderacao)}
             ${revId > 0 ? `
               <div class="flex flex-wrap gap-2 pt-2 border-t border-perto-road">
-                <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-reply" data-review-id="${revId}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>
-                <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-contest" data-review-id="${revId}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>
+                <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaReplicada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-reply" data-review-id="${Number(revId)}" ${jaReplicada ? 'disabled' : ''}>${jaReplicada ? 'Réplica Enviada' : 'Responder Avaliação'}</button>
+                <button type="button" class="btn-neutral px-3 py-1.5 rounded-full text-xs font-bold ${jaContestada ? 'opacity-50 cursor-not-allowed' : ''}" data-action="modal-review-contest" data-review-id="${Number(revId)}" ${jaContestada ? 'disabled' : ''}>${jaContestada ? 'Já Contestada' : 'Contestar Avaliação'}</button>
               </div>
             ` : ''}
           </div>
@@ -1277,7 +1316,7 @@
       }
       box.innerHTML = minhaHtml + contraHtml;
     } catch (e) {
-      box.innerHTML = '<p class="text-perto-ink/80">Erro de comunicação ao carregar avaliações.</p>';
+      setStatusText(box, 'Erro de comunicação ao carregar avaliações.');
     }
   }
 
@@ -1343,7 +1382,7 @@
       return;
     }
     const btnSubmit = e.target.querySelector('button[type="submit"]');
-    const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+    const origNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnSubmit) : [];
     if (btnSubmit) {
       btnSubmit.classList.add('is-loading');
       btnSubmit.disabled = true;
@@ -1379,7 +1418,9 @@
       if (btnSubmit) {
         btnSubmit.classList.remove('is-loading');
         btnSubmit.disabled = false;
-        btnSubmit.innerHTML = origHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(btnSubmit, origNodes);
+        }
       }
     }
   });
@@ -1560,7 +1601,7 @@
   document.getElementById('formPerfilPrestador').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSubmit = e.target.querySelector('button[type="submit"]');
-    const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+    const origNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnSubmit) : [];
     if (btnSubmit) {
       btnSubmit.classList.add('is-loading');
       btnSubmit.disabled = true;
@@ -1604,7 +1645,9 @@
       if (btnSubmit) {
         btnSubmit.classList.remove('is-loading');
         btnSubmit.disabled = false;
-        btnSubmit.innerHTML = origHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(btnSubmit, origNodes);
+        }
       }
     }
   });
@@ -1632,13 +1675,50 @@
   let suporteIAPrestadorEmAndamento = false;
   let suporteIAPrestadorAbort = null;
 
-  function obterSaudacaoInicialSuporteIAPrestadorHtml() {
-    return `
-      <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink">
-        <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá</div>
-        <p class="m-0">Olá! Sou o assistente do PertoJá. Posso tirar dúvidas sobre repasses em Escrow, verificação KYC, planos, PIN de execução e boas práticas no catálogo. Como posso ajudar?</p>
-      </div>
-    `;
+  function criarBolhaSuporteIA(wrapperClass, labelClass, senderLabel, bodyText, extraBodyClass = '') {
+    const wrap = document.createElement('div');
+    wrap.className = wrapperClass;
+    const lbl = document.createElement('div');
+    lbl.className = labelClass;
+    lbl.textContent = senderLabel;
+    const p = document.createElement('p');
+    p.className = extraBodyClass ? `m-0 ${extraBodyClass}` : 'm-0';
+    p.textContent = bodyText;
+    wrap.append(lbl, p);
+    return wrap;
+  }
+
+  function criarIndicadorDigitandoSuporteIA() {
+    const wrap = document.createElement('div');
+    wrap.id = 'indicadorDigitandoSuporteIA';
+    wrap.className = 'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink/80 mr-6 flex items-center gap-2';
+    wrap.setAttribute('role', 'status');
+
+    const dots = document.createElement('span');
+    dots.className = 'inline-flex gap-1';
+    dots.setAttribute('aria-hidden', 'true');
+    ['0ms', '150ms', '300ms'].forEach((delay) => {
+      const dot = document.createElement('span');
+      dot.className = 'w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce';
+      dot.style.animationDelay = delay;
+      dots.appendChild(dot);
+    });
+
+    const label = document.createElement('span');
+    label.className = 'text-xs font-semibold';
+    label.textContent = 'Pensando...';
+
+    wrap.append(dots, label);
+    return wrap;
+  }
+
+  function criarBolhaSaudacaoInicialSuporteIAPrestador() {
+    return criarBolhaSuporteIA(
+      'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink',
+      'text-[10px] font-bold text-perto-sea mb-1',
+      '🤖 Assistente PertoJá',
+      'Olá! Sou o assistente do PertoJá. Posso tirar dúvidas sobre repasses em Escrow, verificação KYC, planos, PIN de execução e boas práticas no catálogo. Como posso ajudar?'
+    );
   }
 
   function aplicarBadgeStatusSuporteIA(data) {
@@ -1650,7 +1730,7 @@
       const modelInfo = data.model ? `Modelo: ${data.model}` : '';
       const hintInfo = data.hint || '';
       badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 border border-emerald-300 text-emerald-900';
-      badgeEl.innerHTML = `🟢 IA Online (${escapeHtml(provider)})`;
+      badgeEl.textContent = `🟢 IA Online (${provider})`;
       badgeEl.title = [modelInfo, hintInfo].filter(Boolean).join(' · ') || 'IA conectada em tempo real';
     } else {
       const reasonMap = {
@@ -1665,7 +1745,7 @@
       };
       const fallbackDetail = data.warning || data.hint || (data.fallback_reason ? (reasonMap[data.fallback_reason] || `Motivo: ${data.fallback_reason}`) : '');
       badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 border border-perto-sun text-perto-ink';
-      badgeEl.innerHTML = '🟡 Modo Offline (FAQ Local)';
+      badgeEl.textContent = '🟡 Modo Offline (FAQ Local)';
       badgeEl.title = fallbackDetail || 'Assistente operando com FAQ local offline.';
     }
   }
@@ -1723,7 +1803,7 @@
     const listaEl = document.getElementById('listaMensagensSuporteIA');
     if (listaEl) {
       listaEl.removeAttribute('aria-busy');
-      listaEl.innerHTML = obterSaudacaoInicialSuporteIAPrestadorHtml();
+      listaEl.replaceChildren(criarBolhaSaudacaoInicialSuporteIAPrestador());
       listaEl.scrollTop = 0;
     }
     alternarEstadoEnvioSuporteIA(false);
@@ -1768,24 +1848,16 @@
     alternarEstadoEnvioSuporteIA(true);
     listaEl.setAttribute('aria-busy', 'true');
 
-    listaEl.insertAdjacentHTML('beforeend', `
-      <div class="p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6">
-        <div class="text-[10px] font-bold text-perto-ink/80 mb-0.5">Você</div>
-        <p class="m-0 break-words">${escapeHtml(msg)}</p>
-      </div>
-    `);
+    listaEl.appendChild(criarBolhaSuporteIA(
+      'p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6',
+      'text-[10px] font-bold text-perto-ink/80 mb-0.5',
+      'Você',
+      msg,
+      'break-words'
+    ));
 
     document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-    listaEl.insertAdjacentHTML('beforeend', `
-      <div id="indicadorDigitandoSuporteIA" class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink/80 mr-6 flex items-center gap-2" role="status">
-        <span class="inline-flex gap-1" aria-hidden="true">
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 0ms;"></span>
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 150ms;"></span>
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 300ms;"></span>
-        </span>
-        <span class="text-xs font-semibold">Pensando...</span>
-      </div>
-    `);
+    listaEl.appendChild(criarIndicadorDigitandoSuporteIA());
     listaEl.scrollTop = listaEl.scrollHeight;
 
     try {
@@ -1814,7 +1886,7 @@
         if (isFallback) {
           senderLabel = 'Assistente PertoJá · Modo Offline';
         } else if (data.fallback === false) {
-          senderLabel = `🤖 Assistente PertoJá · IA (${escapeHtml(data.model || data.provider || 'LLM')})`;
+          senderLabel = `🤖 Assistente PertoJá · IA (${data.model || data.provider || 'LLM'})`;
         }
         const bubbleClass = isFallback
           ? 'p-2.5 rounded-xl bg-white border border-perto-sun/70 text-perto-ink mr-6'
@@ -1825,32 +1897,28 @@
 
         aplicarBadgeStatusSuporteIA(data);
         historicoSuporteIA.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-        listaEl.insertAdjacentHTML('beforeend', `
-          <div class="${bubbleClass}">
-            <div class="${labelClass}">${senderLabel}</div>
-            <p class="m-0 break-words whitespace-pre-line">${escapeHtml(reply)}</p>
-          </div>
-        `);
+        listaEl.appendChild(criarBolhaSuporteIA(bubbleClass, labelClass, senderLabel, reply, 'break-words whitespace-pre-line'));
       } else {
         const errText = data.error || 'Assistente temporariamente indisponível. Tente novamente em instantes.';
         aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: errText });
-        listaEl.insertAdjacentHTML('beforeend', `
-          <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
-            <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso do Sistema</div>
-            <p class="m-0 break-words">${escapeHtml(errText)}</p>
-          </div>
-        `);
+        listaEl.appendChild(criarBolhaSuporteIA(
+          'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
+          'text-[10px] font-bold text-perto-ink mb-0.5',
+          'Aviso do Sistema',
+          errText,
+          'break-words'
+        ));
       }
     } catch (err) {
       if (myGen !== suporteIAPrestadorGen || (err && err.name === 'AbortError')) return;
       document.getElementById('indicadorDigitandoSuporteIA')?.remove();
       aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: 'Não foi possível contatar o Assistente de Suporte IA no momento.' });
-      listaEl.insertAdjacentHTML('beforeend', `
-        <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
-          <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso de Conexão</div>
-          <p class="m-0">Não foi possível contatar o Assistente de Suporte IA no momento.</p>
-        </div>
-      `);
+      listaEl.appendChild(criarBolhaSuporteIA(
+        'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
+        'text-[10px] font-bold text-perto-ink mb-0.5',
+        'Aviso de Conexão',
+        'Não foi possível contatar o Assistente de Suporte IA no momento.'
+      ));
     } finally {
       if (myGen === suporteIAPrestadorGen) {
         document.getElementById('indicadorDigitandoSuporteIA')?.remove();

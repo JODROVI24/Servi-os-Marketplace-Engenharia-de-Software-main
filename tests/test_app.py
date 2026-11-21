@@ -3601,6 +3601,83 @@ class TestMarketplaceFull(unittest.TestCase):
             html_404 = f.read()
         self.assertNotRegex(html_404, r'<style\b', 'public/404.html não deve conter <style> inline')
 
+    def test_75_xss_audit_innerhtml_and_payload_escaping(self):
+        import glob
+        import subprocess
+        import time
+
+        # 1. Executar linter estático anti-XSS
+        lint_script = os.path.join(REPO_ROOT, 'scripts', 'check_xss_lint.js')
+        self.assertTrue(os.path.isfile(lint_script), 'scripts/check_xss_lint.js ausente')
+        proc = subprocess.run(
+            ['node', lint_script],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            check=False,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f'check_xss_lint.js falhou:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}',
+        )
+        self.assertIn('0 violações', proc.stdout)
+
+        # 2. Verificar configuração ESLint no-unsanitized
+        eslint_path = os.path.join(REPO_ROOT, '.eslintrc.json')
+        self.assertTrue(os.path.isfile(eslint_path), '.eslintrc.json ausente')
+        with open(eslint_path, 'r', encoding='utf-8') as f:
+            eslint_cfg = json.load(f)
+        self.assertIn('no-unsanitized', eslint_cfg.get('plugins', []))
+        rules = eslint_cfg.get('rules', {})
+        self.assertEqual(rules.get('no-unsanitized/method'), 'error')
+        self.assertEqual(rules.get('no-unsanitized/property'), 'error')
+        self.assertEqual(rules.get('no-eval'), 'error')
+
+        # 3. Helpers globais expostos em public/auth.js e ausência de insertAdjacentHTML / outerHTML / eval em JS públicos
+        auth_js_path = os.path.join(REPO_ROOT, 'public', 'auth.js')
+        with open(auth_js_path, 'r', encoding='utf-8') as f:
+            auth_js = f.read()
+        for sym in ('window.escapeHtml', 'window.sanitizarUrlSegura', 'window.salvarConteudoBotao', 'window.restaurarConteudoBotao'):
+            self.assertIn(sym, auth_js, f'{sym} deve ser exportado em public/auth.js')
+
+        js_files = sorted(glob.glob(os.path.join(REPO_ROOT, 'public', '*.js')) + glob.glob(os.path.join(REPO_ROOT, 'public', 'js', '*.js')))
+        self.assertGreaterEqual(len(js_files), 9)
+        for js_path in js_files:
+            with open(js_path, 'r', encoding='utf-8') as f:
+                code = f.read()
+            self.assertNotIn('.insertAdjacentHTML', code, f'insertAdjacentHTML encontrado em {os.path.basename(js_path)}')
+            self.assertNotIn('.outerHTML', code, f'outerHTML encontrado em {os.path.basename(js_path)}')
+
+        # 4. Verificar que payload XSS no perfil persiste como dado bruto seguro via API e não corrompe respostas JSON
+        payload = '<img src=x onerror="window.__xss=1">'
+        email_xss = f'xss_{int(time.time() * 1000)}@pertoja.com'
+        res_reg = self.client.post('/api/auth/register', json={
+            'nome': 'Teste XSS',
+            'email': email_xss,
+            'senha': 'XssTest@2026!',
+            'tipo': 'cliente',
+        })
+        self.assertEqual(res_reg.status_code, 201)
+        res_put = self.client.put('/api/profile', json={
+            'nome': payload,
+            'bio': payload,
+            'endereco': payload,
+        })
+        self.assertEqual(res_put.status_code, 200)
+        res_me = self.client.get('/api/auth/me')
+        self.assertEqual(res_me.status_code, 200)
+        me_data = json.loads(res_me.data)
+        self.assertEqual(me_data.get('user', {}).get('nome'), payload)
+
+        res_prof = self.client.get('/api/profile')
+        self.assertEqual(res_prof.status_code, 200)
+        prof_data = json.loads(res_prof.data)
+        self.assertEqual(prof_data.get('nome'), payload)
+        self.assertEqual(prof_data.get('bio'), payload)
+        self.assertEqual(prof_data.get('endereco'), payload)
+
 
 if __name__ == '__main__':
     unittest.main()

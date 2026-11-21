@@ -30,6 +30,54 @@ function garantirHeadersCsrf(headersInit) {
   return headers;
 }
 
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function sanitizarUrlSegura(url, fallback = '#') {
+  if (typeof url !== 'string') return fallback;
+  const trimmed = url.trim();
+  if (!trimmed || /[\u0000-\u001F\u007F\\]/.test(trimmed)) return fallback;
+  if (trimmed.startsWith('//')) return fallback;
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return fallback;
+  try {
+    const base = (typeof window !== 'undefined' && window.location && window.location.origin)
+      ? window.location.origin
+      : 'https://pertoja.invalid';
+    const parsed = new URL(trimmed, base);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return fallback;
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return trimmed.startsWith('/') ? (parsed.pathname + parsed.search + parsed.hash) : trimmed;
+    }
+    return parsed.href;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function salvarConteudoBotao(btn) {
+  if (!btn) return [];
+  return Array.from(btn.childNodes).map((n) => n.cloneNode(true));
+}
+
+function restaurarConteudoBotao(btn, snapshot) {
+  if (!btn || !Array.isArray(snapshot)) return;
+  btn.replaceChildren(...snapshot.map((n) => n.cloneNode(true)));
+}
+
+if (typeof window !== 'undefined') {
+  window.escapeHtml = escapeHtml;
+  window.sanitizarUrlSegura = sanitizarUrlSegura;
+  window.salvarConteudoBotao = salvarConteudoBotao;
+  window.restaurarConteudoBotao = restaurarConteudoBotao;
+}
+
 (function instalarFetchCsrfWrapper() {
   if (typeof window === 'undefined' || typeof window.fetch !== 'function' || window.__pertojaCsrfFetchInstalled) {
     return;
@@ -172,10 +220,13 @@ function inicializarDrawerNavegacao() {
   if (!navDrawer.querySelector('.drawer-legal-links')) {
     const legalWrap = document.createElement('div');
     legalWrap.className = 'drawer-legal-links';
-    legalWrap.innerHTML = `
-      <a href="/termos.html">Termos &amp; Ética</a>
-      <a href="/privacidade.html">Privacidade LGPD</a>
-    `;
+    const linkTermos = document.createElement('a');
+    linkTermos.href = '/termos.html';
+    linkTermos.textContent = 'Termos & Ética';
+    const linkPrivacidade = document.createElement('a');
+    linkPrivacidade.href = '/privacidade.html';
+    linkPrivacidade.textContent = 'Privacidade LGPD';
+    legalWrap.replaceChildren(linkTermos, linkPrivacidade);
     navDrawer.appendChild(legalWrap);
   }
 
@@ -475,14 +526,16 @@ function garantirModalEnderecoHeader() {
         <button type="button" id="btnConfirmarEnderecoHeader" class="btn" style="min-height:42px;padding:0 18px;border-radius:9999px;font-weight:800;">
           Confirmar localização
         </button>
-        ${emPedido ? '' : `
-          <button type="button" id="btnVerProfissionaisProximos" class="btn2" style="min-height:42px;padding:0 18px;border-radius:9999px;font-weight:800;">
-            Ver profissionais próximos
-          </button>
-        `}
+        <button type="button" id="btnVerProfissionaisProximos" class="btn2" style="min-height:42px;padding:0 18px;border-radius:9999px;font-weight:800;">
+          Ver profissionais próximos
+        </button>
       </div>
     </div>
   `;
+  if (emPedido) {
+    const btnHide = modal.querySelector('#btnVerProfissionaisProximos');
+    if (btnHide) btnHide.style.display = 'none';
+  }
 
   document.body.appendChild(modal);
 
@@ -598,14 +651,14 @@ function garantirModalEnderecoHeader() {
     _locPendente = null;
     acoesBox.style.display = 'none';
     mostrarStatus('Obtendo sua posição via GPS...', 'info');
-    const origGpsHtml = btnGps.innerHTML;
+    const origGpsNodes = salvarConteudoBotao(btnGps);
     btnGps.classList.add('is-loading');
     btnGps.disabled = true;
     btnGps.textContent = 'Obtendo GPS...';
     const restoreGpsBtn = () => {
       btnGps.classList.remove('is-loading');
       btnGps.disabled = false;
-      btnGps.innerHTML = origGpsHtml;
+      restaurarConteudoBotao(btnGps, origGpsNodes);
     };
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -690,10 +743,14 @@ async function inicializarHeaderLocalizacao() {
     btn.id = 'btnEnderecoHeader';
     btn.className = 'header-loc-pill';
     btn.setAttribute('aria-label', 'Definir ou alterar endereço de atendimento');
-    btn.innerHTML = `
-      <span class="material-symbols-outlined" aria-hidden="true">location_on</span>
-      <span class="header-loc-pill-text">Definir endereço</span>
-    `;
+    const locIcon = document.createElement('span');
+    locIcon.className = 'material-symbols-outlined';
+    locIcon.setAttribute('aria-hidden', 'true');
+    locIcon.textContent = 'location_on';
+    const locText = document.createElement('span');
+    locText.className = 'header-loc-pill-text';
+    locText.textContent = 'Definir endereço';
+    btn.replaceChildren(locIcon, locText);
 
     const btnHamburguer = document.getElementById('btnHamburguer') || header.querySelector('.menu-hamburguer');
     if (btnHamburguer && btnHamburguer.parentNode === header) {

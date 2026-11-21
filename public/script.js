@@ -108,7 +108,12 @@ function atualizarEstadoCarregamento(ativo) {
         overlay.className = 'map-loading-overlay';
         overlay.setAttribute('role', 'status');
         overlay.setAttribute('aria-live', 'polite');
-        overlay.innerHTML = '<div class="map-spinner" aria-hidden="true"></div><span>Buscando serviços...</span>';
+        const spin = document.createElement('div');
+        spin.className = 'map-spinner';
+        spin.setAttribute('aria-hidden', 'true');
+        const txt = document.createElement('span');
+        txt.textContent = 'Buscando serviços...';
+        overlay.replaceChildren(spin, txt);
         mapEl.appendChild(overlay);
       }
     } else if (overlay) {
@@ -125,7 +130,12 @@ function atualizarEstadoCarregamento(ativo) {
         statusEl.className = 'list-loading-status';
         statusEl.setAttribute('role', 'status');
         statusEl.setAttribute('aria-live', 'polite');
-        statusEl.innerHTML = '<span class="map-spinner-sm" aria-hidden="true"></span><span>Buscando serviços...</span>';
+        const spinSm = document.createElement('span');
+        spinSm.className = 'map-spinner-sm';
+        spinSm.setAttribute('aria-hidden', 'true');
+        const txtSm = document.createElement('span');
+        txtSm.textContent = 'Buscando serviços...';
+        statusEl.replaceChildren(spinSm, txtSm);
         const listEl = document.getElementById('list');
         if (listEl && listEl.parentNode === painelLista) {
           painelLista.insertBefore(statusEl, listEl);
@@ -161,15 +171,16 @@ function exibirAlertaRetry(status) {
     banner.setAttribute('aria-live', 'assertive');
     document.body.appendChild(banner);
   }
-  const codigo = status ? ` (HTTP ${status})` : '';
-  banner.innerHTML = `
-    <span>Serviço temporariamente ocupado ou indisponível${escapeHtml(codigo)}. Tente novamente em alguns segundos.</span>
-    <button type="button" class="alerta-retry-close" aria-label="Fechar aviso">Fechar</button>
-  `;
-  const btnClose = banner.querySelector('.alerta-retry-close');
-  if (btnClose) {
-    btnClose.onclick = () => banner.remove();
-  }
+  const codigo = status ? ` (HTTP ${Number(status)})` : '';
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = `Serviço temporariamente ocupado ou indisponível${codigo}. Tente novamente em alguns segundos.`;
+  const btnClose = document.createElement('button');
+  btnClose.type = 'button';
+  btnClose.className = 'alerta-retry-close';
+  btnClose.setAttribute('aria-label', 'Fechar aviso');
+  btnClose.textContent = 'Fechar';
+  btnClose.addEventListener('click', () => banner.remove());
+  banner.replaceChildren(msgSpan, btnClose);
 }
 
 function getServiceScore(p) {
@@ -220,6 +231,9 @@ function toast(t) {
 
 // Sanitização para proteção contra injeções de script (XSS)
 function escapeHtml(str) {
+  if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+    return window.escapeHtml(str);
+  }
   if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -229,17 +243,38 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function sanitizarUrlSegura(url, fallback = '#') {
+  if (typeof window !== 'undefined' && typeof window.sanitizarUrlSegura === 'function') {
+    return window.sanitizarUrlSegura(url, fallback);
+  }
+  if (typeof url !== 'string' || /^(javascript|data|vbscript):/i.test(url.trim()) || url.trim().startsWith('//')) {
+    return fallback;
+  }
+  return url.trim() || fallback;
+}
+
 function renderSkeletonList() {
   const listEl = $('#list');
   if (!listEl) return;
-  listEl.innerHTML = [1, 2, 3].map(() => `
-    <div class="svc skeleton-card" style="padding: 16px; border-radius: 12px; margin-bottom: 12px;">
-      <div class="skeleton" style="height: 20px; width: 60%; margin-bottom: 8px;"></div>
-      <div class="skeleton" style="height: 14px; width: 85%; margin-bottom: 8px;"></div>
-      <div class="skeleton" style="height: 14px; width: 40%; margin-bottom: 12px;"></div>
-      <div class="skeleton" style="height: 36px; width: 100%; border-radius: 9999px;"></div>
-    </div>
-  `).join('');
+  const nodes = [1, 2, 3].map(() => {
+    const card = document.createElement('div');
+    card.className = 'svc skeleton-card';
+    card.style.cssText = 'padding: 16px; border-radius: 12px; margin-bottom: 12px;';
+    const specs = [
+      'height: 20px; width: 60%; margin-bottom: 8px;',
+      'height: 14px; width: 85%; margin-bottom: 8px;',
+      'height: 14px; width: 40%; margin-bottom: 12px;',
+      'height: 36px; width: 100%; border-radius: 9999px;'
+    ];
+    specs.forEach((cssText) => {
+      const bar = document.createElement('div');
+      bar.className = 'skeleton';
+      bar.style.cssText = cssText;
+      card.appendChild(bar);
+    });
+    return card;
+  });
+  listEl.replaceChildren(...nodes);
 }
 
 // Carregar prestadores da API se disponível
@@ -338,10 +373,18 @@ function renderChips() {
   const chipsEl = $('#chips');
   if (!chipsEl) return;
   const cats = ['Todos', 'Limpeza', 'Elétrica', 'Encanamento', 'Pintura', 'Jardinagem', 'Tecnologia', 'Marcenaria'];
-  chipsEl.innerHTML = cats.map(c => {
+  const buttons = cats.map((c) => {
     const isSelected = c.toLowerCase() === cat.toLowerCase();
-    return `<button type="button" class="chip ${isSelected ? 'on' : ''}" data-c="${c}" aria-pressed="${isSelected}" aria-label="Filtrar por categoria ${c}">${c}</button>`;
-  }).join('');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `chip ${isSelected ? 'on' : ''}`;
+    btn.dataset.c = c;
+    btn.setAttribute('aria-pressed', String(isSelected));
+    btn.setAttribute('aria-label', `Filtrar por categoria ${c}`);
+    btn.textContent = c;
+    return btn;
+  });
+  chipsEl.replaceChildren(...buttons);
 }
 
 function renderList() {
@@ -357,20 +400,35 @@ function renderList() {
     $('#count').textContent = '(' + v.length + ')';
     $('#count').classList.add('tabular-nums');
   }
-  listEl.innerHTML = v.length ? v.map(p => {
+  if (!v.length) {
+    listEl.innerHTML = `
+      <div class="empty-state-card" role="status" aria-live="polite">
+        <p class="empty-title">Nenhum serviço encontrado nesta área</p>
+        <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de <span class="tabular-nums">${Number(radius) || 8} km</span>. Experimente expandir o raio de busca.</p>
+        <button type="button" class="btn" data-action="expand-radius" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;">
+          Expandir raio para 15 km
+        </button>
+      </div>`;
+    return;
+  }
+  listEl.innerHTML = v.map(p => {
     const isSuper = p.super_profissional || (p.r >= 4.8 && (p.total_avaliacoes || 0) >= 5);
-    const kycTier = p.kyc_tier || 1;
-    const iconName = getCategoryIcon(p.c);
+    const kycTierNum = Number(p.kyc_tier || 1);
+    const isBestCard = Boolean(order && order.best && order.best.id === p.id);
+    const kycBadgeHtml = kycTierNum >= 2
+      ? `<span class="kyc-badge aprovado tabular-nums" title="Identidade e registro profissional verificados">Verificado Nível ${Number(kycTierNum)}</span>`
+      : '';
+    const superBadgeHtml = isSuper ? '<span class="super-badge">★ Super Profissional</span>' : '';
     return `
-   <div class="svc ${order && order.best && order.best.id === p.id ? 'best' : ''}">
+   <div class="svc ${isBestCard ? 'best' : ''}">
      <div class="svc-card-row">
        <div class="svc-avatar" aria-hidden="true">
-         <span class="material-symbols-outlined">${iconName}</span>
+         <span class="material-symbols-outlined">${escapeHtml(getCategoryIcon(p.c))}</span>
        </div>
        <div class="flex-1 min-w-0 space-y-1.5">
          <div class="top">
            <span class="font-bold text-perto-ink">${escapeHtml(p.s)}</span>
-           <span class="price tabular-nums">${brl(p.p)}</span>
+           <span class="price tabular-nums">${brl(Number(p.p || 0))}</span>
          </div>
          <div class="text-xs font-semibold text-perto-sea flex items-center gap-1.5 truncate">
            <span class="material-symbols-outlined text-sm shrink-0" aria-hidden="true">location_on</span>
@@ -378,11 +436,11 @@ function renderList() {
          </div>
          <div class="meta flex flex-wrap items-center gap-x-3 gap-y-1.5 text-perto-ink/80">
            <span class="inline-flex items-center gap-1 font-semibold text-perto-ink"><span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">person</span> ${escapeHtml(p.n)}</span>
-           <span class="tabular-nums font-bold text-perto-ink">★ ${p.r.toFixed(1)}</span>
-           <span class="tabular-nums font-semibold text-perto-ink/80">${dist(p).toFixed(1)} km</span>
+           <span class="tabular-nums font-bold text-perto-ink">★ ${Number(p.r || 0).toFixed(1)}</span>
+           <span class="tabular-nums font-semibold text-perto-ink/80">${Number(dist(p)).toFixed(1)} km</span>
            <span class="tag">${escapeHtml(p.c)}</span>
-           ${kycTier >= 2 ? `<span class="kyc-badge aprovado tabular-nums" title="Identidade e registro profissional verificados">Verificado Nível ${escapeHtml(String(kycTier))}</span>` : ''}
-           ${isSuper ? '<span class="super-badge">★ Super Profissional</span>' : ''}
+           ${kycBadgeHtml}
+           ${superBadgeHtml}
            <span class="tag ${p.a ? '' : 'off'}">${p.a ? 'Disponível' : 'Indisponível'}</span>
          </div>
        </div>
@@ -391,14 +449,7 @@ function renderList() {
        <button type="button" class="btn btn-requisitar font-extrabold shadow-sm" data-req="${Number(p.id)}" aria-label="Solicitar atendimento de ${escapeHtml(p.n)} para ${escapeHtml(p.s)}" ${(!p.a || busy) ? 'disabled' : ''}>Solicitar Atendimento</button>
      </div>
     </div>`;
-  }).join('') : `
-     <div class="empty-state-card" role="status" aria-live="polite">
-       <p class="empty-title">Nenhum serviço encontrado nesta área</p>
-       <p class="empty-desc">Não encontramos profissionais disponíveis neste raio de <span class="tabular-nums">${radius} km</span>. Experimente expandir o raio de busca.</p>
-       <button type="button" class="btn" data-action="expand-radius" aria-label="Expandir raio de busca para 15 km" style="font-size: 0.82rem; padding: 8px 16px; border-radius: 9999px;">
-         Expandir raio para 15 km
-       </button>
-     </div>`;
+  }).join('');
 }
 
 function renderMap(posAtual) {
@@ -421,7 +472,7 @@ function renderMap(posAtual) {
     <div style="font-family: inherit; font-size: 0.85rem; min-width: 190px;">
       <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">📍 Local Pesquisado</h4>
       <div style="color: var(--sea); font-weight: 700; margin-bottom: 4px;">${escapeHtml(currentSearchAddress || 'Endereço atual')}</div>
-      <div style="font-size: 0.75rem; color: #666;">Coordenadas: ${centerLat.toFixed(5)}, ${centerLng.toFixed(5)}</div>
+      <div style="font-size: 0.75rem; color: #666;">Coordenadas: ${Number(centerLat).toFixed(5)}, ${Number(centerLng).toFixed(5)}</div>
     </div>
   `);
   searchMarker.addTo(layerMarkers);
@@ -442,11 +493,11 @@ function renderMap(posAtual) {
     marker.bindPopup(`
       <div style="font-family: inherit; font-size: 0.85rem; min-width: 170px;">
         <h4 style="margin: 0 0 4px; color: #10243e; font-size: 0.95rem;">${escapeHtml(p.s)}</h4>
-        <div style="color: var(--sea); font-weight: 800; font-size: 1rem; margin-bottom: 4px;">${brl(p.p)}</div>
-        <div style="color: #444; margin-bottom: 3px;">👤 <b>${escapeHtml(p.n)}</b> · ★ ${p.r.toFixed(1)}</div>
+        <div style="color: var(--sea); font-weight: 800; font-size: 1rem; margin-bottom: 4px;">${brl(Number(p.p || 0))}</div>
+        <div style="color: #444; margin-bottom: 3px;">👤 <b>${escapeHtml(p.n)}</b> · ★ ${Number(p.r || 0).toFixed(1)}</div>
         <div style="color: #666; font-size: 0.75rem; margin-bottom: 4px;">📍 ${escapeHtml(p.endereco || 'São Paulo - SP')}${p.localizacao_aproximada ? ' (região aproximada)' : ''}</div>
         ${p.localizacao_aproximada ? '<div style="color: #4b6073; font-size: 0.72rem; margin-bottom: 4px;">🔒 Localização aproximada na vitrine para proteção de privacidade</div>' : ''}
-        <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${dist(p).toFixed(1)} km de você</div>
+        <div style="color: var(--ok); font-weight: bold; font-size: 0.8rem; margin-bottom: 8px;">A ${Number(dist(p)).toFixed(1)} km de você</div>
         <button type="button" class="btn btn-requisitar" data-request-id="${Number(p.id)}" aria-label="Requisitar atendimento de ${escapeHtml(p.n)}" style="width: 100%; min-height: 38px; font-size: 0.82rem; padding: 8px 14px; ${isAvail ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${isAvail ? '' : 'disabled'}>
           ${isAvail ? 'Requisitar Agora' : (busy ? 'Atendimento em Andamento' : 'Indisponível no Momento')}
         </button>
@@ -469,7 +520,7 @@ async function buscarPorEnderecoCliente() {
   const cleanCep = q.replace(/\D/g, '');
 
   const btnBusca = document.getElementById('btnBuscarEndereco') || document.getElementById('btnBuscarEnderecoHero');
-  const btnBuscaOriginalHtml = btnBusca ? btnBusca.innerHTML : '';
+  const btnBuscaOriginalNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnBusca) : [];
   if (btnBusca) {
     btnBusca.classList.add('is-loading');
     btnBusca.disabled = true;
@@ -605,7 +656,15 @@ async function buscarPorEnderecoCliente() {
       const statusBox = document.getElementById('statusBuscaEndereco');
       if (statusBox) {
         statusBox.style.display = 'flex';
-        statusBox.innerHTML = `<span class="material-symbols-outlined text-sm text-perto-ok">check_circle</span> <span>Endereço localizado: <b>${escapeHtml(label)}</b></span>`;
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'material-symbols-outlined text-sm text-perto-ok';
+        iconSpan.setAttribute('aria-hidden', 'true');
+        iconSpan.textContent = 'check_circle';
+        const msgSpan = document.createElement('span');
+        const boldEl = document.createElement('b');
+        boldEl.textContent = String(label || '');
+        msgSpan.append('Endereço localizado: ', boldEl);
+        statusBox.replaceChildren(iconSpan, msgSpan);
       }
 
       toast(`Localização definida: ${label}`);
@@ -621,7 +680,9 @@ async function buscarPorEnderecoCliente() {
     if (btnBusca) {
       btnBusca.classList.remove('is-loading');
       btnBusca.disabled = false;
-      btnBusca.innerHTML = btnBuscaOriginalHtml;
+      if (typeof window.restaurarConteudoBotao === 'function') {
+        window.restaurarConteudoBotao(btnBusca, btnBuscaOriginalNodes);
+      }
     }
     stopLoading();
   }
@@ -630,13 +691,42 @@ async function buscarPorEnderecoCliente() {
 function renderSteps(i) {
   const stepsEl = $('#steps');
   if (stepsEl) {
-    stepsEl.innerHTML = STEPS.map((t, k) => `<span class="step ${k < i ? 'done' : k === i ? 'now' : ''}">${t}</span>`).join('');
+    const nodes = STEPS.map((t, k) => {
+      const sp = document.createElement('span');
+      sp.className = `step ${k < i ? 'done' : k === i ? 'now' : ''}`;
+      sp.textContent = t;
+      return sp;
+    });
+    stepsEl.replaceChildren(...nodes);
   }
 }
 
 function info(h) {
   const infoEl = $('#info');
-  if (infoEl) infoEl.innerHTML = '<p>' + h + '</p>';
+  if (!infoEl) return;
+  const p = document.createElement('p');
+  if (Array.isArray(h)) {
+    h.forEach((part) => {
+      if (part == null || part === false || part === '') return;
+      if (typeof part === 'string') {
+        p.appendChild(document.createTextNode(part));
+      } else if (part && typeof part === 'object') {
+        if (part.bold != null) {
+          const b = document.createElement('b');
+          b.textContent = String(part.bold);
+          p.appendChild(b);
+        } else if (part.highlight != null) {
+          const sp = document.createElement('span');
+          sp.className = 'font-semibold text-amber-700';
+          sp.textContent = String(part.highlight);
+          p.appendChild(sp);
+        }
+      }
+    });
+  } else {
+    p.textContent = String(h || '');
+  }
+  infoEl.replaceChildren(p);
 }
 
 // Modal Acessível de Autenticação Obrigatória no Checkout
@@ -660,7 +750,7 @@ function exibirModalAuthObrigatoria(pendingOrder) {
       </div>
       <h3 id="modalAuthTitulo" style="color: var(--ink); font-size: 1.35rem; font-weight: 900; margin: 0 0 8px;">Identificação Obrigatória</h3>
       <p style="color: #4b6073; font-size: 0.9rem; margin: 0 0 16px; line-height: 1.45;">
-        Para concluir a solicitação de <b>${escapeHtml(pendingOrder.titulo)}</b> por <b>${brl(pendingOrder.preco)}</b> com <b>${escapeHtml(pendingOrder.prestador_nome)}</b>, você precisa estar conectado como Cliente.
+        Para concluir a solicitação de <b>${escapeHtml(pendingOrder.titulo)}</b> por <b>${brl(Number(pendingOrder.preco || 0))}</b> com <b>${escapeHtml(pendingOrder.prestador_nome)}</b>, você precisa estar conectado como Cliente.
       </p>
       <div style="background: var(--bg); border: 1px solid var(--road); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 0.8rem; color: #2e384d; text-align: left; display: flex; align-items: center; gap: 8px;">
         <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 18px; color: var(--sea);">bookmark_check</span>
@@ -751,7 +841,7 @@ async function verificarERestaurarPedidoPendente() {
       </div>
       <div>
         <div class="text-xs font-extrabold text-perto-sea uppercase tracking-wider">Pedido Pendente Recuperado</div>
-        <div class="text-sm font-bold text-perto-ink">${escapeHtml(pending.titulo)} · ${brl(pending.preco)} (${escapeHtml(pending.prestador_nome)})</div>
+        <div class="text-sm font-bold text-perto-ink">${escapeHtml(pending.titulo)} · ${brl(Number(pending.preco || 0))} (${escapeHtml(pending.prestador_nome)})</div>
         <div class="text-xs text-perto-ink/70">Você já está conectado! Deseja concluir a solicitação agora?</div>
       </div>
     </div>
@@ -861,26 +951,43 @@ async function carregarMensagensPedido(orderDbId) {
     if (!res.ok) return;
     const msgs = await res.json();
     if (!Array.isArray(msgs) || !msgs.length) {
-      box.innerHTML = '<p class="text-perto-ink/80 text-xs m-0">Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.</p>';
+      const emptyP = document.createElement('p');
+      emptyP.className = 'text-perto-ink/80 text-xs m-0';
+      emptyP.textContent = 'Nenhuma mensagem ainda. Use este canal interno para combinar detalhes do atendimento.';
+      box.replaceChildren(emptyP);
       return;
     }
     const myId = cachedLoggedUser && cachedLoggedUser.id;
-    box.innerHTML = msgs.map(m => {
+    const msgNodes = msgs.map(m => {
       const isMine = myId && String(m.sender_id) === String(myId);
-      const autor = escapeHtml(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
-      const texto = escapeHtml(m.mensagem || m.conteudo || '');
+      const autor = String(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
+      const texto = String(m.mensagem || m.conteudo || '');
       const rawTs = m.criado_em || m.created_at;
-      const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
-      return `
-        <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
-          <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5">
-            <span>${autor}</span>
-            ${hora ? `<span class="tabular-nums">${hora}</span>` : ''}
-          </div>
-          <div class="text-xs text-perto-ink break-words">${texto}</div>
-        </div>
-      `;
-    }).join('');
+      const hora = rawTs ? String(rawTs).slice(11, 16) : '';
+
+      const card = document.createElement('div');
+      card.className = `chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border`;
+
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5';
+      const autorEl = document.createElement('span');
+      autorEl.textContent = autor;
+      header.appendChild(autorEl);
+      if (hora) {
+        const horaEl = document.createElement('span');
+        horaEl.className = 'tabular-nums';
+        horaEl.textContent = hora;
+        header.appendChild(horaEl);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'text-xs text-perto-ink break-words';
+      body.textContent = texto;
+
+      card.append(header, body);
+      return card;
+    });
+    box.replaceChildren(...msgNodes);
     box.scrollTop = box.scrollHeight;
   } catch (e) {}
 }
@@ -898,7 +1005,7 @@ function atualizarUIStatusPedido(pedidoApi, best) {
     (['pix', 'cartao', 'boleto'].includes(metodoPg) && ['solicitado', 'confirmado', 'em_transito', 'em_execucao'].includes(status))
   );
   if ($('#pay')) $('#pay').hidden = !precisaPagar;
-  const avisoPg = precisaPagar ? ' <span class="font-semibold text-amber-700">Pagamento pendente — conclua pelo botão Pagar.</span>' : '';
+  const avisoPgSeg = precisaPagar ? { highlight: ' Pagamento pendente — conclua pelo botão Pagar.' } : null;
 
   const stepIdx = mapStatusToStep(status);
   renderSteps(stepIdx);
@@ -908,12 +1015,12 @@ function atualizarUIStatusPedido(pedidoApi, best) {
   }
 
   if (status === 'solicitado') {
-    info(`Aguardando confirmação de <b>${escapeHtml(best.n)}</b> para <b>${escapeHtml(best.s)}</b>…${avisoPg}`);
+    info(['Aguardando confirmação de ', { bold: best.n }, ' para ', { bold: best.s }, '…', avisoPgSeg]);
   } else if (status === 'confirmado') {
-    info(`<b>${escapeHtml(best.n)}</b> confirmou o atendimento e está se preparando para sair.${avisoPg}`);
+    info([{ bold: best.n }, ' confirmou o atendimento e está se preparando para sair.', avisoPgSeg]);
   } else if (status === 'em_transito') {
     if (precisaPagar) {
-      info(`<b>${escapeHtml(best.n)}</b> está a caminho.${avisoPg}`);
+      info([{ bold: best.n }, ' está a caminho.', avisoPgSeg]);
     }
     if (!order.drivingStarted) {
       order.drivingStarted = true;
@@ -924,13 +1031,13 @@ function atualizarUIStatusPedido(pedidoApi, best) {
     clearAllSimulationTimers();
     order.pos = { lat: centerLat, lng: centerLng };
     renderMap(order.pos);
-    info(`<b>${escapeHtml(best.n)}</b> está no local executando o serviço.${avisoPg}`);
+    info([{ bold: best.n }, ' está no local executando o serviço.', avisoPgSeg]);
   } else if (status === 'finalizado') {
     clearAllSimulationTimers();
     pararPollingPedido();
     order.pos = { lat: centerLat, lng: centerLng };
     renderMap(order.pos);
-    info(`Ordem de serviço concluída com sucesso!${avisoPg}`);
+    info(['Ordem de serviço concluída com sucesso!', avisoPgSeg]);
     if ($('#pay')) $('#pay').hidden = !precisaPagar;
     if ($('#novo')) $('#novo').hidden = false;
     const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
@@ -940,7 +1047,7 @@ function atualizarUIStatusPedido(pedidoApi, best) {
     pararPollingPedido();
     sessionStorage.removeItem('pertoja_active_order_id');
     localStorage.removeItem('pertoja_active_order_id');
-    info(`Pedido cancelado.${pedidoApi.motivo_cancelamento ? ' Motivo: ' + escapeHtml(pedidoApi.motivo_cancelamento) : ''}`);
+    info(`Pedido cancelado.${pedidoApi.motivo_cancelamento ? ' Motivo: ' + pedidoApi.motivo_cancelamento : ''}`);
     if ($('#pay')) $('#pay').hidden = true;
     if ($('#novo')) $('#novo').hidden = false;
     const btnAvaliar = document.getElementById('btnAvaliarAtendimento');
@@ -989,7 +1096,7 @@ function driveVisualOnly(best) {
     };
     const left = mapInstance ? (mapInstance.distance([order.pos.lat, order.pos.lng], [centerLat, centerLng]) / 1000) : 0;
     info(left > 0.05
-      ? `O profissional encontra-se a <b>${left.toFixed(1)} km</b> · Estimativa de chegada: ${Math.max(1, Math.round(left * 3))} min.`
+      ? ['O profissional encontra-se a ', { bold: `${left.toFixed(1)} km` }, ` · Estimativa de chegada: ${Math.max(1, Math.round(left * 3))} min.`]
       : 'O profissional está chegando ao seu endereço.');
     renderMap(order.pos);
     if (k < n && currentOrderData && (currentOrderData.status === 'em_transito' || !currentOrderData.status)) {
@@ -1034,9 +1141,31 @@ function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
     .map(p => ({ p, score: score(p) }))
     .sort((a, b) => b.score - a.score);
 
-  if ($('#rank')) {
-    $('#rank').innerHTML = '<tr><th>Profissional</th><th>Distância</th><th>Avaliação</th><th>Score</th></tr>' +
-      cands.map(c => `<tr class="${c.p.id === best.id ? 'win' : ''}"><td>${escapeHtml(c.p.n)}</td><td>${dist(c.p).toFixed(1)} km</td><td>★ ${c.p.r.toFixed(1)}</td><td>${Math.round(c.score)}</td></tr>`).join('');
+  const rankEl = $('#rank');
+  if (rankEl) {
+    const headerRow = document.createElement('tr');
+    ['Profissional', 'Distância', 'Avaliação', 'Score'].forEach((col) => {
+      const th = document.createElement('th');
+      th.textContent = col;
+      headerRow.appendChild(th);
+    });
+    const rows = cands.map((c) => {
+      const tr = document.createElement('tr');
+      if (c.p.id === best.id) tr.className = 'win';
+      const vals = [
+        String(c.p.n || ''),
+        `${Number(dist(c.p)).toFixed(1)} km`,
+        `★ ${Number(c.p.r || 0).toFixed(1)}`,
+        String(Math.round(c.score))
+      ];
+      vals.forEach((v) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      return tr;
+    });
+    rankEl.replaceChildren(headerRow, ...rows);
   }
 
   renderAll();
@@ -1705,7 +1834,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
 
   const renderizarIntent = async (data) => {
     if (!bodyEl) return;
-    bodyEl.innerHTML = '';
+    bodyEl.replaceChildren();
     const gw = String(data.gateway || '').toLowerCase();
     if (sandboxBanner) sandboxBanner.hidden = gw !== 'sandbox';
 
@@ -1908,7 +2037,12 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
   const iniciarIntent = async (gatewayId) => {
     pararTimersCheckout();
     if (btnSimular) btnSimular.hidden = true;
-    if (bodyEl) bodyEl.innerHTML = '<p class="text-perto-ink/70 m-0">Verificando cobrança existente...</p>';
+    if (bodyEl) {
+      const pCheck = document.createElement('p');
+      pCheck.className = 'text-perto-ink/70 m-0';
+      pCheck.textContent = 'Verificando cobrança existente...';
+      bodyEl.replaceChildren(pCheck);
+    }
 
     const existingIntent = await buscarIntentAtivaExistente(gatewayId);
     if (existingIntent) {
@@ -1916,7 +2050,12 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
       return;
     }
 
-    if (bodyEl) bodyEl.innerHTML = '<p class="text-perto-ink/70 m-0">Gerando cobrança segura...</p>';
+    if (bodyEl) {
+      const pGen = document.createElement('p');
+      pGen.className = 'text-perto-ink/70 m-0';
+      pGen.textContent = 'Gerando cobrança segura...';
+      bodyEl.replaceChildren(pGen);
+    }
     try {
       const res = await fetch('/api/payments/intents', {
         method: 'POST',
@@ -1936,15 +2075,17 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
           const errP = document.createElement('p');
           errP.className = 'm-0 text-red-700 font-semibold';
           errP.textContent = data.error || `Erro ao iniciar pagamento (HTTP ${res.status}).`;
-          bodyEl.innerHTML = '';
-          bodyEl.appendChild(errP);
+          bodyEl.replaceChildren(errP);
         }
         return;
       }
       await renderizarIntent(data);
     } catch (e) {
       if (bodyEl) {
-        bodyEl.innerHTML = '<p class="m-0 text-red-700 font-semibold">Erro de comunicação ao iniciar checkout.</p>';
+        const commErrP = document.createElement('p');
+        commErrP.className = 'm-0 text-red-700 font-semibold';
+        commErrP.textContent = 'Erro de comunicação ao iniciar checkout.';
+        bodyEl.replaceChildren(commErrP);
       }
     }
   };
@@ -1961,7 +2102,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
 
     if (metodo === 'escrow') {
       if (bodyEl) {
-        bodyEl.innerHTML = '';
+        bodyEl.replaceChildren();
         const box = document.createElement('div');
         box.className = 'p-3.5 rounded-xl bg-white border border-perto-road space-y-2.5';
         const pInfo = document.createElement('p');
@@ -2004,14 +2145,19 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
       return;
     }
 
-    if (bodyEl) bodyEl.innerHTML = '<p class="text-perto-ink/70 m-0">Carregando configuração de pagamento...</p>';
+    if (bodyEl) {
+      const pLoad = document.createElement('p');
+      pLoad.className = 'text-perto-ink/70 m-0';
+      pLoad.textContent = 'Carregando configuração de pagamento...';
+      bodyEl.replaceChildren(pLoad);
+    }
     const cfg = await carregarConfig();
     if (!cfg || !Array.isArray(cfg.gateways)) {
       if (configNotice) {
         configNotice.textContent = 'Não foi possível carregar os provedores de pagamento. Tente novamente.';
         configNotice.hidden = false;
       }
-      if (bodyEl) bodyEl.innerHTML = '';
+      if (bodyEl) bodyEl.replaceChildren();
       return;
     }
 
@@ -2021,7 +2167,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
         configNotice.textContent = 'Nenhum gateway de pagamento (nem Sandbox) está configurado para este método no momento.';
         configNotice.hidden = false;
       }
-      if (bodyEl) bodyEl.innerHTML = '';
+      if (bodyEl) bodyEl.replaceChildren();
       return;
     }
 
@@ -2030,7 +2176,7 @@ async function abrirModalCheckoutPagamento(orderDbId, metodoPagamento, orderSnap
       : configuredGateways[0].id;
 
     if (gatewaySelect && gatewayRow) {
-      gatewaySelect.innerHTML = '';
+      gatewaySelect.replaceChildren();
       configuredGateways.forEach(gw => {
         const opt = document.createElement('option');
         opt.value = gw.id;
@@ -2114,14 +2260,14 @@ function renderDestaques() {
   if (!destaquesEl) return;
   const top3 = [...P].sort((a, b) => b.r - a.r).slice(0, 3);
   destaquesEl.innerHTML = top3.map((p, index) => {
-    const destUrl = `pedido.html?cat=${encodeURIComponent(p.c)}&q=${encodeURIComponent(p.s)}`;
+    const destUrl = sanitizarUrlSegura(`pedido.html?cat=${encodeURIComponent(p.c)}&q=${encodeURIComponent(p.s)}`, 'pedido.html');
     const bairroClean = p.bairro || (p.endereco ? String(p.endereco).split('·')[1] || String(p.endereco).split(',')[0] : 'São Paulo');
     return `
-    <div class="card-home clicavel" role="button" tabindex="0" data-dest-url="${escapeHtml(destUrl)}" style="cursor: pointer; animation-delay: ${index * 0.1}s;" aria-label="Ver ${escapeHtml(p.s)} com ${escapeHtml(p.n)}">
+    <div class="card-home clicavel" role="button" tabindex="0" data-dest-url="${escapeHtml(destUrl)}" style="cursor: pointer; animation-delay: ${Number(index) * 0.1}s;" aria-label="Ver ${escapeHtml(p.s)} com ${escapeHtml(p.n)}">
       <div class="card-texto" style="text-align: center;">
         <div class="flex items-center justify-center gap-2 mb-2">
           <span class="tag">${escapeHtml(p.c)}</span>
-          <span class="tabular-nums font-extrabold text-perto-ink text-sm">★ ${p.r.toFixed(1)}</span>
+          <span class="tabular-nums font-extrabold text-perto-ink text-sm">★ ${Number(p.r || 0).toFixed(1)}</span>
         </div>
         <h3 style="color: var(--ink); margin-bottom: 4px;">${escapeHtml(p.n)}</h3>
         <p style="color: var(--sea); font-weight: 700; margin-bottom: 6px;">${escapeHtml(p.s)}</p>
@@ -2129,15 +2275,15 @@ function renderDestaques() {
           <span class="material-symbols-outlined text-sm text-perto-sea" aria-hidden="true">location_on</span>
           <span>${escapeHtml(String(bairroClean).trim())}</span>
         </p>
-        <p class="tabular-nums" style="font-size: 1.15rem; color: var(--sea); font-weight: 800; margin-top: 8px;">${brl(p.p)}</p>
+        <p class="tabular-nums" style="font-size: 1.15rem; color: var(--sea); font-weight: 800; margin-top: 8px;">${brl(Number(p.p || 0))}</p>
       </div>
     </div>
   `;
   }).join('');
   destaquesEl.querySelectorAll('[data-dest-url]').forEach((card) => {
     const go = () => {
-      const url = card.getAttribute('data-dest-url');
-      if (url) location.href = url;
+      const url = sanitizarUrlSegura(card.getAttribute('data-dest-url') || '', 'pedido.html');
+      if (url && url !== '#') location.href = url;
     };
     card.addEventListener('click', go);
     card.addEventListener('keydown', (e) => {
@@ -2323,7 +2469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     const triggerBtn = (e && e.currentTarget) ? e.currentTarget : (document.getElementById('btnGpsBusca') || document.getElementById('btnLoc'));
-    const originalBtnHtml = triggerBtn ? triggerBtn.innerHTML : '';
+    const originalBtnNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(triggerBtn) : [];
     if (triggerBtn) {
       triggerBtn.classList.add('is-loading');
       triggerBtn.disabled = true;
@@ -2333,7 +2479,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (triggerBtn) {
         triggerBtn.classList.remove('is-loading');
         triggerBtn.disabled = false;
-        triggerBtn.innerHTML = originalBtnHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(triggerBtn, originalBtnNodes);
+        }
       }
     };
     const locInfo = $('#locInfo');

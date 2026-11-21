@@ -38,11 +38,18 @@
 
     const badge = document.getElementById('resIsencaoBadge');
     if (badge) {
-      badge.innerHTML = isento
-        ? '<span class="material-symbols-outlined text-base" aria-hidden="true">verified</span><span>Isenção de mensalidade aplicada (Plano Básico com faturamento &le; R$ 1.800/mês) + 1º mês grátis!</span>'
+      const iconEl = document.createElement('span');
+      iconEl.className = 'material-symbols-outlined text-base';
+      iconEl.setAttribute('aria-hidden', 'true');
+      iconEl.textContent = isento ? 'verified' : 'info';
+
+      const textEl = document.createElement('span');
+      textEl.textContent = isento
+        ? 'Isenção de mensalidade aplicada (Plano Básico com faturamento ≤ R$ 1.800/mês) + 1º mês grátis!'
         : (plano === 'pro'
-          ? '<span class="material-symbols-outlined text-base" aria-hidden="true">info</span><span>Plano Pro: 1º mês grátis; após o 1º mês, mensalidade fixa de ' + fmtBrl(mensalidadeBase) + '/mês (isenção válida apenas no Plano Básico).</span>'
-          : '<span class="material-symbols-outlined text-base" aria-hidden="true">info</span><span>Acima de R$ 1.800/mês no Plano Básico: 1º mês grátis e depois ' + fmtBrl(mensalidadeBase) + '/mês.</span>');
+          ? `Plano Pro: 1º mês grátis; após o 1º mês, mensalidade fixa de ${fmtBrl(mensalidadeBase)}/mês (isenção válida apenas no Plano Básico).`
+          : `Acima de R$ 1.800/mês no Plano Básico: 1º mês grátis e depois ${fmtBrl(mensalidadeBase)}/mês.`);
+      badge.replaceChildren(iconEl, textEl);
     }
 
     const resLiq = document.getElementById('resLiquido');

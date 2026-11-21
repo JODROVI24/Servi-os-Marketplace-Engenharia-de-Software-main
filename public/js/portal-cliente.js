@@ -169,6 +169,9 @@
   }
 
   function escapeHtml(str) {
+    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+      return window.escapeHtml(str);
+    }
     if (str == null) return '';
     return String(str)
       .replace(/&/g, '&amp;')
@@ -176,6 +179,24 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  function sanitizarUrlSegura(url, fallback = '#') {
+    if (typeof window !== 'undefined' && typeof window.sanitizarUrlSegura === 'function') {
+      return window.sanitizarUrlSegura(url, fallback);
+    }
+    if (typeof url !== 'string' || /^(javascript|data|vbscript):/i.test(url.trim()) || url.trim().startsWith('//')) {
+      return fallback;
+    }
+    return url.trim() || fallback;
+  }
+
+  function setStatusText(el, text, className = 'text-xs text-perto-ink/80') {
+    if (!el) return;
+    const p = document.createElement('p');
+    p.className = className;
+    p.textContent = text;
+    el.replaceChildren(p);
   }
 
   function formatarMetodoPagamento(metodo) {
@@ -285,23 +306,45 @@
       document.getElementById('contPedidos').textContent = pedidos.length;
 
       if (!pedidos.length) {
-        div.innerHTML = `
-          <div class="empty-state-card" role="status" aria-live="polite">
-            <div class="w-12 h-12 rounded-full bg-perto-bg flex items-center justify-center mx-auto mb-3 text-perto-sea">
-              <span class="material-symbols-outlined text-2xl" aria-hidden="true">receipt_long</span>
-            </div>
-            <p class="empty-title">Nenhum pedido solicitado ainda</p>
-            <p class="empty-desc">Você ainda não solicitou nenhum serviço na plataforma. Explore os profissionais disponíveis na sua região.</p>
-            <a href="pedido.html" class="btn text-perto-ink font-bold px-6 py-2.5 rounded-full text-xs inline-flex items-center gap-2 text-decoration-none">
-              <span class="material-symbols-outlined text-sm" aria-hidden="true">search</span>
-              Explorar Prestadores Locais
-            </a>
-          </div>
-        `;
+        const card = document.createElement('div');
+        card.className = 'empty-state-card';
+        card.setAttribute('role', 'status');
+        card.setAttribute('aria-live', 'polite');
+
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'w-12 h-12 rounded-full bg-perto-bg flex items-center justify-center mx-auto mb-3 text-perto-sea';
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'material-symbols-outlined text-2xl';
+        iconSpan.setAttribute('aria-hidden', 'true');
+        iconSpan.textContent = 'receipt_long';
+        iconWrap.appendChild(iconSpan);
+
+        const titleP = document.createElement('p');
+        titleP.className = 'empty-title';
+        titleP.textContent = 'Nenhum pedido solicitado ainda';
+
+        const descP = document.createElement('p');
+        descP.className = 'empty-desc';
+        descP.textContent = 'Você ainda não solicitou nenhum serviço na plataforma. Explore os profissionais disponíveis na sua região.';
+
+        const link = document.createElement('a');
+        link.href = 'pedido.html';
+        link.className = 'btn text-perto-ink font-bold px-6 py-2.5 rounded-full text-xs inline-flex items-center gap-2 text-decoration-none';
+        const linkIcon = document.createElement('span');
+        linkIcon.className = 'material-symbols-outlined text-sm';
+        linkIcon.setAttribute('aria-hidden', 'true');
+        linkIcon.textContent = 'search';
+        link.append(linkIcon, ' Explorar Prestadores Locais');
+
+        card.append(iconWrap, titleP, descP, link);
+        div.replaceChildren(card);
         return;
       }
 
       div.innerHTML = pedidos.map(p => {
+        const orderIdNum = Number(p.order_id);
+        const payHref = escapeHtml(sanitizarUrlSegura(`pedido.html?order_id=${encodeURIComponent(orderIdNum)}&pay=1`, 'pedido.html'));
+        const mapHref = escapeHtml(sanitizarUrlSegura(`pedido.html?order_id=${encodeURIComponent(orderIdNum)}`, 'pedido.html'));
         const st = String(p.status || '').toLowerCase();
         const badgeClass = st === 'cancelado' ? 'tag off' : 'tag';
         const codigoHtml = p.codigo_confirmacao
@@ -320,99 +363,103 @@
         const precisaPagar = !p.pago && st !== 'cancelado';
         let escrowBadgeHtml = '';
         if (estornadoTotal) {
-          escrowBadgeHtml = `<span class="tag off">↩️ Estornado Total</span>`;
+          escrowBadgeHtml = '<span class="tag off">↩️ Estornado Total</span>';
         } else if (estornadoParcial) {
-          escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">↩️ Estornado Parcial</span>`;
+          escrowBadgeHtml = '<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">↩️ Estornado Parcial</span>';
         } else if (aguardandoEscrow) {
-          escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Em Garantia (48h)</span>`;
+          escrowBadgeHtml = '<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Em Garantia (48h)</span>';
         } else if (escrowLiberado) {
-          escrowBadgeHtml = `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">✓ Escrow Liberado</span>`;
+          escrowBadgeHtml = '<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">✓ Escrow Liberado</span>';
         } else if (escrowStatus === 'retido' || p.pago) {
-          escrowBadgeHtml = `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">🔒 Retido em Escrow</span>`;
+          escrowBadgeHtml = '<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">🔒 Retido em Escrow</span>';
         } else if (precisaPagar) {
-          escrowBadgeHtml = `<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Aguardando Pagamento</span>`;
+          escrowBadgeHtml = '<span class="tag" style="background: var(--sun-soft, #fff7dd); color: var(--ink);">⏳ Aguardando Pagamento</span>';
         }
         const estornoInfoHtml = (estornadoTotal || estornadoParcial) && p.valor_estornado != null
-          ? `<div class="tabular-nums" style="font-size:0.82rem; color:#991b1b; font-weight:700; margin: 4px 0;">↩️ Valor estornado: ${escapeHtml(brl(p.valor_estornado))}</div>`
+          ? `<div class="tabular-nums" style="font-size:0.82rem; color:#991b1b; font-weight:700; margin: 4px 0;">↩️ Valor estornado: ${escapeHtml(brl(Number(p.valor_estornado || 0)))}</div>`
           : '';
         const podeAvaliar = st === 'finalizado' && !p.ja_avaliado;
         const jaAvaliadoHtml = st === 'finalizado' && p.ja_avaliado
-          ? `<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>`
+          ? '<span class="tag" style="background: var(--ok-soft, #e6f5ee); color: var(--ok);">★ Avaliado</span>'
           : '';
         const podeChat = ['confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(st);
         const podeSos = ['confirmado', 'em_transito', 'em_execucao'].includes(st);
         const podeConcluir = st === 'em_execucao';
         const podeDisputa = ['confirmado', 'em_transito', 'em_execucao', 'finalizado'].includes(st) && !emDisputa;
         const podeVerReviews = st === 'finalizado';
+        const obsHtml = p.observacoes ? `<p class="text-perto-ink/80" style="font-size:0.85rem;">${escapeHtml(p.observacoes)}</p>` : '';
+        const localHtml = (p.prestador_bairro || p.prestador_cidade)
+          ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>`
+          : '';
 
         return `
           <div class="svc" style="margin-bottom: 14px; border-left: 5px solid var(--sea);">
             <div class="top">
               <span class="flex items-center gap-2 flex-wrap"><b>${escapeHtml(p.servico_titulo)}</b> <span class="tag">${escapeHtml(p.servico_categoria)}</span></span>
-              <span class="price tabular-nums">${brl(p.preco_total)}</span>
+              <span class="price tabular-nums">${brl(Number(p.preco_total || 0))}</span>
             </div>
             <div class="meta text-perto-ink/80" style="margin: 6px 0;">
               <span>🛠️ <b>${escapeHtml(p.prestador_nome)}</b></span>
               <span class="tabular-nums">📞 ${escapeHtml(p.prestador_telefone || 'Não informado')}</span>
               ${pagamentoHtml}
-              <b class="${badgeClass}">${escapeHtml(String(p.status).toUpperCase())}</b>
+              <b class="${escapeHtml(badgeClass)}">${escapeHtml(String(p.status).toUpperCase())}</b>
               ${codigoHtml}
               ${escrowBadgeHtml}
               ${disputaBadgeHtml}
               ${jaAvaliadoHtml}
             </div>
-            ${(p.prestador_bairro || p.prestador_cidade) ? `<div style="font-size:0.85rem; color:var(--sea); font-weight:600; margin: 4px 0;">📍 ${escapeHtml([p.prestador_endereco, p.prestador_numero, p.prestador_bairro, p.prestador_cidade].filter(Boolean).join(', '))}</div>` : ''}
-            ${p.observacoes ? `<p class="text-perto-ink/80" style="font-size:0.85rem;">${escapeHtml(p.observacoes)}</p>` : ''}
+            ${localHtml}
+            ${obsHtml}
             ${estornoInfoHtml}
             <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
               ${precisaPagar ? `
-                <a href="pedido.html?order_id=${encodeURIComponent(p.order_id)}&pay=1" class="btn" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <a href="${payHref}" class="btn" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   💳 Pagar / Ver Cobrança
                 </a>
               ` : ''}
               ${podeChat ? `
-                <button type="button" class="btn2 btn-chat-pedido" data-order-id="${p.order_id}" data-status="${escapeHtml(st)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn2 btn-chat-pedido" data-order-id="${Number(orderIdNum)}" data-status="${escapeHtml(st)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">chat</span>
                   Chat do Pedido
                 </button>
               ` : ''}
               ${podeConcluir ? `
-                <button type="button" class="btn btn-confirmar-conclusao" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn btn-confirmar-conclusao" data-order-id="${Number(orderIdNum)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">check_circle</span>
                   Confirmar Conclusão
                 </button>
               ` : ''}
               ${aguardandoEscrow ? `
-                <button type="button" class="btn btn-liberar-escrow" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn btn-liberar-escrow" data-order-id="${Number(orderIdNum)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">verified</span>
                   Confirmar e Liberar Escrow
                 </button>
               ` : ''}
               ${podeDisputa ? `
-                <button type="button" class="btn2 btn-abrir-disputa" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn2 btn-abrir-disputa" data-order-id="${Number(orderIdNum)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">gavel</span>
                   Abrir Mediação / Disputa
                 </button>
               ` : ''}
               ${podeSos ? `
-                <button type="button" class="sos-btn btn-sos-pedido" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="sos-btn btn-sos-pedido" data-order-id="${Number(orderIdNum)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">emergency_share</span>
                   SOS Emergência
                 </button>
               ` : ''}
               ${podeAvaliar ? `
-                <button type="button" class="btn btn-avaliar-pedido" data-order-id="${p.order_id}" data-prestador="${escapeHtml(p.prestador_nome)}" data-servico="${escapeHtml(p.servico_titulo)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn btn-avaliar-pedido" data-order-id="${Number(orderIdNum)}" data-prestador="${escapeHtml(p.prestador_nome)}" data-servico="${escapeHtml(p.servico_titulo)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">star</span>
                   Avaliar Prestador
                 </button>
               ` : ''}
               ${podeVerReviews ? `
-                <button type="button" class="btn2 btn-ver-reviews" data-order-id="${p.order_id}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn2 btn-ver-reviews" data-order-id="${Number(orderIdNum)}" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                   <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">reviews</span>
                   Ver Avaliações
                 </button>
               ` : ''}
-              <a href="pedido.html?order_id=${encodeURIComponent(p.order_id)}" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+              <a href="${mapHref}" class="btn2" style="text-decoration: none; font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                 <span class="material-symbols-outlined" style="font-size: 1rem;" aria-hidden="true">map</span>
                 Ver no Mapa em Tempo Real
               </a>
@@ -445,14 +492,14 @@
         btn.addEventListener('click', () => abrirModalSosCliente(btn.dataset.orderId));
       });
     } catch (e) {
-      div.innerHTML = '<p class="text-sm text-perto-ink/80">Erro ao carregar histórico de pedidos.</p>';
+      setStatusText(div, 'Erro ao carregar histórico de pedidos.', 'text-sm text-perto-ink/80');
     }
   }
 
   document.getElementById('formPerfilCliente').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSubmit = e.target.querySelector('button[type="submit"]');
-    const origHtml = btnSubmit ? btnSubmit.innerHTML : '';
+    const origNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnSubmit) : [];
     if (btnSubmit) {
       btnSubmit.classList.add('is-loading');
       btnSubmit.disabled = true;
@@ -497,7 +544,9 @@
       if (btnSubmit) {
         btnSubmit.classList.remove('is-loading');
         btnSubmit.disabled = false;
-        btnSubmit.innerHTML = origHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(btnSubmit, origNodes);
+        }
       }
     }
   });
@@ -505,7 +554,7 @@
   // --- Fluxos Éticos do Portal do Cliente (ET-08, ET-10, ET-13, ET-14, ET-15) ---
   async function confirmarConclusaoPedido(orderId, btnEl) {
     if (!orderId) return;
-    const origHtml = btnEl ? btnEl.innerHTML : '';
+    const origNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnEl) : [];
     if (btnEl) {
       btnEl.classList.add('is-loading');
       btnEl.disabled = true;
@@ -530,14 +579,16 @@
       if (btnEl) {
         btnEl.classList.remove('is-loading');
         btnEl.disabled = false;
-        btnEl.innerHTML = origHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(btnEl, origNodes);
+        }
       }
     }
   }
 
   async function confirmarLiberacaoEscrow(orderId, btnEl) {
     if (!orderId) return;
-    const origHtml = btnEl ? btnEl.innerHTML : '';
+    const origNodes = typeof window.salvarConteudoBotao === 'function' ? window.salvarConteudoBotao(btnEl) : [];
     if (btnEl) {
       btnEl.classList.add('is-loading');
       btnEl.disabled = true;
@@ -568,7 +619,9 @@
       if (btnEl) {
         btnEl.classList.remove('is-loading');
         btnEl.disabled = false;
-        btnEl.innerHTML = origHtml;
+        if (typeof window.restaurarConteudoBotao === 'function') {
+          window.restaurarConteudoBotao(btnEl, origNodes);
+        }
       }
     }
   }
@@ -613,34 +666,48 @@
     try {
       const res = await fetch(`/api/orders/${orderId}/messages`);
       if (!res.ok) {
-        box.innerHTML = '<p class="text-xs text-perto-ink/80">Não foi possível carregar as mensagens.</p>';
+        setStatusText(box, 'Não foi possível carregar as mensagens.');
         return;
       }
       const msgs = await res.json();
       if (!Array.isArray(msgs) || !msgs.length) {
-        box.innerHTML = '<p class="text-xs text-perto-ink/80">Nenhuma mensagem ainda. Use este canal protegido para falar com o profissional.</p>';
+        setStatusText(box, 'Nenhuma mensagem ainda. Use este canal protegido para falar com o profissional.');
         return;
       }
       const myId = dadosCliente && dadosCliente.id;
-      box.innerHTML = msgs.map(m => {
+      const msgNodes = msgs.map(m => {
         const isMine = myId && String(m.sender_id) === String(myId);
-        const autor = escapeHtml(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
-        const texto = escapeHtml(m.mensagem || m.conteudo || '');
+        const autor = String(m.sender_nome || m.sender_tipo || (isMine ? 'Você' : 'Profissional'));
+        const texto = String(m.mensagem || m.conteudo || '');
         const rawTs = m.criado_em || m.created_at;
-        const hora = rawTs ? escapeHtml(String(rawTs).slice(11, 16)) : '';
-        return `
-          <div class="chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border">
-            <div class="flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5">
-              <span>${autor}</span>
-              ${hora ? `<span class="tabular-nums">${hora}</span>` : ''}
-            </div>
-            <div class="text-xs text-perto-ink break-words">${texto}</div>
-          </div>
-        `;
-      }).join('');
+        const hora = rawTs ? String(rawTs).slice(11, 16) : '';
+
+        const card = document.createElement('div');
+        card.className = `chat-msg ${isMine ? 'mine bg-perto-sea/10 border-perto-sea/30 ml-6' : 'bg-perto-bg border-perto-road mr-6'} p-2 rounded-lg border`;
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-2 text-[10px] font-bold text-perto-ink/80 mb-0.5';
+        const autorEl = document.createElement('span');
+        autorEl.textContent = autor;
+        header.appendChild(autorEl);
+        if (hora) {
+          const horaEl = document.createElement('span');
+          horaEl.className = 'tabular-nums';
+          horaEl.textContent = hora;
+          header.appendChild(horaEl);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'text-xs text-perto-ink break-words';
+        body.textContent = texto;
+
+        card.append(header, body);
+        return card;
+      });
+      box.replaceChildren(...msgNodes);
       box.scrollTop = box.scrollHeight;
     } catch (e) {
-      box.innerHTML = '<p class="text-xs text-perto-ink/80">Erro de comunicação ao carregar mensagens.</p>';
+      setStatusText(box, 'Erro de comunicação ao carregar mensagens.');
     }
   }
 
@@ -701,19 +768,19 @@
   async function abrirModalVerReviewsPedido(orderId) {
     const box = document.getElementById('verReviewsConteudo');
     if (!box) return;
-    box.innerHTML = '<p class="text-perto-ink/80">Carregando avaliações...</p>';
+    setStatusText(box, 'Carregando avaliações...', 'text-perto-ink/80');
     ctrlVerReviewsPedido.abrir('#btnFecharModalVerReviews');
     try {
       const res = await fetch(`/api/orders/${orderId}/reviews`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        box.innerHTML = `<p class="text-perto-ink/80">${escapeHtml(data.error || 'Não foi possível carregar as avaliações.')}</p>`;
+        setStatusText(box, data.error || 'Não foi possível carregar as avaliações.', 'text-perto-ink/80');
         return;
       }
       const minha = data.minha_avaliacao;
       const contraparte = data.contraparte_avaliacao || data.avaliacao_contraparte || data.avaliacao_prestador || data.review_recebida || null;
       const oculta = Boolean(data.oculta_double_blind);
-      const renderStatusModeracao = (stMod) => {
+      const formatarStatusModeracaoHtml = (stMod) => {
         const mod = String(stMod || '').trim();
         if (!mod || mod.toLowerCase() === 'publicada') return '';
         return `<div class="mt-1.5 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 text-perto-ink">${escapeHtml(mod)}</div>`;
@@ -724,7 +791,7 @@
             <div class="font-bold text-perto-ink mb-1 tabular-nums">Sua avaliação (★ ${escapeHtml(String(minha.nota || 5))})</div>
             <p class="m-0 text-perto-ink/80">${escapeHtml(minha.comentario || 'Sem comentário.')}</p>
             ${minha.replica ? `<div class="mt-2 p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(minha.replica)}</div>` : ''}
-            ${renderStatusModeracao(minha.status_moderacao)}
+            ${formatarStatusModeracaoHtml(minha.status_moderacao)}
           </div>
         `
         : `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">Você ainda não enviou sua avaliação para este pedido.</div>`;
@@ -746,7 +813,7 @@
             <div class="font-bold text-perto-ink tabular-nums">Avaliação do profissional (★ ${escapeHtml(String(contraparte.nota || 5))})</div>
             <p class="m-0 text-perto-ink/80">${escapeHtml(contraparte.comentario || 'Sem comentário.')}</p>
             ${contraparte.replica ? `<div class="p-2 rounded-lg bg-white border border-perto-road text-xs text-perto-ink/85"><b>Réplica:</b> ${escapeHtml(contraparte.replica)}</div>` : ''}
-            ${renderStatusModeracao(contraparte.status_moderacao)}
+            ${formatarStatusModeracaoHtml(contraparte.status_moderacao)}
             ${revId > 0 ? (jaContestada
               ? `<div class="pt-2 border-t border-perto-road text-xs font-semibold text-perto-ink/80">Avaliação já contestada e em análise de moderação.</div>`
               : `
@@ -797,7 +864,7 @@
         });
       }
     } catch (e) {
-      box.innerHTML = '<p class="text-perto-ink/80">Erro de comunicação ao carregar avaliações.</p>';
+      setStatusText(box, 'Erro de comunicação ao carregar avaliações.', 'text-perto-ink/80');
     }
   }
 
@@ -955,13 +1022,50 @@
   let suporteIAClienteAbort = null;
   const ctrlSuporteIACliente = vincularModalAcessivel('modalSuporteIA', ['btnFecharModalSuporteIA']);
 
-  function obterSaudacaoInicialSuporteIAClienteHtml() {
-    return `
-      <div class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink">
-        <div class="text-[10px] font-bold text-perto-sea mb-1">🤖 Assistente PertoJá</div>
-        <p class="m-0">Olá! Sou o assistente do PertoJá. Posso tirar dúvidas sobre pagamento protegido em Escrow, PIN presencial de 4 dígitos, garantia de 48h, disputas e segurança. Como posso ajudar?</p>
-      </div>
-    `;
+  function criarBolhaSuporteIA(wrapperClass, labelClass, senderLabel, bodyText, extraBodyClass = '') {
+    const wrap = document.createElement('div');
+    wrap.className = wrapperClass;
+    const lbl = document.createElement('div');
+    lbl.className = labelClass;
+    lbl.textContent = senderLabel;
+    const p = document.createElement('p');
+    p.className = extraBodyClass ? `m-0 ${extraBodyClass}` : 'm-0';
+    p.textContent = bodyText;
+    wrap.append(lbl, p);
+    return wrap;
+  }
+
+  function criarIndicadorDigitandoSuporteIA() {
+    const wrap = document.createElement('div');
+    wrap.id = 'indicadorDigitandoSuporteIA';
+    wrap.className = 'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink/80 mr-6 flex items-center gap-2';
+    wrap.setAttribute('role', 'status');
+
+    const dots = document.createElement('span');
+    dots.className = 'inline-flex gap-1';
+    dots.setAttribute('aria-hidden', 'true');
+    ['0ms', '150ms', '300ms'].forEach((delay) => {
+      const dot = document.createElement('span');
+      dot.className = 'w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce';
+      dot.style.animationDelay = delay;
+      dots.appendChild(dot);
+    });
+
+    const label = document.createElement('span');
+    label.className = 'text-xs font-semibold';
+    label.textContent = 'Pensando...';
+
+    wrap.append(dots, label);
+    return wrap;
+  }
+
+  function criarBolhaSaudacaoInicialSuporteIACliente() {
+    return criarBolhaSuporteIA(
+      'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink',
+      'text-[10px] font-bold text-perto-sea mb-1',
+      '🤖 Assistente PertoJá',
+      'Olá! Sou o assistente do PertoJá. Posso tirar dúvidas sobre pagamento protegido em Escrow, PIN presencial de 4 dígitos, garantia de 48h, disputas e segurança. Como posso ajudar?'
+    );
   }
 
   function aplicarBadgeStatusSuporteIA(data) {
@@ -973,7 +1077,7 @@
       const modelInfo = data.model ? `Modelo: ${data.model}` : '';
       const hintInfo = data.hint || '';
       badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 border border-emerald-300 text-emerald-900';
-      badgeEl.innerHTML = `🟢 IA Online (${escapeHtml(provider)})`;
+      badgeEl.textContent = `🟢 IA Online (${provider})`;
       badgeEl.title = [modelInfo, hintInfo].filter(Boolean).join(' · ') || 'IA conectada em tempo real';
     } else {
       const reasonMap = {
@@ -988,7 +1092,7 @@
       };
       const fallbackDetail = data.warning || data.hint || (data.fallback_reason ? (reasonMap[data.fallback_reason] || `Motivo: ${data.fallback_reason}`) : '');
       badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 border border-perto-sun text-perto-ink';
-      badgeEl.innerHTML = '🟡 Modo Offline (FAQ Local)';
+      badgeEl.textContent = '🟡 Modo Offline (FAQ Local)';
       badgeEl.title = fallbackDetail || 'Assistente operando com FAQ local offline.';
     }
   }
@@ -1046,7 +1150,7 @@
     const listaEl = document.getElementById('listaMensagensSuporteIA');
     if (listaEl) {
       listaEl.removeAttribute('aria-busy');
-      listaEl.innerHTML = obterSaudacaoInicialSuporteIAClienteHtml();
+      listaEl.replaceChildren(criarBolhaSaudacaoInicialSuporteIACliente());
       listaEl.scrollTop = 0;
     }
     alternarEstadoEnvioSuporteIA(false);
@@ -1087,24 +1191,16 @@
     alternarEstadoEnvioSuporteIA(true);
     listaEl.setAttribute('aria-busy', 'true');
 
-    listaEl.insertAdjacentHTML('beforeend', `
-      <div class="p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6">
-        <div class="text-[10px] font-bold text-perto-ink/80 mb-0.5">Você</div>
-        <p class="m-0 break-words">${escapeHtml(msg)}</p>
-      </div>
-    `);
+    listaEl.appendChild(criarBolhaSuporteIA(
+      'p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6',
+      'text-[10px] font-bold text-perto-ink/80 mb-0.5',
+      'Você',
+      msg,
+      'break-words'
+    ));
 
     document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-    listaEl.insertAdjacentHTML('beforeend', `
-      <div id="indicadorDigitandoSuporteIA" class="p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink/80 mr-6 flex items-center gap-2" role="status">
-        <span class="inline-flex gap-1" aria-hidden="true">
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 0ms;"></span>
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 150ms;"></span>
-          <span class="w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce" style="animation-delay: 300ms;"></span>
-        </span>
-        <span class="text-xs font-semibold">Pensando...</span>
-      </div>
-    `);
+    listaEl.appendChild(criarIndicadorDigitandoSuporteIA());
     listaEl.scrollTop = listaEl.scrollHeight;
 
     try {
@@ -1133,7 +1229,7 @@
         if (isFallback) {
           senderLabel = 'Assistente PertoJá · Modo Offline';
         } else if (data.fallback === false) {
-          senderLabel = `🤖 Assistente PertoJá · IA (${escapeHtml(data.model || data.provider || 'LLM')})`;
+          senderLabel = `🤖 Assistente PertoJá · IA (${data.model || data.provider || 'LLM'})`;
         }
         const bubbleClass = isFallback
           ? 'p-2.5 rounded-xl bg-white border border-perto-sun/70 text-perto-ink mr-6'
@@ -1144,32 +1240,28 @@
 
         aplicarBadgeStatusSuporteIA(data);
         historicoSuporteIACliente.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-        listaEl.insertAdjacentHTML('beforeend', `
-          <div class="${bubbleClass}">
-            <div class="${labelClass}">${senderLabel}</div>
-            <p class="m-0 break-words whitespace-pre-line">${escapeHtml(reply)}</p>
-          </div>
-        `);
+        listaEl.appendChild(criarBolhaSuporteIA(bubbleClass, labelClass, senderLabel, reply, 'break-words whitespace-pre-line'));
       } else {
         const errText = data.error || 'Assistente temporariamente indisponível. Tente novamente em instantes.';
         aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: errText });
-        listaEl.insertAdjacentHTML('beforeend', `
-          <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
-            <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso do Sistema</div>
-            <p class="m-0 break-words">${escapeHtml(errText)}</p>
-          </div>
-        `);
+        listaEl.appendChild(criarBolhaSuporteIA(
+          'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
+          'text-[10px] font-bold text-perto-ink mb-0.5',
+          'Aviso do Sistema',
+          errText,
+          'break-words'
+        ));
       }
     } catch (err) {
       if (myGen !== suporteIAClienteGen || (err && err.name === 'AbortError')) return;
       document.getElementById('indicadorDigitandoSuporteIA')?.remove();
       aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: 'Não foi possível contatar o Assistente de Suporte IA no momento.' });
-      listaEl.insertAdjacentHTML('beforeend', `
-        <div class="p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6">
-          <div class="text-[10px] font-bold text-perto-ink mb-0.5">Aviso de Conexão</div>
-          <p class="m-0">Não foi possível contatar o Assistente de Suporte IA no momento.</p>
-        </div>
-      `);
+      listaEl.appendChild(criarBolhaSuporteIA(
+        'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
+        'text-[10px] font-bold text-perto-ink mb-0.5',
+        'Aviso de Conexão',
+        'Não foi possível contatar o Assistente de Suporte IA no momento.'
+      ));
     } finally {
       if (myGen === suporteIAClienteGen) {
         document.getElementById('indicadorDigitandoSuporteIA')?.remove();
