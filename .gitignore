@@ -28,6 +28,7 @@ credentials.*
 designs/
 docs/*
 !docs/baseline.md
+!docs/plano_de_acao.md
 *.log
 reports/
 npm-debug.log*
