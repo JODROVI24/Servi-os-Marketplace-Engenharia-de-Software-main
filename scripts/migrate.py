@@ -7,15 +7,14 @@ Uso:
 
 import argparse
 import sys
+
 import database
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Executa migrations do PertoJá Marketplace.")
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Simula a execução listando migrations pendentes sem alterar o banco."
+        "--dry-run", action="store_true", help="Simula a execução listando migrations pendentes sem alterar o banco."
     )
     args = parser.parse_args(argv)
 
@@ -34,9 +33,9 @@ def main(argv=None):
     for item in report:
         print(f"  [{item['status'].upper()}] {item['version']}")
 
-    applied_count = sum(1 for r in report if r['status'] == 'applied')
-    pending_count = sum(1 for r in report if r['status'] == 'pending')
-    already_count = sum(1 for r in report if r['status'] == 'already_applied')
+    applied_count = sum(1 for r in report if r["status"] == "applied")
+    pending_count = sum(1 for r in report if r["status"] == "pending")
+    already_count = sum(1 for r in report if r["status"] == "already_applied")
     print(
         f"Resumo: total={len(report)}, aplicadas={applied_count}, "
         f"pendentes={pending_count}, ja_aplicadas={already_count}"

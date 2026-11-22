@@ -5,13 +5,15 @@ import time
 import unicodedata
 import urllib.parse
 from datetime import datetime, timedelta
+
 from werkzeug.security import generate_password_hash
 
 # Defensive import of psycopg2
 try:
     import psycopg2
-    from psycopg2 import extras
     from psycopg2 import IntegrityError as _Psycopg2IntegrityError
+    from psycopg2 import extras
+
     HAS_PSYCOPG2 = True
 except ImportError:
     psycopg2 = None
@@ -23,6 +25,7 @@ except ImportError:
 # Unified DBIntegrityError catching both SQLite and PostgreSQL integrity errors
 class _FallbackPsycopg2IntegrityError(Exception):
     """Fallback exception class when psycopg2 is not installed."""
+
     pass
 
 
@@ -34,19 +37,19 @@ else:
 DBIntegrityError = (sqlite3.IntegrityError, Psycopg2IntegrityError)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MIGRATIONS_DIR = os.path.join(BASE_DIR, 'scripts', 'migrations')
+MIGRATIONS_DIR = os.path.join(BASE_DIR, "scripts", "migrations")
 
 
 def _load_dotenv_defensive():
     """Carrega variáveis de ambiente de arquivos .env locais se presentes."""
-    env_file = os.path.join(BASE_DIR, '.env')
+    env_file = os.path.join(BASE_DIR, ".env")
     if os.path.isfile(env_file):
         try:
-            with open(env_file, 'r', encoding='utf-8') as f:
+            with open(env_file, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        k, v = line.split('=', 1)
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
                         k = k.strip()
                         v = v.strip().strip("'\"")
                         if k and k not in os.environ:
@@ -71,39 +74,31 @@ def resolve_database_url():
     Retorna tupla: (normalized_url, engine_name) onde engine_name é 'postgresql' ou 'sqlite'.
     """
     raw_url = (
-        os.environ.get('DATABASE_URL')
-        or os.environ.get('POSTGRES_URL')
-        or os.environ.get('POSTGRES_URL_NON_POOLING')
+        os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or os.environ.get("POSTGRES_URL_NON_POOLING")
     )
     if not raw_url or not raw_url.strip():
-        return None, 'sqlite'
+        return None, "sqlite"
 
     url = raw_url.strip()
-    if url.startswith('postgres://'):
-        url = 'postgresql://' + url[len('postgres://'):]
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
 
-    if not url.startswith('postgresql://'):
+    if not url.startswith("postgresql://"):
         raise RuntimeError(
-            'DATABASE_URL inválida: apenas URLs PostgreSQL (postgresql:// ou postgres://) são suportadas.'
+            "DATABASE_URL inválida: apenas URLs PostgreSQL (postgresql:// ou postgres://) são suportadas."
         )
 
     parsed = urllib.parse.urlsplit(url)
-    hostname = parsed.hostname or ''
-    is_local = hostname in ('localhost', '127.0.0.1', '')
+    hostname = parsed.hostname or ""
+    is_local = hostname in ("localhost", "127.0.0.1", "")
 
     query_params = dict(urllib.parse.parse_qsl(parsed.query))
-    if not is_local and 'sslmode' not in query_params:
-        query_params['sslmode'] = 'require'
+    if not is_local and "sslmode" not in query_params:
+        query_params["sslmode"] = "require"
         new_query = urllib.parse.urlencode(query_params)
-        url = urllib.parse.urlunsplit((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            new_query,
-            parsed.fragment
-        ))
+        url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment))
 
-    return url, 'postgresql'
+    return url, "postgresql"
 
 
 def get_active_engine():
@@ -114,9 +109,9 @@ def get_active_engine():
 
 def is_production_env():
     """Retorna True quando executando em ambiente de produção (VERCEL=1/true ou FLASK_ENV=production)."""
-    vercel_flag = str(os.environ.get('VERCEL', '')).strip().lower()
-    flask_env = str(os.environ.get('FLASK_ENV', '')).strip().lower()
-    return vercel_flag in ('1', 'true') or flask_env == 'production'
+    vercel_flag = str(os.environ.get("VERCEL", "")).strip().lower()
+    flask_env = str(os.environ.get("FLASK_ENV", "")).strip().lower()
+    return vercel_flag in ("1", "true") or flask_env == "production"
 
 
 def is_demo_seed_enabled():
@@ -126,7 +121,7 @@ def is_demo_seed_enabled():
     """
     if is_production_env():
         return False
-    return str(os.environ.get('ENABLE_DEMO_SEED', '0')).strip().lower() in ('1', 'true', 'yes')
+    return str(os.environ.get("ENABLE_DEMO_SEED", "0")).strip().lower() in ("1", "true", "yes")
 
 
 def ensure_production_database():
@@ -137,10 +132,10 @@ def ensure_production_database():
     if not is_production_env():
         return
     url, engine = resolve_database_url()
-    if engine != 'postgresql' or not url:
+    if engine != "postgresql" or not url:
         raise RuntimeError(
-            'DATABASE_URL (ou POSTGRES_URL / POSTGRES_URL_NON_POOLING) com PostgreSQL é obrigatória em produção '
-            '(VERCEL=1 ou FLASK_ENV=production). Fallback para SQLite em /tmp não é permitido em produção.'
+            "DATABASE_URL (ou POSTGRES_URL / POSTGRES_URL_NON_POOLING) com PostgreSQL é obrigatória em produção "
+            "(VERCEL=1 ou FLASK_ENV=production). Fallback para SQLite em /tmp não é permitido em produção."
         )
 
 
@@ -151,19 +146,19 @@ def _resolve_db_path():
     (VERCEL, AWS_LAMBDA_FUNCTION_NAME, VERCEL_REGION ou NOW_REGION) está ativo.
     Em ambientes locais, utiliza sempre o arquivo 'marketplace.db' na raiz do projeto.
     """
-    if 'MARKETPLACE_DB' in os.environ and os.environ['MARKETPLACE_DB'].strip():
-        return os.environ['MARKETPLACE_DB'].strip()
+    if "MARKETPLACE_DB" in os.environ and os.environ["MARKETPLACE_DB"].strip():
+        return os.environ["MARKETPLACE_DB"].strip()
 
     is_serverless = (
-        os.environ.get('VERCEL') in ('1', 'true')
-        or 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
-        or 'VERCEL_REGION' in os.environ
-        or 'NOW_REGION' in os.environ
+        os.environ.get("VERCEL") in ("1", "true")
+        or "AWS_LAMBDA_FUNCTION_NAME" in os.environ
+        or "VERCEL_REGION" in os.environ
+        or "NOW_REGION" in os.environ
     )
     if is_serverless:
-        return '/tmp/marketplace.db'
+        return "/tmp/marketplace.db"
 
-    return os.path.join(BASE_DIR, 'marketplace.db')
+    return os.path.join(BASE_DIR, "marketplace.db")
 
 
 DB_PATH = _resolve_db_path()
@@ -179,10 +174,10 @@ def _normalizar_query(texto):
     - colapsa múltiplos espaços em um único espaço.
     """
     if not texto:
-        return ''
-    sem_acentos = unicodedata.normalize('NFD', str(texto)).encode('ascii', 'ignore').decode('ascii').lower()
-    sem_numero = re.sub(r'(?<=[a-z\s]),?\s+\b\d{1,5}\b(?=\s*(?:,|$|-))', '', sem_acentos)
-    return re.sub(r'\s+', ' ', sem_numero).strip()
+        return ""
+    sem_acentos = unicodedata.normalize("NFD", str(texto)).encode("ascii", "ignore").decode("ascii").lower()
+    sem_numero = re.sub(r"(?<=[a-z\s]),?\s+\b\d{1,5}\b(?=\s*(?:,|$|-))", "", sem_acentos)
+    return re.sub(r"\s+", " ", sem_numero).strip()
 
 
 def translate_placeholders(sql):
@@ -190,7 +185,7 @@ def translate_placeholders(sql):
     Converte marcadores posicionais SQLite '?' para marcadores PostgreSQL '%s',
     preservando caracteres '?' contidos dentro de literais de string ('...' ou "...").
     """
-    if not sql or '?' not in sql:
+    if not sql or "?" not in sql:
         return sql
 
     result = []
@@ -208,7 +203,7 @@ def translate_placeholders(sql):
             i += 1
             continue
 
-        if char == '\\':
+        if char == "\\":
             result.append(char)
             escape = True
             i += 1
@@ -231,15 +226,15 @@ def translate_placeholders(sql):
             i += 1
             continue
 
-        if char == '?' and not in_single_quote and not in_double_quote:
-            result.append('%s')
+        if char == "?" and not in_single_quote and not in_double_quote:
+            result.append("%s")
             i += 1
             continue
 
         result.append(char)
         i += 1
 
-    return ''.join(result)
+    return "".join(result)
 
 
 class HybridRow:
@@ -253,6 +248,7 @@ class HybridRow:
     - row.get('coluna', default)
     - iteração sobre chaves
     """
+
     def __init__(self, data_dict, data_tuple=None):
         self._data_dict = dict(data_dict) if data_dict is not None else {}
         if data_tuple is not None:
@@ -307,17 +303,18 @@ class PostgresCursorWrapper:
     - Popula cursor.lastrowid
     - Retorna linhas encapsuladas em HybridRow (acesso por chave e por índice numérico)
     """
+
     def __init__(self, raw_cursor):
         self._cursor = raw_cursor
         self.lastrowid = None
 
     @property
     def description(self):
-        return getattr(self._cursor, 'description', None)
+        return getattr(self._cursor, "description", None)
 
     @property
     def rowcount(self):
-        return getattr(self._cursor, 'rowcount', -1)
+        return getattr(self._cursor, "rowcount", -1)
 
     def _wrap_row(self, raw_row):
         if raw_row is None:
@@ -326,14 +323,14 @@ class PostgresCursorWrapper:
             return raw_row
         if isinstance(raw_row, dict):
             return HybridRow(raw_row, tuple(raw_row.values()))
-        if hasattr(raw_row, '_asdict'):
+        if hasattr(raw_row, "_asdict"):
             return HybridRow(raw_row._asdict(), raw_row)
-        if hasattr(raw_row, 'keys'):
+        if hasattr(raw_row, "keys"):
             d = {k: raw_row[k] for k in raw_row.keys()}
             return HybridRow(d, tuple(raw_row))
-        if self._cursor and getattr(self._cursor, 'description', None):
+        if self._cursor and getattr(self._cursor, "description", None):
             col_names = [desc[0] for desc in self._cursor.description]
-            d = dict(zip(col_names, raw_row))
+            d = dict(zip(col_names, raw_row, strict=False))
             return HybridRow(d, tuple(raw_row))
         if isinstance(raw_row, (list, tuple)):
             d = {f"col_{idx}": val for idx, val in enumerate(raw_row)}
@@ -345,13 +342,15 @@ class PostgresCursorWrapper:
         upper_sql = clean_sql.upper()
 
         needs_returning = False
-        is_insert = upper_sql.startswith('INSERT INTO') or upper_sql.startswith('INSERT')
-        has_returning = 'RETURNING' in upper_sql
-        is_no_id_table = any(t in upper_sql for t in ('GEOCODE_CACHE', 'RATE_LIMIT', 'SCHEMA_MIGRATIONS', 'PASSWORD_RESET_TOKENS'))
+        is_insert = upper_sql.startswith("INSERT INTO") or upper_sql.startswith("INSERT")
+        has_returning = "RETURNING" in upper_sql
+        is_no_id_table = any(
+            t in upper_sql for t in ("GEOCODE_CACHE", "RATE_LIMIT", "SCHEMA_MIGRATIONS", "PASSWORD_RESET_TOKENS")
+        )
 
         if is_insert and not has_returning and not is_no_id_table:
             needs_returning = True
-            sql_to_run = clean_sql.rstrip().rstrip(';') + ' RETURNING id'
+            sql_to_run = clean_sql.rstrip().rstrip(";") + " RETURNING id"
         else:
             sql_to_run = sql
 
@@ -366,27 +365,24 @@ class PostgresCursorWrapper:
             try:
                 ret_row = self._cursor.fetchone()
                 if ret_row is not None:
-                    if isinstance(ret_row, dict) or hasattr(ret_row, '__getitem__'):
+                    if isinstance(ret_row, dict) or hasattr(ret_row, "__getitem__"):
                         try:
-                            self.lastrowid = ret_row['id']
+                            self.lastrowid = ret_row["id"]
                         except (KeyError, TypeError, IndexError):
                             self.lastrowid = ret_row[0]
                     else:
-                        self.lastrowid = getattr(ret_row, 'id', None)
+                        self.lastrowid = getattr(ret_row, "id", None)
             except Exception:
                 pass
 
         return self
 
     def executescript(self, script):
-        for raw_stmt in script.split(';'):
+        for raw_stmt in script.split(";"):
             stmt = raw_stmt.strip()
             if not stmt:
                 continue
-            has_sql = any(
-                line.strip() and not line.strip().startswith('--')
-                for line in stmt.splitlines()
-            )
+            has_sql = any(line.strip() and not line.strip().startswith("--") for line in stmt.splitlines())
             if has_sql:
                 self.execute(stmt)
         return self
@@ -428,6 +424,7 @@ class PostgresConnectionWrapper:
     - Suporta conn.executescript(script)
     - Suporta context manager
     """
+
     def __init__(self, raw_conn):
         self._conn = raw_conn
 
@@ -477,7 +474,7 @@ def _connect_postgres(url):
 
 def get_db_connection():
     url, engine = resolve_database_url()
-    if engine == 'postgresql' and url:
+    if engine == "postgresql" and url:
         return _connect_postgres(url)
 
     ensure_production_database()
@@ -494,7 +491,7 @@ def get_db_connection():
     return conn
 
 
-POSTGRES_SCHEMA_SQL = '''
+POSTGRES_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     nome TEXT NOT NULL,
@@ -822,9 +819,9 @@ CREATE TABLE IF NOT EXISTS payment_refunds (
 
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_payment ON payment_refunds(payment_id);
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_order ON payment_refunds(order_id);
-'''
+"""
 
-SQLITE_SCHEMA_SQL = '''
+SQLITE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL,
@@ -1152,32 +1149,28 @@ CREATE TABLE IF NOT EXISTS payment_refunds (
 
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_payment ON payment_refunds(payment_id);
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_order ON payment_refunds(order_id);
-'''
+"""
 
 
 def _table_exists(cursor, table_name, engine):
     """Verifica se uma tabela já existe no banco ativo."""
-    if engine == 'postgresql':
+    if engine == "postgresql":
         row = cursor.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
-            (table_name,)
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?", (table_name,)
         ).fetchone()
     else:
-        row = cursor.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table_name,)
-        ).fetchone()
+        row = cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone()
     return row is not None
 
 
 def _ensure_migrations_table(cursor):
     """Garante a existência da tabela schema_migrations para controle de versão."""
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version TEXT PRIMARY KEY,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
 
 
 def list_migration_files():
@@ -1185,8 +1178,7 @@ def list_migration_files():
     if not os.path.isdir(MIGRATIONS_DIR):
         return []
     files = [
-        f for f in os.listdir(MIGRATIONS_DIR)
-        if f.endswith('.sql') and os.path.isfile(os.path.join(MIGRATIONS_DIR, f))
+        f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql") and os.path.isfile(os.path.join(MIGRATIONS_DIR, f))
     ]
     return sorted(files)
 
@@ -1209,12 +1201,12 @@ def run_migrations(conn=None, dry_run=False):
 
     if dry_run:
         applied_versions = set()
-        if _table_exists(cursor, 'schema_migrations', engine):
+        if _table_exists(cursor, "schema_migrations", engine):
             rows = cursor.execute("SELECT version FROM schema_migrations").fetchall()
-            applied_versions = {r['version'] for r in rows}
+            applied_versions = {r["version"] for r in rows}
         for filename in migration_files:
-            status = 'already_applied' if filename in applied_versions else 'pending'
-            report.append({'version': filename, 'status': status})
+            status = "already_applied" if filename in applied_versions else "pending"
+            report.append({"version": filename, "status": status})
         if own_conn:
             conn.close()
         return report
@@ -1223,33 +1215,29 @@ def run_migrations(conn=None, dry_run=False):
     conn.commit()
 
     rows = cursor.execute("SELECT version FROM schema_migrations").fetchall()
-    applied_versions = {r['version'] for r in rows}
+    applied_versions = {r["version"] for r in rows}
 
     for filename in migration_files:
         if filename in applied_versions:
-            report.append({'version': filename, 'status': 'already_applied'})
+            report.append({"version": filename, "status": "already_applied"})
             continue
 
         filepath = os.path.join(MIGRATIONS_DIR, filename)
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             sql_script = f.read()
 
         if sql_script.strip():
-            if engine == 'sqlite':
+            if engine == "sqlite":
                 sql_script = re.sub(
-                    r'\bSERIAL\s+PRIMARY\s+KEY\b',
-                    'INTEGER PRIMARY KEY AUTOINCREMENT',
-                    sql_script,
-                    flags=re.IGNORECASE
+                    r"\bSERIAL\s+PRIMARY\s+KEY\b", "INTEGER PRIMARY KEY AUTOINCREMENT", sql_script, flags=re.IGNORECASE
                 )
             cursor.executescript(sql_script)
 
         cursor.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT (version) DO NOTHING",
-            (filename,)
+            "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT (version) DO NOTHING", (filename,)
         )
         conn.commit()
-        report.append({'version': filename, 'status': 'applied'})
+        report.append({"version": filename, "status": "applied"})
 
     if own_conn:
         conn.close()
@@ -1258,52 +1246,52 @@ def run_migrations(conn=None, dry_run=False):
 
 def _ensure_columns(conn, cursor, engine):
     """Garante defensivamente que colunas novas existam em bancos SQLite e PostgreSQL já existentes."""
-    real_type = 'DOUBLE PRECISION' if engine == 'postgresql' else 'REAL'
+    real_type = "DOUBLE PRECISION" if engine == "postgresql" else "REAL"
     expected_columns = {
-        'users': [
-            ('plano', "TEXT DEFAULT 'basico'"),
-            ('kyc_tier', 'INTEGER DEFAULT 1'),
-            ('kyc_status', "TEXT DEFAULT 'aprovado'"),
-            ('kyc_documento_tipo', "TEXT DEFAULT 'RG'"),
-            ('kyc_provider_ref', 'TEXT'),
-            ('kyc_verified_at', 'TIMESTAMP'),
-            ('registro_profissional', 'TEXT'),
-            ('cpf', 'TEXT'),
-            ('status_conta', "TEXT DEFAULT 'ativo'"),
-            ('session_version', 'INTEGER DEFAULT 1'),
+        "users": [
+            ("plano", "TEXT DEFAULT 'basico'"),
+            ("kyc_tier", "INTEGER DEFAULT 1"),
+            ("kyc_status", "TEXT DEFAULT 'aprovado'"),
+            ("kyc_documento_tipo", "TEXT DEFAULT 'RG'"),
+            ("kyc_provider_ref", "TEXT"),
+            ("kyc_verified_at", "TIMESTAMP"),
+            ("registro_profissional", "TEXT"),
+            ("cpf", "TEXT"),
+            ("status_conta", "TEXT DEFAULT 'ativo'"),
+            ("session_version", "INTEGER DEFAULT 1"),
         ],
-        'orders': [
-            ('complemento_cliente', 'TEXT'),
-            ('modalidade', "TEXT DEFAULT 'imediato'"),
-            ('agendado_para', 'TEXT'),
-            ('metodo_pagamento', "TEXT DEFAULT 'escrow'"),
-            ('pago', 'INTEGER DEFAULT 0'),
-            ('codigo_confirmacao', 'TEXT'),
-            ('motivo_cancelamento', 'TEXT'),
-            ('escrow_status', "TEXT DEFAULT 'pendente'"),
-            ('taxa_deslocamento', f'{real_type} DEFAULT 0'),
-            ('valor_estornado', f'{real_type} DEFAULT 0'),
-            ('share_token', 'TEXT'),
-            ('completed_at', 'TIMESTAMP'),
-            ('released_at', 'TIMESTAMP'),
-            ('release_due_at', 'TIMESTAMP'),
-            ('confirmado_cliente', 'INTEGER DEFAULT 0'),
-            ('pin_tentativas', 'INTEGER DEFAULT 0'),
+        "orders": [
+            ("complemento_cliente", "TEXT"),
+            ("modalidade", "TEXT DEFAULT 'imediato'"),
+            ("agendado_para", "TEXT"),
+            ("metodo_pagamento", "TEXT DEFAULT 'escrow'"),
+            ("pago", "INTEGER DEFAULT 0"),
+            ("codigo_confirmacao", "TEXT"),
+            ("motivo_cancelamento", "TEXT"),
+            ("escrow_status", "TEXT DEFAULT 'pendente'"),
+            ("taxa_deslocamento", f"{real_type} DEFAULT 0"),
+            ("valor_estornado", f"{real_type} DEFAULT 0"),
+            ("share_token", "TEXT"),
+            ("completed_at", "TIMESTAMP"),
+            ("released_at", "TIMESTAMP"),
+            ("release_due_at", "TIMESTAMP"),
+            ("confirmado_cliente", "INTEGER DEFAULT 0"),
+            ("pin_tentativas", "INTEGER DEFAULT 0"),
         ],
-        'reviews': [
-            ('autor_tipo', "TEXT DEFAULT 'cliente'"),
-            ('avaliado_id', 'INTEGER'),
-            ('replica', 'TEXT'),
-            ('replied_at', 'TIMESTAMP'),
-            ('contestada', 'INTEGER DEFAULT 0'),
-            ('motivo_contestacao', 'TEXT'),
-            ('status_moderacao', "TEXT DEFAULT 'visivel'"),
-            ('revealed_at', 'TIMESTAMP'),
+        "reviews": [
+            ("autor_tipo", "TEXT DEFAULT 'cliente'"),
+            ("avaliado_id", "INTEGER"),
+            ("replica", "TEXT"),
+            ("replied_at", "TIMESTAMP"),
+            ("contestada", "INTEGER DEFAULT 0"),
+            ("motivo_contestacao", "TEXT"),
+            ("status_moderacao", "TEXT DEFAULT 'visivel'"),
+            ("revealed_at", "TIMESTAMP"),
         ],
     }
 
     for table, cols in expected_columns.items():
-        if engine == 'postgresql':
+        if engine == "postgresql":
             for col_name, col_def in cols:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_def}")
             conn.commit()
@@ -1312,7 +1300,7 @@ def _ensure_columns(conn, cursor, engine):
             existing_cols = set()
             for r in info_rows:
                 try:
-                    existing_cols.add(r['name'])
+                    existing_cols.add(r["name"])
                 except (KeyError, TypeError, IndexError):
                     existing_cols.add(r[1])
             for col_name, col_def in cols:
@@ -1323,13 +1311,13 @@ def _ensure_columns(conn, cursor, engine):
 
 def _ensure_orders_status_check(conn, cursor, engine):
     """Garante que a constraint CHECK de orders.status aceite 'em_disputa' em bancos pré-ET."""
-    if engine == 'postgresql':
+    if engine == "postgresql":
         try:
             row = cursor.execute(
                 "SELECT pg_get_constraintdef(oid) AS cdef FROM pg_constraint "
                 "WHERE conname = 'orders_status_check' AND conrelid = 'orders'::regclass"
             ).fetchone()
-            cdef = row['cdef'] if row and hasattr(row, 'keys') and 'cdef' in row.keys() else (row[0] if row else '')
+            cdef = row["cdef"] if row and hasattr(row, "keys") and "cdef" in row.keys() else (row[0] if row else "")
             if cdef and "'em_disputa'" in str(cdef):
                 return
             cursor.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check")
@@ -1342,12 +1330,10 @@ def _ensure_orders_status_check(conn, cursor, engine):
             conn.rollback()
         return
 
-    row = cursor.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'"
-    ).fetchone()
+    row = cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'").fetchone()
     if not row:
         return
-    table_sql = row['sql'] if hasattr(row, 'keys') and 'sql' in row.keys() else row[0]
+    table_sql = row["sql"] if hasattr(row, "keys") and "sql" in row.keys() else row[0]
     if not table_sql or "'em_disputa'" in table_sql:
         return
 
@@ -1355,25 +1341,50 @@ def _ensure_orders_status_check(conn, cursor, engine):
     existing_cols = []
     for r in info_rows:
         try:
-            existing_cols.append(r['name'])
+            existing_cols.append(r["name"])
         except (KeyError, TypeError, IndexError):
             existing_cols.append(r[1])
 
     new_orders_cols = [
-        'id', 'cliente_id', 'prestador_id', 'servico_id', 'status', 'preco_total',
-        'observacoes', 'cep_cliente', 'endereco_cliente', 'numero_cliente',
-        'bairro_cliente', 'cidade_cliente', 'estado_cliente', 'lat_cliente',
-        'lng_cliente', 'complemento_cliente', 'modalidade', 'agendado_para',
-        'metodo_pagamento', 'pago', 'codigo_confirmacao', 'motivo_cancelamento',
-        'escrow_status', 'taxa_deslocamento', 'valor_estornado', 'share_token',
-        'completed_at', 'released_at', 'release_due_at', 'confirmado_cliente',
-        'pin_tentativas', 'criado_em', 'atualizado_em'
+        "id",
+        "cliente_id",
+        "prestador_id",
+        "servico_id",
+        "status",
+        "preco_total",
+        "observacoes",
+        "cep_cliente",
+        "endereco_cliente",
+        "numero_cliente",
+        "bairro_cliente",
+        "cidade_cliente",
+        "estado_cliente",
+        "lat_cliente",
+        "lng_cliente",
+        "complemento_cliente",
+        "modalidade",
+        "agendado_para",
+        "metodo_pagamento",
+        "pago",
+        "codigo_confirmacao",
+        "motivo_cancelamento",
+        "escrow_status",
+        "taxa_deslocamento",
+        "valor_estornado",
+        "share_token",
+        "completed_at",
+        "released_at",
+        "release_due_at",
+        "confirmado_cliente",
+        "pin_tentativas",
+        "criado_em",
+        "atualizado_em",
     ]
     copy_cols = [c for c in new_orders_cols if c in existing_cols]
-    cols_csv = ', '.join(copy_cols)
+    cols_csv = ", ".join(copy_cols)
 
     cursor.execute("PRAGMA foreign_keys = OFF;")
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE orders__new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id INTEGER NOT NULL,
@@ -1412,7 +1423,7 @@ def _ensure_orders_status_check(conn, cursor, engine):
             FOREIGN KEY(prestador_id) REFERENCES users(id),
             FOREIGN KEY(servico_id) REFERENCES services(id)
         )
-    ''')
+    """)
     if copy_cols:
         cursor.execute(f"INSERT INTO orders__new ({cols_csv}) SELECT {cols_csv} FROM orders")
     cursor.execute("DROP TABLE orders")
@@ -1426,16 +1437,15 @@ def _ensure_orders_status_check(conn, cursor, engine):
 
 def _get_table_columns(cursor, table_name, engine):
     """Retorna o conjunto de nomes de colunas existentes em uma tabela."""
-    if engine == 'postgresql':
+    if engine == "postgresql":
         rows = cursor.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema = 'public' AND table_name = ?",
-            (table_name,)
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ?",
+            (table_name,),
         ).fetchall()
         cols = set()
         for r in rows:
             try:
-                cols.add(r['column_name'])
+                cols.add(r["column_name"])
             except (KeyError, TypeError, IndexError):
                 cols.add(r[0])
         return cols
@@ -1443,7 +1453,7 @@ def _get_table_columns(cursor, table_name, engine):
     cols = set()
     for r in info_rows:
         try:
-            cols.add(r['name'])
+            cols.add(r["name"])
         except (KeyError, TypeError, IndexError):
             cols.add(r[1])
     return cols
@@ -1453,11 +1463,11 @@ def _retire_legacy_table(cursor, table_name, engine, ts_suffix):
     """Remove tabela legada vazia ou renomeia para <table>_legacy_<ts> preservando dados e evitando colisão de índices/constraints."""
     row = cursor.execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()
     try:
-        count = int(row['cnt'])
+        count = int(row["cnt"])
     except (KeyError, TypeError, IndexError):
         count = int(row[0]) if row else 0
     if count == 0:
-        if engine == 'postgresql':
+        if engine == "postgresql":
             cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
         else:
             cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
@@ -1466,17 +1476,17 @@ def _retire_legacy_table(cursor, table_name, engine, ts_suffix):
     legacy_name = f"{table_name}_legacy_{ts_suffix}"
     cursor.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_name}")
 
-    if engine == 'postgresql':
+    if engine == "postgresql":
         con_rows = cursor.execute(
             "SELECT c.conname FROM pg_constraint c "
             "JOIN pg_class cl ON c.conrelid = cl.oid "
             "JOIN pg_namespace n ON cl.relnamespace = n.oid "
             "WHERE n.nspname = 'public' AND cl.relname = ?",
-            (legacy_name,)
+            (legacy_name,),
         ).fetchall()
         for r in con_rows:
             try:
-                conname = r['conname']
+                conname = r["conname"]
             except (KeyError, TypeError, IndexError):
                 conname = r[0]
             if conname and not str(conname).endswith(f"_legacy_{ts_suffix}"):
@@ -1484,28 +1494,27 @@ def _retire_legacy_table(cursor, table_name, engine, ts_suffix):
                 cursor.execute(f"ALTER TABLE {legacy_name} RENAME CONSTRAINT {conname} TO {new_con}")
 
         idx_rows = cursor.execute(
-            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?",
-            (legacy_name,)
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?", (legacy_name,)
         ).fetchall()
         for r in idx_rows:
             try:
-                idx_name = r['indexname']
+                idx_name = r["indexname"]
             except (KeyError, TypeError, IndexError):
                 idx_name = r[0]
-            if idx_name and (str(idx_name).startswith('idx_pay_') or str(idx_name).startswith('idx_payment_')):
+            if idx_name and (str(idx_name).startswith("idx_pay_") or str(idx_name).startswith("idx_payment_")):
                 new_idx = f"{str(idx_name)[:40]}_legacy_{ts_suffix}"
                 cursor.execute(f"ALTER INDEX IF EXISTS {idx_name} RENAME TO {new_idx}")
     else:
         idx_rows = cursor.execute(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex_%'",
-            (legacy_name,)
+            (legacy_name,),
         ).fetchall()
         for r in idx_rows:
             try:
-                idx_name = r['name']
+                idx_name = r["name"]
             except (KeyError, TypeError, IndexError):
                 idx_name = r[0]
-            if idx_name and (str(idx_name).startswith('idx_pay_') or str(idx_name).startswith('idx_payment_')):
+            if idx_name and (str(idx_name).startswith("idx_pay_") or str(idx_name).startswith("idx_payment_")):
                 cursor.execute(f"DROP INDEX IF EXISTS {idx_name}")
 
 
@@ -1517,24 +1526,24 @@ def _cleanup_legacy_payment_tables(conn, cursor, engine):
     ts_suffix = str(int(time.time()))
     changed = False
 
-    tx_exists = _table_exists(cursor, 'payment_transactions', engine)
+    tx_exists = _table_exists(cursor, "payment_transactions", engine)
     tx_is_legacy = False
     if tx_exists:
-        tx_cols = _get_table_columns(cursor, 'payment_transactions', engine)
-        tx_is_legacy = 'amount_cents' not in tx_cols
+        tx_cols = _get_table_columns(cursor, "payment_transactions", engine)
+        tx_is_legacy = "amount_cents" not in tx_cols
 
     if tx_is_legacy:
-        for extra_legacy in ('payment_tokens', 'idempotency_keys', 'payment_payment_refs'):
+        for extra_legacy in ("payment_tokens", "idempotency_keys", "payment_payment_refs"):
             if _table_exists(cursor, extra_legacy, engine):
                 _retire_legacy_table(cursor, extra_legacy, engine, ts_suffix)
                 changed = True
 
     legacy_checks = (
-        ('payment_refunds', 'payment_id'),
-        ('payment_idempotency_keys', 'scope'),
-        ('payment_webhooks', 'event_id'),
-        ('payment_transactions', 'amount_cents'),
-        ('payment_methods', 'gateway_token'),
+        ("payment_refunds", "payment_id"),
+        ("payment_idempotency_keys", "scope"),
+        ("payment_webhooks", "event_id"),
+        ("payment_transactions", "amount_cents"),
+        ("payment_methods", "gateway_token"),
     )
     for tbl_name, required_col in legacy_checks:
         if _table_exists(cursor, tbl_name, engine):
@@ -1555,7 +1564,7 @@ def init_db():
 
     try:
         # Serializa cold starts simultâneos no PostgreSQL evitando corrida em CREATE TABLE IF NOT EXISTS (pg_type_typname_nsp_index)
-        if engine == 'postgresql':
+        if engine == "postgresql":
             cursor.execute("SELECT pg_advisory_lock(7391042)")
             conn.commit()
 
@@ -1564,13 +1573,22 @@ def init_db():
 
         # Verifica se as tabelas principais já existem antes de executar o schema inicial
         core_tables = (
-            'users', 'services', 'orders', 'reviews', 'geocode_cache',
-            'user_consents', 'disputes', 'safety_incidents', 'account_appeals', 'order_messages', 'escrow_ledger'
+            "users",
+            "services",
+            "orders",
+            "reviews",
+            "geocode_cache",
+            "user_consents",
+            "disputes",
+            "safety_incidents",
+            "account_appeals",
+            "order_messages",
+            "escrow_ledger",
         )
         missing_core = any(not _table_exists(cursor, tbl, engine) for tbl in core_tables)
 
         if missing_core:
-            schema_sql = POSTGRES_SCHEMA_SQL if engine == 'postgresql' else SQLITE_SCHEMA_SQL
+            schema_sql = POSTGRES_SCHEMA_SQL if engine == "postgresql" else SQLITE_SCHEMA_SQL
             cursor.executescript(schema_sql)
             conn.commit()
 
@@ -1589,24 +1607,36 @@ def init_db():
 
         # Seed inicial e sincronização completa dos prestadores (desabilitado por padrão e proibido em produção)
         if is_demo_seed_enabled():
-            cursor.execute("SELECT id FROM users WHERE email = ?", ('cliente@pertoja.com',))
+            cursor.execute("SELECT id FROM users WHERE email = ?", ("cliente@pertoja.com",))
             if not cursor.fetchone():
-                pwd_hash = generate_password_hash('123456')
-                cursor.execute('''
+                pwd_hash = generate_password_hash("123456")
+                cursor.execute(
+                    """
                     INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng)
                     VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    'Ana Paula Silva', 'cliente@pertoja.com', pwd_hash, '(11) 98765-4321',
-                    'Cliente residencial em busca de serviços locais de alta qualidade.',
-                    '01402-000', 'Alameda Santos', '800', 'Cerqueira César', 'São Paulo', 'SP',
-                    -23.5680, -46.6530
-                ))
+                """,
+                    (
+                        "Ana Paula Silva",
+                        "cliente@pertoja.com",
+                        pwd_hash,
+                        "(11) 98765-4321",
+                        "Cliente residencial em busca de serviços locais de alta qualidade.",
+                        "01402-000",
+                        "Alameda Santos",
+                        "800",
+                        "Cerqueira César",
+                        "São Paulo",
+                        "SP",
+                        -23.5680,
+                        -46.6530,
+                    ),
+                )
                 conn.commit()
 
             sincronizar_todos_prestadores(conn)
 
             # Migração defensiva ET-09: garante Tier 2 e registro profissional para prestadores seed de Elétrica/Encanamento
-            cursor.execute('''
+            cursor.execute("""
                 UPDATE users
                 SET kyc_tier = 2,
                     registro_profissional = COALESCE(registro_profissional, 'CFT/CREA-SEED')
@@ -1618,10 +1648,10 @@ def init_db():
                       WHERE s.prestador_id = users.id
                         AND s.categoria IN ('Elétrica', 'Encanamento')
                   )
-            ''')
+            """)
             conn.commit()
     finally:
-        if engine == 'postgresql':
+        if engine == "postgresql":
             try:
                 conn.rollback()
             except Exception:
@@ -1636,51 +1666,676 @@ def init_db():
 
 PRESTADORES_SEED_35 = [
     # --- CENTRO DE SÃO PAULO (5 prestadores) ---
-    ('Carlos Mendes', 'carlos@pertoja.com', '(11) 97111-2233', 'Limpeza residencial e comercial com 8 anos de experiência.', 'Limpeza', 'Limpeza residencial completa', 80.0, 4.8, '01310-100', 'Avenida Paulista', '1000', 'Bela Vista', 'São Paulo', 'SP', -23.5653, -46.6517, 1),
-    ('Rafa Instalações', 'rafa@pertoja.com', '(11) 97444-5566', 'Instalação ágil de chuveiros, tomadas e luminárias.', 'Elétrica', 'Troca de chuveiro e tomadas elétricas', 90.0, 4.2, '01414-001', 'Rua Haddock Lobo', '800', 'Cerqueira César', 'São Paulo', 'SP', -23.5570, -46.6640, 1),
-    ('Téo Suporte', 'teo@pertoja.com', '(11) 97888-9900', 'Técnico em informática e redes residenciais.', 'Tecnologia', 'Suporte técnico de computadores e redes Wi-Fi', 110.0, 4.4, '01228-000', 'Rua da Consolação', '2400', 'Consolação', 'São Paulo', 'SP', -23.5550, -46.6600, 1),
-    ('Marcio Encanador Sé', 'marcio@pertoja.com', '(11) 97100-2211', 'Desentupimentos, sifões e conserto de válvulas de descarga.', 'Encanamento', 'Desentupimento e reparo de válvulas e sifões', 130.0, 4.6, '01001-000', 'Praça da Sé', '100', 'Sé', 'São Paulo', 'SP', -23.5505, -46.6333, 1),
-    ('Helena Restaurações', 'helena@pertoja.com', '(11) 97100-3322', 'Restauração de portas, janelas e móveis antigos.', 'Marcenaria', 'Restauração de portas e móveis coloniais', 220.0, 4.9, '01223-000', 'Rua Baronesa de Itu', '350', 'Santa Cecília', 'São Paulo', 'SP', -23.5385, -46.6530, 1),
-
+    (
+        "Carlos Mendes",
+        "carlos@pertoja.com",
+        "(11) 97111-2233",
+        "Limpeza residencial e comercial com 8 anos de experiência.",
+        "Limpeza",
+        "Limpeza residencial completa",
+        80.0,
+        4.8,
+        "01310-100",
+        "Avenida Paulista",
+        "1000",
+        "Bela Vista",
+        "São Paulo",
+        "SP",
+        -23.5653,
+        -46.6517,
+        1,
+    ),
+    (
+        "Rafa Instalações",
+        "rafa@pertoja.com",
+        "(11) 97444-5566",
+        "Instalação ágil de chuveiros, tomadas e luminárias.",
+        "Elétrica",
+        "Troca de chuveiro e tomadas elétricas",
+        90.0,
+        4.2,
+        "01414-001",
+        "Rua Haddock Lobo",
+        "800",
+        "Cerqueira César",
+        "São Paulo",
+        "SP",
+        -23.5570,
+        -46.6640,
+        1,
+    ),
+    (
+        "Téo Suporte",
+        "teo@pertoja.com",
+        "(11) 97888-9900",
+        "Técnico em informática e redes residenciais.",
+        "Tecnologia",
+        "Suporte técnico de computadores e redes Wi-Fi",
+        110.0,
+        4.4,
+        "01228-000",
+        "Rua da Consolação",
+        "2400",
+        "Consolação",
+        "São Paulo",
+        "SP",
+        -23.5550,
+        -46.6600,
+        1,
+    ),
+    (
+        "Marcio Encanador Sé",
+        "marcio@pertoja.com",
+        "(11) 97100-2211",
+        "Desentupimentos, sifões e conserto de válvulas de descarga.",
+        "Encanamento",
+        "Desentupimento e reparo de válvulas e sifões",
+        130.0,
+        4.6,
+        "01001-000",
+        "Praça da Sé",
+        "100",
+        "Sé",
+        "São Paulo",
+        "SP",
+        -23.5505,
+        -46.6333,
+        1,
+    ),
+    (
+        "Helena Restaurações",
+        "helena@pertoja.com",
+        "(11) 97100-3322",
+        "Restauração de portas, janelas e móveis antigos.",
+        "Marcenaria",
+        "Restauração de portas e móveis coloniais",
+        220.0,
+        4.9,
+        "01223-000",
+        "Rua Baronesa de Itu",
+        "350",
+        "Santa Cecília",
+        "São Paulo",
+        "SP",
+        -23.5385,
+        -46.6530,
+        1,
+    ),
     # --- ZONA NORTE DE SÃO PAULO (5 prestadores) ---
-    ('Beto Hidráulica', 'beto@pertoja.com', '(11) 97555-6677', 'Encanador especialista em caça-vazamentos e desentupimentos.', 'Encanamento', 'Conserto de vazamentos e desentupimento', 240.0, 4.7, '02011-000', 'Rua Voluntários da Pátria', '1500', 'Santana', 'São Paulo', 'SP', -23.5042, -46.6262, 1),
-    ('Lucia Jardim & Verde', 'lucia@pertoja.com', '(11) 97200-4411', 'Paisagismo, adubação de solo e poda de gramados.', 'Jardinagem', 'Paisagismo, adubação e poda de gramados', 190.0, 4.8, '02305-000', 'Avenida Nova Cantareira', '1200', 'Tucuruvi', 'São Paulo', 'SP', -23.4795, -46.6080, 1),
-    ('Valter Força Elétrica', 'valter@pertoja.com', '(11) 97200-5522', 'Manutenção elétrica preventiva, disjuntores e fiação.', 'Elétrica', 'Manutenção elétrica preventiva e disjuntores', 150.0, 4.5, '02511-000', 'Rua Doutor César', '400', 'Santana', 'São Paulo', 'SP', -23.5020, -46.6300, 1),
-    ('Camila Clean ZN', 'camila@pertoja.com', '(11) 97200-6633', 'Faxina residencial caprichada e higienização de sofás.', 'Limpeza', 'Faxina residencial e higienização de sofás', 140.0, 4.9, '02518-000', 'Rua Casa Verde', '850', 'Casa Verde', 'São Paulo', 'SP', -23.5130, -46.6570, 1),
-    ('Sergio Cores do Norte', 'sergio@pertoja.com', '(11) 97200-7744', 'Pintura residencial, fachadas e aplicação de grafiato.', 'Pintura', 'Pintura de fachadas e textura grafiato', 340.0, 4.6, '02167-000', 'Rua Curuçá', '600', 'Vila Maria', 'São Paulo', 'SP', -23.5120, -46.5950, 1),
-
+    (
+        "Beto Hidráulica",
+        "beto@pertoja.com",
+        "(11) 97555-6677",
+        "Encanador especialista em caça-vazamentos e desentupimentos.",
+        "Encanamento",
+        "Conserto de vazamentos e desentupimento",
+        240.0,
+        4.7,
+        "02011-000",
+        "Rua Voluntários da Pátria",
+        "1500",
+        "Santana",
+        "São Paulo",
+        "SP",
+        -23.5042,
+        -46.6262,
+        1,
+    ),
+    (
+        "Lucia Jardim & Verde",
+        "lucia@pertoja.com",
+        "(11) 97200-4411",
+        "Paisagismo, adubação de solo e poda de gramados.",
+        "Jardinagem",
+        "Paisagismo, adubação e poda de gramados",
+        190.0,
+        4.8,
+        "02305-000",
+        "Avenida Nova Cantareira",
+        "1200",
+        "Tucuruvi",
+        "São Paulo",
+        "SP",
+        -23.4795,
+        -46.6080,
+        1,
+    ),
+    (
+        "Valter Força Elétrica",
+        "valter@pertoja.com",
+        "(11) 97200-5522",
+        "Manutenção elétrica preventiva, disjuntores e fiação.",
+        "Elétrica",
+        "Manutenção elétrica preventiva e disjuntores",
+        150.0,
+        4.5,
+        "02511-000",
+        "Rua Doutor César",
+        "400",
+        "Santana",
+        "São Paulo",
+        "SP",
+        -23.5020,
+        -46.6300,
+        1,
+    ),
+    (
+        "Camila Clean ZN",
+        "camila@pertoja.com",
+        "(11) 97200-6633",
+        "Faxina residencial caprichada e higienização de sofás.",
+        "Limpeza",
+        "Faxina residencial e higienização de sofás",
+        140.0,
+        4.9,
+        "02518-000",
+        "Rua Casa Verde",
+        "850",
+        "Casa Verde",
+        "São Paulo",
+        "SP",
+        -23.5130,
+        -46.6570,
+        1,
+    ),
+    (
+        "Sergio Cores do Norte",
+        "sergio@pertoja.com",
+        "(11) 97200-7744",
+        "Pintura residencial, fachadas e aplicação de grafiato.",
+        "Pintura",
+        "Pintura de fachadas e textura grafiato",
+        340.0,
+        4.6,
+        "02167-000",
+        "Rua Curuçá",
+        "600",
+        "Vila Maria",
+        "São Paulo",
+        "SP",
+        -23.5120,
+        -46.5950,
+        1,
+    ),
     # --- ZONA SUL DE SÃO PAULO (5 prestadores) ---
-    ('Marta Souza', 'marta@pertoja.com', '(11) 97222-3344', 'Especialista em faxina pesada e pós-obra.', 'Limpeza', 'Faxina pesada e higienização profunda', 170.0, 4.5, '04001-000', 'Rua Domingos de Morais', '500', 'Vila Mariana', 'São Paulo', 'SP', -23.5855, -46.6385, 1),
-    ('Dona Flor', 'donaflor@pertoja.com', '(11) 97777-8899', 'Paisagista e especialista em corte, poda técnica e adubação.', 'Jardinagem', 'Jardinagem, poda e manutenção paisagística', 450.0, 5.0, '04538-133', 'Rua Bandeira Paulista', '700', 'Itaim Bibi', 'São Paulo', 'SP', -23.5840, -46.6780, 1),
-    ('Eduardo Reparos Sul', 'eduardo@pertoja.com', '(11) 97300-1122', 'Instalação de spots LED, lustres e automação residencial.', 'Elétrica', 'Instalação de iluminação LED e tomadas inteligentes', 160.0, 4.7, '04523-010', 'Alameda dos Maracatins', '900', 'Moema', 'São Paulo', 'SP', -23.6060, -46.6620, 1),
-    ('Renato Hidráulica Moema', 'renato@pertoja.com', '(11) 97300-2233', 'Instalação de duchas higiênicas, torneiras e pressurizadores.', 'Encanamento', 'Instalação de duchas, torneiras e pressurizadores', 180.0, 4.6, '04561-001', 'Rua Flórida', '1400', 'Brooklin', 'São Paulo', 'SP', -23.6090, -46.6910, 1),
-    ('Claudio Móveis Planejados', 'claudio@pertoja.com', '(11) 97300-3344', 'Montagem, desmontagem e ajustes finos de armários embutidos.', 'Marcenaria', 'Montagem e ajuste de armários embutidos', 280.0, 4.8, '04743-000', 'Rua Doutor Antônio Bento', '650', 'Santo Amaro', 'São Paulo', 'SP', -23.6520, -46.7080, 1),
-
+    (
+        "Marta Souza",
+        "marta@pertoja.com",
+        "(11) 97222-3344",
+        "Especialista em faxina pesada e pós-obra.",
+        "Limpeza",
+        "Faxina pesada e higienização profunda",
+        170.0,
+        4.5,
+        "04001-000",
+        "Rua Domingos de Morais",
+        "500",
+        "Vila Mariana",
+        "São Paulo",
+        "SP",
+        -23.5855,
+        -46.6385,
+        1,
+    ),
+    (
+        "Dona Flor",
+        "donaflor@pertoja.com",
+        "(11) 97777-8899",
+        "Paisagista e especialista em corte, poda técnica e adubação.",
+        "Jardinagem",
+        "Jardinagem, poda e manutenção paisagística",
+        450.0,
+        5.0,
+        "04538-133",
+        "Rua Bandeira Paulista",
+        "700",
+        "Itaim Bibi",
+        "São Paulo",
+        "SP",
+        -23.5840,
+        -46.6780,
+        1,
+    ),
+    (
+        "Eduardo Reparos Sul",
+        "eduardo@pertoja.com",
+        "(11) 97300-1122",
+        "Instalação de spots LED, lustres e automação residencial.",
+        "Elétrica",
+        "Instalação de iluminação LED e tomadas inteligentes",
+        160.0,
+        4.7,
+        "04523-010",
+        "Alameda dos Maracatins",
+        "900",
+        "Moema",
+        "São Paulo",
+        "SP",
+        -23.6060,
+        -46.6620,
+        1,
+    ),
+    (
+        "Renato Hidráulica Moema",
+        "renato@pertoja.com",
+        "(11) 97300-2233",
+        "Instalação de duchas higiênicas, torneiras e pressurizadores.",
+        "Encanamento",
+        "Instalação de duchas, torneiras e pressurizadores",
+        180.0,
+        4.6,
+        "04561-001",
+        "Rua Flórida",
+        "1400",
+        "Brooklin",
+        "São Paulo",
+        "SP",
+        -23.6090,
+        -46.6910,
+        1,
+    ),
+    (
+        "Claudio Móveis Planejados",
+        "claudio@pertoja.com",
+        "(11) 97300-3344",
+        "Montagem, desmontagem e ajustes finos de armários embutidos.",
+        "Marcenaria",
+        "Montagem e ajuste de armários embutidos",
+        280.0,
+        4.8,
+        "04743-000",
+        "Rua Doutor Antônio Bento",
+        "650",
+        "Santo Amaro",
+        "São Paulo",
+        "SP",
+        -23.6520,
+        -46.7080,
+        1,
+    ),
     # --- ZONA LESTE DE SÃO PAULO (5 prestadores) ---
-    ('Nina Montagens', 'nina@pertoja.com', '(11) 97999-0011', 'Marcenaria fina, restauração de móveis e montagens de alta precisão.', 'Marcenaria', 'Marcenaria e montagem de móveis planejados', 260.0, 4.3, '03104-000', 'Rua da Mooca', '1500', 'Mooca', 'São Paulo', 'SP', -23.5535, -46.6020, 1),
-    ('Rogério Eletro Leste', 'rogerio@pertoja.com', '(11) 97400-1155', 'Reforma de quadro de força e substituição de disjuntores.', 'Elétrica', 'Troca de fiação antiga e quadro elétrico', 200.0, 4.8, '03308-000', 'Rua Serra de Bragança', '850', 'Tatuapé', 'São Paulo', 'SP', -23.5390, -46.5740, 1),
-    ('Priscila Brilho Total', 'priscila@pertoja.com', '(11) 97400-2266', 'Limpeza detalhada pré-mudança e pós-reforma.', 'Limpeza', 'Limpeza pós-obra e faxina comercial', 150.0, 4.7, '03332-000', 'Rua Emília Marengo', '400', 'Anália Franco', 'São Paulo', 'SP', -23.5550, -46.5680, 1),
-    ('Tiago Desentupidora Penha', 'tiago@pertoja.com', '(11) 97400-3377', 'Localização eletrônica de vazamento e desentupimento com máquina.', 'Encanamento', 'Caça vazamento eletrônico e desentupimento de esgotos', 220.0, 4.5, '03634-000', 'Rua Betari', '300', 'Penha', 'São Paulo', 'SP', -23.5250, -46.5490, 1),
-    ('Leandro Art Cobre', 'leandro@pertoja.com', '(11) 97400-4488', 'Pintura interna e externa, aplicação de massa corrida e látex.', 'Pintura', 'Pintura acrílica acetinada e esmalte sintético', 310.0, 4.9, '08210-040', 'Rua Américo Salvador Novelli', '250', 'Itaquera', 'São Paulo', 'SP', -23.5410, -46.4560, 1),
-
+    (
+        "Nina Montagens",
+        "nina@pertoja.com",
+        "(11) 97999-0011",
+        "Marcenaria fina, restauração de móveis e montagens de alta precisão.",
+        "Marcenaria",
+        "Marcenaria e montagem de móveis planejados",
+        260.0,
+        4.3,
+        "03104-000",
+        "Rua da Mooca",
+        "1500",
+        "Mooca",
+        "São Paulo",
+        "SP",
+        -23.5535,
+        -46.6020,
+        1,
+    ),
+    (
+        "Rogério Eletro Leste",
+        "rogerio@pertoja.com",
+        "(11) 97400-1155",
+        "Reforma de quadro de força e substituição de disjuntores.",
+        "Elétrica",
+        "Troca de fiação antiga e quadro elétrico",
+        200.0,
+        4.8,
+        "03308-000",
+        "Rua Serra de Bragança",
+        "850",
+        "Tatuapé",
+        "São Paulo",
+        "SP",
+        -23.5390,
+        -46.5740,
+        1,
+    ),
+    (
+        "Priscila Brilho Total",
+        "priscila@pertoja.com",
+        "(11) 97400-2266",
+        "Limpeza detalhada pré-mudança e pós-reforma.",
+        "Limpeza",
+        "Limpeza pós-obra e faxina comercial",
+        150.0,
+        4.7,
+        "03332-000",
+        "Rua Emília Marengo",
+        "400",
+        "Anália Franco",
+        "São Paulo",
+        "SP",
+        -23.5550,
+        -46.5680,
+        1,
+    ),
+    (
+        "Tiago Desentupidora Penha",
+        "tiago@pertoja.com",
+        "(11) 97400-3377",
+        "Localização eletrônica de vazamento e desentupimento com máquina.",
+        "Encanamento",
+        "Caça vazamento eletrônico e desentupimento de esgotos",
+        220.0,
+        4.5,
+        "03634-000",
+        "Rua Betari",
+        "300",
+        "Penha",
+        "São Paulo",
+        "SP",
+        -23.5250,
+        -46.5490,
+        1,
+    ),
+    (
+        "Leandro Art Cobre",
+        "leandro@pertoja.com",
+        "(11) 97400-4488",
+        "Pintura interna e externa, aplicação de massa corrida e látex.",
+        "Pintura",
+        "Pintura acrílica acetinada e esmalte sintético",
+        310.0,
+        4.9,
+        "08210-040",
+        "Rua Américo Salvador Novelli",
+        "250",
+        "Itaquera",
+        "São Paulo",
+        "SP",
+        -23.5410,
+        -46.4560,
+        1,
+    ),
     # --- ZONA OESTE DE SÃO PAULO (5 prestadores) ---
-    ('João Volts', 'joao@pertoja.com', '(11) 97333-4455', 'Eletricista certificado padrão industrial e residencial.', 'Elétrica', 'Reparo e manutenção de quadro elétrico', 210.0, 4.9, '05407-002', 'Rua Teodoro Sampaio', '1200', 'Pinheiros', 'São Paulo', 'SP', -23.5601, -46.6850, 1),
-    ('Lia Cores', 'lia@pertoja.com', '(11) 97666-7788', 'Pintora profissional com acabamento premium para interiores.', 'Pintura', 'Pintura residencial e texturização de paredes', 380.0, 4.6, '05010-000', 'Rua Turiassu', '400', 'Perdizes', 'São Paulo', 'SP', -23.5320, -46.6710, 1),
-    ('Vitor Green Garden', 'vitor@pertoja.com', '(11) 97500-1122', 'Implantação de jardins residenciais, verticais e poda de contenção.', 'Jardinagem', 'Corte de árvores autorizado e jardins verticais', 390.0, 4.8, '05435-000', 'Rua Fradique Coutinho', '1100', 'Vila Madalena', 'São Paulo', 'SP', -23.5580, -46.6930, 1),
-    ('Bruno Redes & Tech', 'bruno@pertoja.com', '(11) 97500-2233', 'Montagem de rede Wi-Fi corporativa, roteadores e câmeras de segurança.', 'Tecnologia', 'Cabeamento estruturado e instalação de câmeras CFTV', 175.0, 4.7, '05075-000', 'Rua Doze de Outubro', '380', 'Lapa', 'São Paulo', 'SP', -23.5220, -46.7040, 1),
-    ('Simone Limpeza Prime', 'simone@pertoja.com', '(11) 97500-3344', 'Higienização a seco de sofás, colchões, tapetes e vidraças.', 'Limpeza', 'Higienização de carpetes, estofados e vidros', 160.0, 4.9, '05501-000', 'Avenida Vital Brasil', '500', 'Butantã', 'São Paulo', 'SP', -23.5710, -46.7090, 1),
-
+    (
+        "João Volts",
+        "joao@pertoja.com",
+        "(11) 97333-4455",
+        "Eletricista certificado padrão industrial e residencial.",
+        "Elétrica",
+        "Reparo e manutenção de quadro elétrico",
+        210.0,
+        4.9,
+        "05407-002",
+        "Rua Teodoro Sampaio",
+        "1200",
+        "Pinheiros",
+        "São Paulo",
+        "SP",
+        -23.5601,
+        -46.6850,
+        1,
+    ),
+    (
+        "Lia Cores",
+        "lia@pertoja.com",
+        "(11) 97666-7788",
+        "Pintora profissional com acabamento premium para interiores.",
+        "Pintura",
+        "Pintura residencial e texturização de paredes",
+        380.0,
+        4.6,
+        "05010-000",
+        "Rua Turiassu",
+        "400",
+        "Perdizes",
+        "São Paulo",
+        "SP",
+        -23.5320,
+        -46.6710,
+        1,
+    ),
+    (
+        "Vitor Green Garden",
+        "vitor@pertoja.com",
+        "(11) 97500-1122",
+        "Implantação de jardins residenciais, verticais e poda de contenção.",
+        "Jardinagem",
+        "Corte de árvores autorizado e jardins verticais",
+        390.0,
+        4.8,
+        "05435-000",
+        "Rua Fradique Coutinho",
+        "1100",
+        "Vila Madalena",
+        "São Paulo",
+        "SP",
+        -23.5580,
+        -46.6930,
+        1,
+    ),
+    (
+        "Bruno Redes & Tech",
+        "bruno@pertoja.com",
+        "(11) 97500-2233",
+        "Montagem de rede Wi-Fi corporativa, roteadores e câmeras de segurança.",
+        "Tecnologia",
+        "Cabeamento estruturado e instalação de câmeras CFTV",
+        175.0,
+        4.7,
+        "05075-000",
+        "Rua Doze de Outubro",
+        "380",
+        "Lapa",
+        "São Paulo",
+        "SP",
+        -23.5220,
+        -46.7040,
+        1,
+    ),
+    (
+        "Simone Limpeza Prime",
+        "simone@pertoja.com",
+        "(11) 97500-3344",
+        "Higienização a seco de sofás, colchões, tapetes e vidraças.",
+        "Limpeza",
+        "Higienização de carpetes, estofados e vidros",
+        160.0,
+        4.9,
+        "05501-000",
+        "Avenida Vital Brasil",
+        "500",
+        "Butantã",
+        "São Paulo",
+        "SP",
+        -23.5710,
+        -46.7090,
+        1,
+    ),
     # --- GUARULHOS (10 prestadores) ---
-    ('Juliana Clean', 'juliana@pertoja.com', '(11) 97000-1122', 'Especialista em higienização e limpeza residencial em Guarulhos e região.', 'Limpeza', 'Limpeza e higienização residencial', 85.0, 4.9, '07141-430', 'Rua do Araújo', '150', 'Jardim Beirute', 'Guarulhos', 'SP', -23.4628, -46.5333, 1),
-    ('Marcos Reparos', 'marcos@pertoja.com', '(11) 97000-3344', 'Eletricista residencial e predial com atendimento rápido em Guarulhos.', 'Elétrica', 'Instalação e reparos elétricos', 95.0, 4.7, '07010-010', 'Rua Dom Pedro II', '300', 'Centro', 'Guarulhos', 'SP', -23.4650, -46.5300, 1),
-    ('Fabio Tintas', 'fabio@pertoja.com', '(11) 97000-5566', 'Pintura residencial fina, texturas e impermeabilização.', 'Pintura', 'Pintura residencial e texturização', 320.0, 4.8, '07055-000', 'Rua Treze de Maio', '450', 'Vila Galvão', 'Guarulhos', 'SP', -23.4560, -46.5450, 1),
-    ('André Hidráulica Guarulhos', 'andre@pertoja.com', '(11) 97000-7788', 'Encanador 24h para emergências, desentupimentos e caça-vazamento.', 'Encanamento', 'Desentupimento rápido de pias e ralos', 190.0, 4.5, '07111-000', 'Avenida Tiradentes', '1200', 'Jardim Paraventi', 'Guarulhos', 'SP', -23.4540, -46.5210, 1),
-    ('Fernanda Paisagismo Bosque', 'fernanda@pertoja.com', '(11) 97000-9900', 'Jardinagem ornamental, manutenção de vasos e podas de árvores.', 'Jardinagem', 'Manutenção de grama, plantas ornamentais e podas', 250.0, 4.9, '07115-000', 'Avenida Paulo Faccini', '1800', 'Macedo', 'Guarulhos', 'SP', -23.4600, -46.5160, 1),
-    ('Rodrigo Móveis & Montagens', 'rodrigo@pertoja.com', '(11) 97000-1234', 'Montador profissional de móveis de magazines e planejados.', 'Marcenaria', 'Montagem de guarda-roupas, cozinhas e mesas', 210.0, 4.6, '07071-000', 'Rua Doutor Timóteo Penteado', '2200', 'Picanço', 'Guarulhos', 'SP', -23.4470, -46.5430, 1),
-    ('Patricia Faxina & Cuidado', 'patricia@pertoja.com', '(11) 97000-2345', 'Diarista residencial de confiança com referências verificadas.', 'Limpeza', 'Diarista residencial e higienização completa', 130.0, 4.8, '07190-000', 'Rua Cônego Valadão', '800', 'Gopoúva', 'Guarulhos', 'SP', -23.4750, -46.5400, 1),
-    ('Guilherme Soluções TI', 'guilherme@pertoja.com', '(11) 97000-3456', 'Configuração de redes, roteadores Wi-Fi mesh, formatação e backup.', 'Tecnologia', 'Instalação de roteadores mesh e reparo de PCs', 120.0, 4.7, '07170-350', 'Avenida Santos Dumont', '1500', 'Cumbica', 'Guarulhos', 'SP', -23.4510, -46.4680, 1),
-    ('Lucas Eletricista Taboão', 'lucas@pertoja.com', '(11) 97000-4567', 'Instalação de chuveiros, troca de disjuntores e padrão Enel.', 'Elétrica', 'Padrão de entrada Enel e curto-circuito', 170.0, 4.4, '07140-010', 'Avenida Silvestre Pires de Freitas', '900', 'Taboão', 'Guarulhos', 'SP', -23.4310, -46.5020, 1),
-    ('Marcelo Pinturas Aeroporto', 'marcelo@pertoja.com', '(11) 97000-5678', 'Pinturas residenciais e comerciais com acabamento liso e sem sujeira.', 'Pintura', 'Pintura predial, residencial e verniz de madeira', 350.0, 4.7, '07143-000', 'Estrada dos Morros', '450', 'Jardim Santa Emília', 'Guarulhos', 'SP', -23.4280, -46.4950, 1)
+    (
+        "Juliana Clean",
+        "juliana@pertoja.com",
+        "(11) 97000-1122",
+        "Especialista em higienização e limpeza residencial em Guarulhos e região.",
+        "Limpeza",
+        "Limpeza e higienização residencial",
+        85.0,
+        4.9,
+        "07141-430",
+        "Rua do Araújo",
+        "150",
+        "Jardim Beirute",
+        "Guarulhos",
+        "SP",
+        -23.4628,
+        -46.5333,
+        1,
+    ),
+    (
+        "Marcos Reparos",
+        "marcos@pertoja.com",
+        "(11) 97000-3344",
+        "Eletricista residencial e predial com atendimento rápido em Guarulhos.",
+        "Elétrica",
+        "Instalação e reparos elétricos",
+        95.0,
+        4.7,
+        "07010-010",
+        "Rua Dom Pedro II",
+        "300",
+        "Centro",
+        "Guarulhos",
+        "SP",
+        -23.4650,
+        -46.5300,
+        1,
+    ),
+    (
+        "Fabio Tintas",
+        "fabio@pertoja.com",
+        "(11) 97000-5566",
+        "Pintura residencial fina, texturas e impermeabilização.",
+        "Pintura",
+        "Pintura residencial e texturização",
+        320.0,
+        4.8,
+        "07055-000",
+        "Rua Treze de Maio",
+        "450",
+        "Vila Galvão",
+        "Guarulhos",
+        "SP",
+        -23.4560,
+        -46.5450,
+        1,
+    ),
+    (
+        "André Hidráulica Guarulhos",
+        "andre@pertoja.com",
+        "(11) 97000-7788",
+        "Encanador 24h para emergências, desentupimentos e caça-vazamento.",
+        "Encanamento",
+        "Desentupimento rápido de pias e ralos",
+        190.0,
+        4.5,
+        "07111-000",
+        "Avenida Tiradentes",
+        "1200",
+        "Jardim Paraventi",
+        "Guarulhos",
+        "SP",
+        -23.4540,
+        -46.5210,
+        1,
+    ),
+    (
+        "Fernanda Paisagismo Bosque",
+        "fernanda@pertoja.com",
+        "(11) 97000-9900",
+        "Jardinagem ornamental, manutenção de vasos e podas de árvores.",
+        "Jardinagem",
+        "Manutenção de grama, plantas ornamentais e podas",
+        250.0,
+        4.9,
+        "07115-000",
+        "Avenida Paulo Faccini",
+        "1800",
+        "Macedo",
+        "Guarulhos",
+        "SP",
+        -23.4600,
+        -46.5160,
+        1,
+    ),
+    (
+        "Rodrigo Móveis & Montagens",
+        "rodrigo@pertoja.com",
+        "(11) 97000-1234",
+        "Montador profissional de móveis de magazines e planejados.",
+        "Marcenaria",
+        "Montagem de guarda-roupas, cozinhas e mesas",
+        210.0,
+        4.6,
+        "07071-000",
+        "Rua Doutor Timóteo Penteado",
+        "2200",
+        "Picanço",
+        "Guarulhos",
+        "SP",
+        -23.4470,
+        -46.5430,
+        1,
+    ),
+    (
+        "Patricia Faxina & Cuidado",
+        "patricia@pertoja.com",
+        "(11) 97000-2345",
+        "Diarista residencial de confiança com referências verificadas.",
+        "Limpeza",
+        "Diarista residencial e higienização completa",
+        130.0,
+        4.8,
+        "07190-000",
+        "Rua Cônego Valadão",
+        "800",
+        "Gopoúva",
+        "Guarulhos",
+        "SP",
+        -23.4750,
+        -46.5400,
+        1,
+    ),
+    (
+        "Guilherme Soluções TI",
+        "guilherme@pertoja.com",
+        "(11) 97000-3456",
+        "Configuração de redes, roteadores Wi-Fi mesh, formatação e backup.",
+        "Tecnologia",
+        "Instalação de roteadores mesh e reparo de PCs",
+        120.0,
+        4.7,
+        "07170-350",
+        "Avenida Santos Dumont",
+        "1500",
+        "Cumbica",
+        "Guarulhos",
+        "SP",
+        -23.4510,
+        -46.4680,
+        1,
+    ),
+    (
+        "Lucas Eletricista Taboão",
+        "lucas@pertoja.com",
+        "(11) 97000-4567",
+        "Instalação de chuveiros, troca de disjuntores e padrão Enel.",
+        "Elétrica",
+        "Padrão de entrada Enel e curto-circuito",
+        170.0,
+        4.4,
+        "07140-010",
+        "Avenida Silvestre Pires de Freitas",
+        "900",
+        "Taboão",
+        "Guarulhos",
+        "SP",
+        -23.4310,
+        -46.5020,
+        1,
+    ),
+    (
+        "Marcelo Pinturas Aeroporto",
+        "marcelo@pertoja.com",
+        "(11) 97000-5678",
+        "Pinturas residenciais e comerciais com acabamento liso e sem sujeira.",
+        "Pintura",
+        "Pintura predial, residencial e verniz de madeira",
+        350.0,
+        4.7,
+        "07143-000",
+        "Estrada dos Morros",
+        "450",
+        "Jardim Santa Emília",
+        "Guarulhos",
+        "SP",
+        -23.4280,
+        -46.4950,
+        1,
+    ),
 ]
 
 
@@ -1695,37 +2350,82 @@ def sincronizar_todos_prestadores(conn):
         try:
             count = count_row[0]
         except (IndexError, TypeError):
-            count = getattr(count_row, 'count', 0)
+            count = getattr(count_row, "count", 0)
         if count >= 35:
             return
 
-    pwd_hash = generate_password_hash('123456')
+    pwd_hash = generate_password_hash("123456")
 
-    for nome, email, tel, bio, cat, s_titulo, preco, rating, cep, end, num, bairro, cid, uf, lat, lng, disp in PRESTADORES_SEED_35:
-        kyc_tier_seed = 2 if cat in ('Elétrica', 'Encanamento') else 1
-        reg_prof_seed = 'CFT/CREA-SEED' if cat in ('Elétrica', 'Encanamento') else None
+    for (
+        nome,
+        email,
+        tel,
+        bio,
+        cat,
+        s_titulo,
+        preco,
+        rating,
+        cep,
+        end,
+        num,
+        bairro,
+        cid,
+        uf,
+        lat,
+        lng,
+        disp,
+    ) in PRESTADORES_SEED_35:
+        kyc_tier_seed = 2 if cat in ("Elétrica", "Encanamento") else 1
+        reg_prof_seed = "CFT/CREA-SEED" if cat in ("Elétrica", "Encanamento") else None
         cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
         row = cursor.fetchone()
         if not row:
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO users (nome, email, senha_hash, tipo, telefone, bio, cep, endereco, numero, bairro, cidade, estado, lat, lng, avaliacao_media, total_avaliacoes, disponivel, kyc_tier, kyc_status, registro_profissional, status_conta)
                 VALUES (?, ?, ?, 'prestador', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 15, ?, ?, 'aprovado', ?, 'ativo')
-            ''', (nome, email, pwd_hash, tel, bio, cep, end, num, bairro, cid, uf, lat, lng, rating, disp, kyc_tier_seed, reg_prof_seed))
+            """,
+                (
+                    nome,
+                    email,
+                    pwd_hash,
+                    tel,
+                    bio,
+                    cep,
+                    end,
+                    num,
+                    bairro,
+                    cid,
+                    uf,
+                    lat,
+                    lng,
+                    rating,
+                    disp,
+                    kyc_tier_seed,
+                    reg_prof_seed,
+                ),
+            )
             p_id = cursor.lastrowid
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, lat, lng, ativo)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            ''', (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng))
+            """,
+                (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng),
+            )
         else:
             # Preserva edições feitas pelo prestador (localização, preço, etc.).
             # Apenas garante que exista ao menos um serviço para o prestador de exemplo.
-            p_id = row['id']
+            p_id = row["id"]
             has_service = cursor.execute("SELECT 1 FROM services WHERE prestador_id = ? LIMIT 1", (p_id,)).fetchone()
             if not has_service:
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO services (prestador_id, titulo, descricao, categoria, preco, cep, endereco, numero, bairro, cidade, estado, lat, lng, ativo)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                ''', (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng))
+                """,
+                    (p_id, s_titulo, bio, cat, preco, cep, end, num, bairro, cid, uf, lat, lng),
+                )
     conn.commit()
 
 
@@ -1746,16 +2446,16 @@ def get_cached_geocode(query):
     conn = None
     try:
         conn = get_db_connection()
-        row = conn.execute('SELECT lat, lng, criado_em FROM geocode_cache WHERE query = ?', (normalized,)).fetchone()
+        row = conn.execute("SELECT lat, lng, criado_em FROM geocode_cache WHERE query = ?", (normalized,)).fetchone()
         if row:
             try:
-                criado_em = row['criado_em']
+                criado_em = row["criado_em"]
             except (KeyError, IndexError, TypeError):
                 criado_em = None
             if criado_em is not None:
                 if isinstance(criado_em, str):
                     try:
-                        dt = datetime.fromisoformat(criado_em.replace('Z', '+00:00')).replace(tzinfo=None)
+                        dt = datetime.fromisoformat(criado_em.replace("Z", "+00:00")).replace(tzinfo=None)
                     except ValueError:
                         dt = datetime.utcnow()
                 elif isinstance(criado_em, datetime):
@@ -1763,10 +2463,10 @@ def get_cached_geocode(query):
                 else:
                     dt = datetime.utcnow()
                 if datetime.utcnow() - dt > timedelta(days=30):
-                    conn.execute('DELETE FROM geocode_cache WHERE query = ?', (normalized,))
+                    conn.execute("DELETE FROM geocode_cache WHERE query = ?", (normalized,))
                     conn.commit()
                     return None
-            return float(row['lat']), float(row['lng'])
+            return float(row["lat"]), float(row["lng"])
     except Exception:
         pass
     finally:
@@ -1778,7 +2478,7 @@ def get_cached_geocode(query):
     return None
 
 
-def save_cached_geocode(query, lat, lng, origem='nominatim'):
+def save_cached_geocode(query, lat, lng, origem="nominatim"):
     """
     Salva coordenadas em cache para consultas futuras utilizando SQL padrão upsert:
     ON CONFLICT (query) DO UPDATE compatível tanto com SQLite (>=3.24) quanto com PostgreSQL (>=9.5).
@@ -1792,7 +2492,8 @@ def save_cached_geocode(query, lat, lng, origem='nominatim'):
         return
     try:
         conn = get_db_connection()
-        conn.execute('''
+        conn.execute(
+            """
             INSERT INTO geocode_cache (query, lat, lng, origem, criado_em)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT (query) DO UPDATE SET
@@ -1800,14 +2501,16 @@ def save_cached_geocode(query, lat, lng, origem='nominatim'):
                 lng = excluded.lng,
                 origem = excluded.origem,
                 criado_em = CURRENT_TIMESTAMP
-        ''', (normalized, float(lat), float(lng), origem))
+        """,
+            (normalized, float(lat), float(lng), origem),
+        )
         conn.commit()
         conn.close()
     except Exception:
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     init_db()
     active_engine = get_active_engine()
     print(f"Banco de dados inicializado com sucesso utilizando o motor: {active_engine}")

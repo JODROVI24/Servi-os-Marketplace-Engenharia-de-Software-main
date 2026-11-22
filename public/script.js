@@ -398,6 +398,7 @@ function renderList() {
     $('#count').classList.add('tabular-nums');
   }
   if (!v.length) {
+    /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
     listEl.innerHTML = `
       <div class="empty-state-card" role="status" aria-live="polite">
         <p class="empty-title">Nenhum serviço encontrado nesta área</p>
@@ -408,6 +409,7 @@ function renderList() {
       </div>`;
     return;
   }
+  /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
   listEl.innerHTML = v.map(p => {
     const isSuper = p.super_profissional || (p.r >= 4.8 && (p.total_avaliacoes || 0) >= 5);
     const kycTierNum = Number(p.kyc_tier || 1);
@@ -740,6 +742,7 @@ function exibirModalAuthObrigatoria(pendingOrder) {
     document.body.appendChild(modalBackdrop);
   }
 
+  /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
   modalBackdrop.innerHTML = `
     <div class="modal-conteudo" style="max-width: 460px; text-align: center;">
       <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(0, 150, 166, 0.12); color: var(--sea); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
@@ -831,6 +834,7 @@ async function verificarERestaurarPedidoPendente() {
   const banner = document.createElement('div');
   banner.id = 'bannerRestaurarPedido';
   banner.className = 'panel border-2 border-perto-sea bg-perto-sea/5 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm mb-4';
+  /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
   banner.innerHTML = `
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 rounded-full bg-perto-sea text-white flex items-center justify-center font-bold shrink-0">
@@ -2256,6 +2260,7 @@ function renderDestaques() {
   const destaquesEl = document.getElementById('destaques-home');
   if (!destaquesEl) return;
   const top3 = [...P].sort((a, b) => b.r - a.r).slice(0, 3);
+  /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
   destaquesEl.innerHTML = top3.map((p, index) => {
     const destUrl = sanitizarUrlSegura(`pedido.html?cat=${encodeURIComponent(p.c)}&q=${encodeURIComponent(p.s)}`, 'pedido.html');
     const bairroClean = p.bairro || (p.endereco ? String(p.endereco).split('·')[1] || String(p.endereco).split(',')[0] : 'São Paulo');

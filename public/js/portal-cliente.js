@@ -117,7 +117,7 @@
         document.getElementById('clienteFormLng').value = pos.coords.longitude.toFixed(6);
         toast('Coordenadas GPS obtidas com sucesso!');
       },
-      err => {
+      _err => {
         toast('Não foi possível obter a localização.');
       }
     );
@@ -344,6 +344,7 @@
         return;
       }
 
+      /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
       div.innerHTML = pedidos.map(p => {
         const orderIdNum = Number(p.order_id);
         const payHref = escapeHtml(sanitizarUrlSegura(`pedido.html?order_id=${encodeURIComponent(orderIdNum)}&pay=1`, 'pedido.html'));
@@ -831,6 +832,7 @@
         contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">O profissional ainda não registrou uma avaliação.</div>`;
       }
 
+      /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
       box.innerHTML = minhaHtml + contraHtml;
       const formContest = document.getElementById('formContestarReviewCliente');
       if (formContest && contraparte && contraparte.id) {

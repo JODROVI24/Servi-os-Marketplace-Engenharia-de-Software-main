@@ -166,9 +166,7 @@ def _require_env(name: str, gateway_label: str) -> str:
     """Obtém variável de ambiente obrigatória ou lança GatewayNotConfiguredError."""
     value = os.environ.get(name, "").strip()
     if not value:
-        raise GatewayNotConfiguredError(
-            f"Gateway {gateway_label} não configurado ({name} ausente)."
-        )
+        raise GatewayNotConfiguredError(f"Gateway {gateway_label} não configurado ({name} ausente).")
     return value
 
 
@@ -185,9 +183,7 @@ def _notification_url(gateway: str) -> str:
             return explicit
         base = _return_base_url()
         lower = base.lower()
-        if base.startswith("https://") and not any(
-            host in lower for host in ("localhost", "127.0.0.1", "0.0.0.0")
-        ):
+        if base.startswith("https://") and not any(host in lower for host in ("localhost", "127.0.0.1", "0.0.0.0")):
             return f"{base}/api/webhooks/payments/mercadopago"
     return ""
 
@@ -244,8 +240,7 @@ def _request_json(
             err_json = resp.json()
             if isinstance(err_json, dict):
                 detail = (
-                    err_json.get("message")
-                    or err_json.get("error", {}).get("message")
+                    err_json.get("message") or err_json.get("error", {}).get("message")
                     if isinstance(err_json.get("error"), dict)
                     else err_json.get("error")
                 )
@@ -321,9 +316,7 @@ def _build_pix_emvco(
     return body + _crc16_ccitt(body)
 
 
-def _build_boleto_codes(
-    *, order_id: int, amount_cents: int, expires_at_dt: datetime
-) -> tuple[str, str]:
+def _build_boleto_codes(*, order_id: int, amount_cents: int, expires_at_dt: datetime) -> tuple[str, str]:
     """Gera código de barras (44 dígitos) e linha digitável (47 dígitos) determinísticos."""
     base_date = datetime(1997, 10, 7, tzinfo=timezone.utc)
     fator_venc = max(1000, min(9999, (expires_at_dt.date() - base_date.date()).days))
@@ -540,15 +533,13 @@ class SandboxPaymentAdapter(BasePaymentAdapter):
         sig_header = _get_header_ci(headers, "X-Sandbox-Signature")
         if not sig_header.startswith("sha256="):
             raise WebhookSignatureError("Cabeçalho X-Sandbox-Signature ausente ou inválido.")
-        provided_hex = sig_header[len("sha256="):].strip().lower()
+        provided_hex = sig_header[len("sha256=") :].strip().lower()
 
         ts_header = _get_header_ci(headers, "X-Sandbox-Timestamp")
         if ts_header:
             _validate_timestamp(ts_header)
 
-        expected_hex = hmac.new(
-            secret.encode("utf-8"), raw_body, hashlib.sha256
-        ).hexdigest().lower()
+        expected_hex = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest().lower()
         if not hmac.compare_digest(provided_hex, expected_hex):
             raise WebhookSignatureError("Assinatura HMAC sandbox inválida.")
 
@@ -610,9 +601,7 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         item_description = str(meta.get("item_description") or description or item_title)[:250]
         category_id = str(meta.get("category_id") or "services")[:50]
         statement_descriptor = str(
-            meta.get("statement_descriptor")
-            or os.environ.get("MERCADOPAGO_STATEMENT_DESCRIPTOR")
-            or "PERTOJA"
+            meta.get("statement_descriptor") or os.environ.get("MERCADOPAGO_STATEMENT_DESCRIPTOR") or "PERTOJA"
         ).strip()[:13]
         notif_url = _notification_url(self.gateway_name)
         unit_price = round(amount_cents / 100.0, 2)
@@ -695,9 +684,7 @@ class MercadoPagoAdapter(BasePaymentAdapter):
             mp_payer["first_name"] = first_name
         if last_name:
             mp_payer["last_name"] = last_name
-        cpf_digits = "".join(
-            ch for ch in str(payer_dict.get("cpf") or payer_dict.get("tax_id") or "") if ch.isdigit()
-        )
+        cpf_digits = "".join(ch for ch in str(payer_dict.get("cpf") or payer_dict.get("tax_id") or "") if ch.isdigit())
         if len(cpf_digits) == 11:
             mp_payer["identification"] = {"type": "CPF", "number": cpf_digits}
 
@@ -750,13 +737,9 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         tz_brt = timezone(timedelta(hours=-3))
         now_brt = datetime.now(tz_brt)
         if method == "pix":
-            pay_body["date_of_expiration"] = (now_brt + timedelta(minutes=30)).strftime(
-                "%Y-%m-%dT%H:%M:%S.000-03:00"
-            )
+            pay_body["date_of_expiration"] = (now_brt + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S.000-03:00")
         elif method == "boleto":
-            pay_body["date_of_expiration"] = (now_brt + timedelta(days=3)).strftime(
-                "%Y-%m-%dT%H:%M:%S.000-03:00"
-            )
+            pay_body["date_of_expiration"] = (now_brt + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S.000-03:00")
         if notif_url:
             pay_body["notification_url"] = notif_url
 
@@ -918,9 +901,7 @@ class MercadoPagoAdapter(BasePaymentAdapter):
             parts.append(f"request-id:{x_req_id}")
         parts.append(f"ts:{ts_str}")
         manifest = ";".join(parts) + ";"
-        expected_hex = hmac.new(
-            secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256
-        ).hexdigest().lower()
+        expected_hex = hmac.new(secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256).hexdigest().lower()
 
         if not hmac.compare_digest(v1_hex, expected_hex):
             raise WebhookSignatureError("Assinatura HMAC Mercado Pago inválida.")
@@ -933,11 +914,7 @@ class MercadoPagoAdapter(BasePaymentAdapter):
         public_id = payload.get("external_reference") or data_obj.get("external_reference")
         resolved_gw_pid = str(data_id or "")
 
-        is_payment_event = (
-            (topic == "payment")
-            or action.startswith("payment.")
-            or (not topic and not action)
-        )
+        is_payment_event = (topic == "payment") or action.startswith("payment.") or (not topic and not action)
         if not is_payment_event:
             return {
                 "verified": True,
@@ -1008,14 +985,10 @@ class StripeAdapter(BasePaymentAdapter):
         base = self._api_base()
         base_ret = _return_base_url()
         success_url = return_url or (
-            f"{base_ret}/pedido.html?order_id={order_id}&payment=success"
-            if base_ret
-            else "https://example.com/success"
+            f"{base_ret}/pedido.html?order_id={order_id}&payment=success" if base_ret else "https://example.com/success"
         )
         cancel_url = return_url or (
-            f"{base_ret}/pedido.html?order_id={order_id}&payment=cancel"
-            if base_ret
-            else "https://example.com/cancel"
+            f"{base_ret}/pedido.html?order_id={order_id}&payment=cancel" if base_ret else "https://example.com/cancel"
         )
 
         if method == "cartao":
@@ -1061,7 +1034,9 @@ class StripeAdapter(BasePaymentAdapter):
             "confirm": "true",
             "payment_method_data[type]": stripe_pm_type,
             "payment_method_data[billing_details][name]": str(payer_dict.get("name") or "Cliente PertoJa")[:100],
-            "payment_method_data[billing_details][email]": str(payer_dict.get("email") or "cliente@pertoja.local")[:120],
+            "payment_method_data[billing_details][email]": str(payer_dict.get("email") or "cliente@pertoja.local")[
+                :120
+            ],
             "description": description[:200],
             "metadata[order_id]": str(order_id),
             "metadata[public_id]": public_id,
@@ -1221,9 +1196,7 @@ class StripeAdapter(BasePaymentAdapter):
         _validate_timestamp(t_str)
 
         signed_payload = f"{t_str}.".encode("utf-8") + raw_body
-        expected_hex = hmac.new(
-            secret.encode("utf-8"), signed_payload, hashlib.sha256
-        ).hexdigest().lower()
+        expected_hex = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest().lower()
 
         if not any(hmac.compare_digest(v1.lower(), expected_hex) for v1 in v1_list):
             raise WebhookSignatureError("Assinatura HMAC Stripe inválida.")
@@ -1299,20 +1272,14 @@ class PagSeguroAdapter(BasePaymentAdapter):
                 "items": [item],
             }
             if return_url or _return_base_url():
-                checkout_body["redirect_url"] = (
-                    return_url or f"{_return_base_url()}/pedido.html?order_id={order_id}"
-                )
+                checkout_body["redirect_url"] = return_url or f"{_return_base_url()}/pedido.html?order_id={order_id}"
             data = _request_json(
                 "POST",
                 f"{base}/checkouts",
                 headers=self._headers(),
                 json_body=checkout_body,
             )
-            links = {
-                lk.get("rel"): lk.get("href")
-                for lk in (data.get("links") or [])
-                if isinstance(lk, dict)
-            }
+            links = {lk.get("rel"): lk.get("href") for lk in (data.get("links") or []) if isinstance(lk, dict)}
             return {
                 "gateway": self.gateway_name,
                 "gateway_payment_id": str(data.get("id") or ""),
@@ -1329,9 +1296,7 @@ class PagSeguroAdapter(BasePaymentAdapter):
             }
 
         payer_dict = payer or {}
-        raw_tax = "".join(
-            ch for ch in str(payer_dict.get("tax_id") or payer_dict.get("cpf") or "") if ch.isdigit()
-        )
+        raw_tax = "".join(ch for ch in str(payer_dict.get("tax_id") or payer_dict.get("cpf") or "") if ch.isdigit())
         customer_block = {
             "name": str(payer_dict.get("name") or "Cliente PertoJa")[:80],
             "email": str(payer_dict.get("email") or "cliente@pertoja.local")[:120],
@@ -1500,11 +1465,9 @@ class PagSeguroAdapter(BasePaymentAdapter):
         if ts_header:
             _validate_timestamp(ts_header)
 
-        provided_hex = sig_header[len("sha256="):] if sig_header.lower().startswith("sha256=") else sig_header
+        provided_hex = sig_header[len("sha256=") :] if sig_header.lower().startswith("sha256=") else sig_header
         provided_hex = provided_hex.strip().lower()
-        expected_hex = hmac.new(
-            secret.encode("utf-8"), raw_body, hashlib.sha256
-        ).hexdigest().lower()
+        expected_hex = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest().lower()
 
         if not hmac.compare_digest(provided_hex, expected_hex):
             raise WebhookSignatureError("Assinatura HMAC PagSeguro inválida.")

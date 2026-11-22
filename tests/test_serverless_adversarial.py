@@ -6,15 +6,15 @@ and Backend API Endpoints.
 Tested by Challenger 2 (Adversarial API & Serverless Verifier).
 """
 
-import os
-import sys
-import json
 import ast
+import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
-import subprocess
-from io import BytesIO
 import urllib.parse
+from io import BytesIO
 
 # Ensure root repository is in sys.path
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,31 +25,31 @@ import api.index as vercel_api
 from api.index import VercelPathNormalizerWSGI
 
 
-def invoke_wsgi(app_callable, path_info, query_string='', method='GET', body=b'', headers=None):
+def invoke_wsgi(app_callable, path_info, query_string="", method="GET", body=b"", headers=None):
     """Utility helper to execute raw WSGI requests against the wrapped application."""
     environ = {
-        'REQUEST_METHOD': method,
-        'SERVER_NAME': 'localhost',
-        'SERVER_PORT': '80',
-        'wsgi.version': (1, 0),
-        'wsgi.url_scheme': 'http',
-        'wsgi.input': BytesIO(body),
-        'wsgi.errors': sys.stderr,
-        'wsgi.multithread': False,
-        'wsgi.multiprocess': False,
-        'wsgi.run_once': False,
-        'PATH_INFO': path_info,
-        'QUERY_STRING': query_string,
-        'CONTENT_LENGTH': str(len(body)),
+        "REQUEST_METHOD": method,
+        "SERVER_NAME": "localhost",
+        "SERVER_PORT": "80",
+        "wsgi.version": (1, 0),
+        "wsgi.url_scheme": "http",
+        "wsgi.input": BytesIO(body),
+        "wsgi.errors": sys.stderr,
+        "wsgi.multithread": False,
+        "wsgi.multiprocess": False,
+        "wsgi.run_once": False,
+        "PATH_INFO": path_info,
+        "QUERY_STRING": query_string,
+        "CONTENT_LENGTH": str(len(body)),
     }
     if headers:
         for k, v in headers.items():
-            key = 'HTTP_' + k.upper().replace('-', '_')
+            key = "HTTP_" + k.upper().replace("-", "_")
             environ[key] = v
-        if 'content-type' in [k.lower() for k in headers]:
+        if "content-type" in [k.lower() for k in headers]:
             for k, v in headers.items():
-                if k.lower() == 'content-type':
-                    environ['CONTENT_TYPE'] = v
+                if k.lower() == "content-type":
+                    environ["CONTENT_TYPE"] = v
 
     response_status = None
     response_headers = []
@@ -60,8 +60,8 @@ def invoke_wsgi(app_callable, path_info, query_string='', method='GET', body=b''
         response_headers = hdrs
 
     result_iter = app_callable(environ, start_response)
-    response_body = b''.join(result_iter)
-    status_code = int(response_status.split(' ')[0]) if response_status else 500
+    response_body = b"".join(result_iter)
+    status_code = int(response_status.split(" ")[0]) if response_status else 500
 
     return status_code, response_status, response_headers, response_body, environ
 
@@ -70,8 +70,8 @@ class TestASTAndExports(unittest.TestCase):
     """Test AST compliance for Vercel's Python builder and runtime exports."""
 
     def test_01_ast_top_level_exports(self):
-        index_py = os.path.join(REPO_ROOT, 'api', 'index.py')
-        with open(index_py, 'r', encoding='utf-8') as f:
+        index_py = os.path.join(REPO_ROOT, "api", "index.py")
+        with open(index_py, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=index_py)
 
         top_level_assigns = set()
@@ -81,17 +81,17 @@ class TestASTAndExports(unittest.TestCase):
                     if isinstance(target, ast.Name):
                         top_level_assigns.add(target.id)
 
-        for expected in ['app', 'application', 'handler']:
+        for expected in ["app", "application", "handler"]:
             self.assertIn(
                 expected,
                 top_level_assigns,
-                f"Missing top-level AST assignment for '{expected}' required by @vercel/python-analysis."
+                f"Missing top-level AST assignment for '{expected}' required by @vercel/python-analysis.",
             )
 
     def test_02_runtime_module_exports(self):
-        self.assertTrue(hasattr(vercel_api, 'app'))
-        self.assertTrue(hasattr(vercel_api, 'application'))
-        self.assertTrue(hasattr(vercel_api, 'handler'))
+        self.assertTrue(hasattr(vercel_api, "app"))
+        self.assertTrue(hasattr(vercel_api, "application"))
+        self.assertTrue(hasattr(vercel_api, "handler"))
 
         # Check identity
         self.assertIs(vercel_api.app, vercel_api.application)
@@ -102,7 +102,7 @@ class TestASTAndExports(unittest.TestCase):
         self.assertIsInstance(
             vercel_api.app.wsgi_app,
             VercelPathNormalizerWSGI,
-            "Flask wsgi_app must be wrapped with VercelPathNormalizerWSGI."
+            "Flask wsgi_app must be wrapped with VercelPathNormalizerWSGI.",
         )
 
 
@@ -112,197 +112,203 @@ class TestVercelPathNormalizerWSGIAdversarial(unittest.TestCase):
     def setUp(self):
         # Dummy WSGI app to capture environ transformations
         self.captured_environ = {}
+
         def dummy_app(environ, start_response):
             self.captured_environ = dict(environ)
-            start_response('200 OK', [('Content-Type', 'text/plain')])
-            return [b'OK']
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"OK"]
+
         self.normalizer = VercelPathNormalizerWSGI(dummy_app)
 
     def _call_normalizer(self, path_info, query_string, extra_environ=None):
         environ = {
-            'PATH_INFO': path_info,
-            'QUERY_STRING': query_string,
+            "PATH_INFO": path_info,
+            "QUERY_STRING": query_string,
         }
         if extra_environ:
             environ.update(extra_environ)
-        
+
         status = None
+
         def start_resp(s, h):
             nonlocal status
             status = s
+
         self.normalizer(environ, start_resp)
         return self.captured_environ
 
     def test_01_query_string_empty_and_root_paths(self):
         cases = [
-            ('__path=', '/api', ''),
-            ('__path=/', '/api', ''),
-            ('__path=///', '/api', ''),
-            ('__path=////', '/api', ''),
-            ('__path=&other=1', '/api', 'other=1'),
+            ("__path=", "/api", ""),
+            ("__path=/", "/api", ""),
+            ("__path=///", "/api", ""),
+            ("__path=////", "/api", ""),
+            ("__path=&other=1", "/api", "other=1"),
         ]
         for qs, expected_path, expected_qs in cases:
-            env = self._call_normalizer('/api/index.py', qs)
-            self.assertEqual(env['PATH_INFO'], expected_path, f"Failed for qs: {qs}")
-            self.assertEqual(env['QUERY_STRING'], expected_qs, f"Failed for qs: {qs}")
+            env = self._call_normalizer("/api/index.py", qs)
+            self.assertEqual(env["PATH_INFO"], expected_path, f"Failed for qs: {qs}")
+            self.assertEqual(env["QUERY_STRING"], expected_qs, f"Failed for qs: {qs}")
 
     def test_02_diverse_query_strings_and_positions(self):
         # 1. __path at start
-        env = self._call_normalizer('/api/index.py', '__path=services&cat=Marcenaria')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertEqual(env['QUERY_STRING'], 'cat=Marcenaria')
+        env = self._call_normalizer("/api/index.py", "__path=services&cat=Marcenaria")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertEqual(env["QUERY_STRING"], "cat=Marcenaria")
 
         # 2. __path at end
-        env = self._call_normalizer('/api/index.py', 'cat=Marcenaria&__path=services')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertEqual(env['QUERY_STRING'], 'cat=Marcenaria')
+        env = self._call_normalizer("/api/index.py", "cat=Marcenaria&__path=services")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertEqual(env["QUERY_STRING"], "cat=Marcenaria")
 
         # 3. __path in middle
-        env = self._call_normalizer('/api/index.py', 'a=1&__path=services&b=2')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertEqual(env['QUERY_STRING'], 'a=1&b=2')
+        env = self._call_normalizer("/api/index.py", "a=1&__path=services&b=2")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertEqual(env["QUERY_STRING"], "a=1&b=2")
 
         # 4. Multiple query parameters preserved
-        env = self._call_normalizer('/api/index.py', '__path=services&cat=Marcenaria&preco_max=200&radius=25&disponivel=1')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'])
-        self.assertEqual(parsed_qs['cat'], ['Marcenaria'])
-        self.assertEqual(parsed_qs['preco_max'], ['200'])
-        self.assertEqual(parsed_qs['radius'], ['25'])
-        self.assertEqual(parsed_qs['disponivel'], ['1'])
-        self.assertNotIn('__path', parsed_qs)
+        env = self._call_normalizer(
+            "/api/index.py", "__path=services&cat=Marcenaria&preco_max=200&radius=25&disponivel=1"
+        )
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"])
+        self.assertEqual(parsed_qs["cat"], ["Marcenaria"])
+        self.assertEqual(parsed_qs["preco_max"], ["200"])
+        self.assertEqual(parsed_qs["radius"], ["25"])
+        self.assertEqual(parsed_qs["disponivel"], ["1"])
+        self.assertNotIn("__path", parsed_qs)
 
         # 5. Repeated parameter keys
-        env = self._call_normalizer('/api/index.py', '__path=services&tag=casa&tag=reforma')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'])
-        self.assertEqual(parsed_qs['tag'], ['casa', 'reforma'])
+        env = self._call_normalizer("/api/index.py", "__path=services&tag=casa&tag=reforma")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"])
+        self.assertEqual(parsed_qs["tag"], ["casa", "reforma"])
 
         # 6. Blank value parameters
-        env = self._call_normalizer('/api/index.py', '__path=services&empty_param=&filled=yes')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'], keep_blank_values=True)
-        self.assertEqual(parsed_qs['empty_param'], [''])
-        self.assertEqual(parsed_qs['filled'], ['yes'])
+        env = self._call_normalizer("/api/index.py", "__path=services&empty_param=&filled=yes")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"], keep_blank_values=True)
+        self.assertEqual(parsed_qs["empty_param"], [""])
+        self.assertEqual(parsed_qs["filled"], ["yes"])
 
     def test_03_special_characters_and_portuguese_accents(self):
         # Portuguese accents in query parameters: Elétrica, São Paulo, Higienização
-        encoded_accents = '__path=services&cat=El%C3%A9trica&cidade=S%C3%A3o%20Paulo&q=higieniza%C3%A7%C3%A3o'
-        env = self._call_normalizer('/api/index.py', encoded_accents)
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'])
-        self.assertEqual(parsed_qs['cat'], ['Elétrica'])
-        self.assertEqual(parsed_qs['cidade'], ['São Paulo'])
-        self.assertEqual(parsed_qs['q'], ['higienização'])
+        encoded_accents = "__path=services&cat=El%C3%A9trica&cidade=S%C3%A3o%20Paulo&q=higieniza%C3%A7%C3%A3o"
+        env = self._call_normalizer("/api/index.py", encoded_accents)
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"])
+        self.assertEqual(parsed_qs["cat"], ["Elétrica"])
+        self.assertEqual(parsed_qs["cidade"], ["São Paulo"])
+        self.assertEqual(parsed_qs["q"], ["higienização"])
 
         # Raw Unicode characters in query string
-        raw_unicode = '__path=services&cat=Elétrica&cidade=São Paulo'
-        env = self._call_normalizer('/api/index.py', raw_unicode)
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'])
-        self.assertEqual(parsed_qs['cat'], ['Elétrica'])
-        self.assertEqual(parsed_qs['cidade'], ['São Paulo'])
+        raw_unicode = "__path=services&cat=Elétrica&cidade=São Paulo"
+        env = self._call_normalizer("/api/index.py", raw_unicode)
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"])
+        self.assertEqual(parsed_qs["cat"], ["Elétrica"])
+        self.assertEqual(parsed_qs["cidade"], ["São Paulo"])
 
         # Special symbols in query values: & + / %
-        symbols_qs = '__path=services&simbolo=%2B&ampersand=%26&barra=%2F'
-        env = self._call_normalizer('/api/index.py', symbols_qs)
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        parsed_qs = urllib.parse.parse_qs(env['QUERY_STRING'])
-        self.assertEqual(parsed_qs['simbolo'], ['+'])
-        self.assertEqual(parsed_qs['ampersand'], ['&'])
-        self.assertEqual(parsed_qs['barra'], ['/'])
+        symbols_qs = "__path=services&simbolo=%2B&ampersand=%26&barra=%2F"
+        env = self._call_normalizer("/api/index.py", symbols_qs)
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        parsed_qs = urllib.parse.parse_qs(env["QUERY_STRING"])
+        self.assertEqual(parsed_qs["simbolo"], ["+"])
+        self.assertEqual(parsed_qs["ampersand"], ["&"])
+        self.assertEqual(parsed_qs["barra"], ["/"])
 
     def test_04_subpath_variations_and_nested_routes(self):
         cases = [
-            ('__path=health', '/api/health'),
-            ('__path=services', '/api/services'),
-            ('__path=services/15', '/api/services/15'),
-            ('__path=orders/10/pay', '/api/orders/10/pay'),
-            ('__path=cep/01001000', '/api/cep/01001000'),
-            ('__path=cep/01001-000', '/api/cep/01001-000'),
-            ('__path=auth/login', '/api/auth/login'),
-            ('__path=auth/register', '/api/auth/register'),
+            ("__path=health", "/api/health"),
+            ("__path=services", "/api/services"),
+            ("__path=services/15", "/api/services/15"),
+            ("__path=orders/10/pay", "/api/orders/10/pay"),
+            ("__path=cep/01001000", "/api/cep/01001000"),
+            ("__path=cep/01001-000", "/api/cep/01001-000"),
+            ("__path=auth/login", "/api/auth/login"),
+            ("__path=auth/register", "/api/auth/register"),
         ]
         for qs, expected in cases:
-            env = self._call_normalizer('/api/index.py', qs)
-            self.assertEqual(env['PATH_INFO'], expected)
+            env = self._call_normalizer("/api/index.py", qs)
+            self.assertEqual(env["PATH_INFO"], expected)
 
     def test_05_path_traversal_and_malicious_inputs(self):
         # Path traversals in __path
-        env = self._call_normalizer('/api/index.py', '__path=../../etc/passwd')
-        self.assertEqual(env['PATH_INFO'], '/api/../../etc/passwd')
+        env = self._call_normalizer("/api/index.py", "__path=../../etc/passwd")
+        self.assertEqual(env["PATH_INFO"], "/api/../../etc/passwd")
 
-        env = self._call_normalizer('/api/index.py', '__path=services/../../../etc/shadow')
-        self.assertEqual(env['PATH_INFO'], '/api/services/../../../etc/shadow')
+        env = self._call_normalizer("/api/index.py", "__path=services/../../../etc/shadow")
+        self.assertEqual(env["PATH_INFO"], "/api/services/../../../etc/shadow")
 
         # Percent-encoded path traversal
-        env = self._call_normalizer('/api/index.py', '__path=..%2F..%2Fetc%2Fpasswd')
-        self.assertEqual(env['PATH_INFO'], '/api/../../etc/passwd')
+        env = self._call_normalizer("/api/index.py", "__path=..%2F..%2Fetc%2Fpasswd")
+        self.assertEqual(env["PATH_INFO"], "/api/../../etc/passwd")
 
         # Query string with deceptive param names
-        env = self._call_normalizer('/api/index.py', 'not__path=foo&__path=services')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertIn('not__path=foo', env['QUERY_STRING'])
+        env = self._call_normalizer("/api/index.py", "not__path=foo&__path=services")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertIn("not__path=foo", env["QUERY_STRING"])
 
         # Duplicate __path parameters takes first value safely
-        env = self._call_normalizer('/api/index.py', '__path=services&__path=orders')
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertNotIn('__path', env['QUERY_STRING'])
+        env = self._call_normalizer("/api/index.py", "__path=services&__path=orders")
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertNotIn("__path", env["QUERY_STRING"])
 
         # Malformed query strings should not crash the normalizer
-        env = self._call_normalizer('/api/index.py', '&&&===&&&')
-        self.assertEqual(env['PATH_INFO'], '/api/index.py')
+        env = self._call_normalizer("/api/index.py", "&&&===&&&")
+        self.assertEqual(env["PATH_INFO"], "/api/index.py")
 
-        env = self._call_normalizer('/api/index.py', '__path')
-        self.assertEqual(env['PATH_INFO'], '/api/index.py')
+        env = self._call_normalizer("/api/index.py", "__path")
+        self.assertEqual(env["PATH_INFO"], "/api/index.py")
 
         # Extremely large query string (stress test 20,000 chars)
-        large_qs = '__path=services&payload=' + ('x' * 20000)
-        env = self._call_normalizer('/api/index.py', large_qs)
-        self.assertEqual(env['PATH_INFO'], '/api/services')
-        self.assertEqual(len(env['QUERY_STRING']), len('payload=') + 20000)
+        large_qs = "__path=services&payload=" + ("x" * 20000)
+        env = self._call_normalizer("/api/index.py", large_qs)
+        self.assertEqual(env["PATH_INFO"], "/api/services")
+        self.assertEqual(len(env["QUERY_STRING"]), len("payload=") + 20000)
 
     def test_06_fallback_case2_matched_path(self):
         # When __path is absent, inspect HTTP_X_MATCHED_PATH / HTTP_X_VERCEL_ORIGINAL_PATH / REQUEST_URI / RAW_URI
         headers_cases = [
-            ({'HTTP_X_MATCHED_PATH': '/api/health'}, '/api/health'),
-            ({'HTTP_X_MATCHED_PATH': '/health'}, '/api/health'),
-            ({'HTTP_X_VERCEL_ORIGINAL_PATH': '/api/services?cat=Marcenaria'}, '/api/services'),
-            ({'REQUEST_URI': '/api/orders/5'}, '/api/orders/5'),
-            ({'RAW_URI': '/api/profile'}, '/api/profile'),
-            ({'RAW_URI': '/profile'}, '/api/profile'),
+            ({"HTTP_X_MATCHED_PATH": "/api/health"}, "/api/health"),
+            ({"HTTP_X_MATCHED_PATH": "/health"}, "/api/health"),
+            ({"HTTP_X_VERCEL_ORIGINAL_PATH": "/api/services?cat=Marcenaria"}, "/api/services"),
+            ({"REQUEST_URI": "/api/orders/5"}, "/api/orders/5"),
+            ({"RAW_URI": "/api/profile"}, "/api/profile"),
+            ({"RAW_URI": "/profile"}, "/api/profile"),
         ]
         for extra, expected in headers_cases:
-            env = self._call_normalizer('/api/index.py', '', extra_environ=extra)
-            self.assertEqual(env['PATH_INFO'], expected, f"Failed for header {extra}")
+            env = self._call_normalizer("/api/index.py", "", extra_environ=extra)
+            self.assertEqual(env["PATH_INFO"], expected, f"Failed for header {extra}")
 
     def test_07_fallback_case3_stripped_api_prefix(self):
         # When Vercel strips /api when forwarding to lambda
         known_routes = [
-            ('/health', '/api/health'),
-            ('/services', '/api/services'),
-            ('/services/42', '/api/services/42'),
-            ('/my-services', '/api/my-services'),
-            ('/orders', '/api/orders'),
-            ('/reviews', '/api/reviews'),
-            ('/profile', '/api/profile'),
-            ('/cep/01001000', '/api/cep/01001000'),
-            ('/geocode', '/api/geocode'),
-            ('/auth/login', '/api/auth/login'),
-            ('/payments/config', '/api/payments/config'),
-            ('/payments/intents', '/api/payments/intents'),
-            ('/webhooks/payments/sandbox', '/api/webhooks/payments/sandbox'),
-            ('/chat/health', '/api/chat/health'),
-            ('/chat/support', '/api/chat/support'),
-            ('/ads/generate-description', '/api/ads/generate-description'),
+            ("/health", "/api/health"),
+            ("/services", "/api/services"),
+            ("/services/42", "/api/services/42"),
+            ("/my-services", "/api/my-services"),
+            ("/orders", "/api/orders"),
+            ("/reviews", "/api/reviews"),
+            ("/profile", "/api/profile"),
+            ("/cep/01001000", "/api/cep/01001000"),
+            ("/geocode", "/api/geocode"),
+            ("/auth/login", "/api/auth/login"),
+            ("/payments/config", "/api/payments/config"),
+            ("/payments/intents", "/api/payments/intents"),
+            ("/webhooks/payments/sandbox", "/api/webhooks/payments/sandbox"),
+            ("/chat/health", "/api/chat/health"),
+            ("/chat/support", "/api/chat/support"),
+            ("/ads/generate-description", "/api/ads/generate-description"),
         ]
         for stripped_path, expected in known_routes:
-            env = self._call_normalizer(stripped_path, '')
-            self.assertEqual(env['PATH_INFO'], expected, f"Failed for stripped path {stripped_path}")
+            env = self._call_normalizer(stripped_path, "")
+            self.assertEqual(env["PATH_INFO"], expected, f"Failed for stripped path {stripped_path}")
 
         # Unrecognized route without /api prefix remains untouched for safe 404
-        env = self._call_normalizer('/unknown_route', '')
-        self.assertEqual(env['PATH_INFO'], '/unknown_route')
+        env = self._call_normalizer("/unknown_route", "")
+        self.assertEqual(env["PATH_INFO"], "/unknown_route")
 
 
 class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
@@ -311,21 +317,22 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Ensure temporary test DB
-        cls.db_fd, cls.db_path = tempfile.mkstemp(suffix='.db')
+        cls.db_fd, cls.db_path = tempfile.mkstemp(suffix=".db")
         os.close(cls.db_fd)
         cls._orig_db_path = None
-        cls._saved_env = {k: os.environ.get(k) for k in ('MARKETPLACE_DB', 'ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV')}
-        os.environ['MARKETPLACE_DB'] = cls.db_path
+        cls._saved_env = {k: os.environ.get(k) for k in ("MARKETPLACE_DB", "ENABLE_DEMO_SEED", "VERCEL", "FLASK_ENV")}
+        os.environ["MARKETPLACE_DB"] = cls.db_path
         import database
+
         cls._orig_db_path = database.DB_PATH
         database.DB_PATH = cls.db_path
         try:
-            os.environ['ENABLE_DEMO_SEED'] = '1'
-            os.environ.pop('VERCEL', None)
-            os.environ.pop('FLASK_ENV', None)
+            os.environ["ENABLE_DEMO_SEED"] = "1"
+            os.environ.pop("VERCEL", None)
+            os.environ.pop("FLASK_ENV", None)
             database.init_db()
         finally:
-            for k in ('ENABLE_DEMO_SEED', 'VERCEL', 'FLASK_ENV'):
+            for k in ("ENABLE_DEMO_SEED", "VERCEL", "FLASK_ENV"):
                 v = cls._saved_env[k]
                 if v is None:
                     os.environ.pop(k, None)
@@ -335,13 +342,14 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         import database
-        if getattr(cls, '_orig_db_path', None) is not None:
+
+        if getattr(cls, "_orig_db_path", None) is not None:
             database.DB_PATH = cls._orig_db_path
-        orig_mkt = getattr(cls, '_saved_env', {}).get('MARKETPLACE_DB')
+        orig_mkt = getattr(cls, "_saved_env", {}).get("MARKETPLACE_DB")
         if orig_mkt is None:
-            os.environ.pop('MARKETPLACE_DB', None)
+            os.environ.pop("MARKETPLACE_DB", None)
         else:
-            os.environ['MARKETPLACE_DB'] = orig_mkt
+            os.environ["MARKETPLACE_DB"] = orig_mkt
         try:
             if os.path.exists(cls.db_path):
                 os.remove(cls.db_path)
@@ -349,283 +357,251 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
             pass
 
     def test_01_health_endpoint_via_rewrite(self):
-        status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=health'
-        )
+        status, _, _, body, _ = invoke_wsgi(vercel_api.app, path_info="/api/index.py", query_string="__path=health")
         self.assertEqual(status, 200)
-        data = json.loads(body.decode('utf-8'))
-        self.assertEqual(data.get('status'), 'healthy')
-        self.assertEqual(data.get('database'), 'connected')
-        self.assertEqual(data.get('version'), '2.0.0')
+        data = json.loads(body.decode("utf-8"))
+        self.assertEqual(data.get("status"), "healthy")
+        self.assertEqual(data.get("database"), "connected")
+        self.assertEqual(data.get("version"), "2.0.0")
 
     def test_02_services_endpoint_all_categories(self):
-        categories = [
-            'Marcenaria',
-            'Elétrica',
-            'Pintura',
-            'Limpeza',
-            'Jardinagem',
-            'Encanamento',
-            'Tecnologia'
-        ]
+        categories = ["Marcenaria", "Elétrica", "Pintura", "Limpeza", "Jardinagem", "Encanamento", "Tecnologia"]
         for cat in categories:
             encoded_cat = urllib.parse.quote(cat)
             status, _, _, body, _ = invoke_wsgi(
-                vercel_api.app,
-                path_info='/api/index.py',
-                query_string=f'__path=services&cat={encoded_cat}'
+                vercel_api.app, path_info="/api/index.py", query_string=f"__path=services&cat={encoded_cat}"
             )
             self.assertEqual(status, 200, f"Failed to list services for category: {cat}")
-            services = json.loads(body.decode('utf-8'))
+            services = json.loads(body.decode("utf-8"))
             self.assertIsInstance(services, list)
             for s in services:
-                self.assertEqual(s['categoria'], cat)
+                self.assertEqual(s["categoria"], cat)
 
     def test_03_services_endpoint_adversarial_queries(self):
         # Query with non-existent category -> 200 with empty list
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=services&cat=NonExistentCategoryXYZ'
+            vercel_api.app, path_info="/api/index.py", query_string="__path=services&cat=NonExistentCategoryXYZ"
         )
         self.assertEqual(status, 200)
-        services = json.loads(body.decode('utf-8'))
+        services = json.loads(body.decode("utf-8"))
         self.assertEqual(services, [])
 
         # Non-matching text query -> 200 with empty list
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=services&query=NonExistentQueryXYZ12345'
+            vercel_api.app, path_info="/api/index.py", query_string="__path=services&query=NonExistentQueryXYZ12345"
         )
         self.assertEqual(status, 200)
-        services = json.loads(body.decode('utf-8'))
+        services = json.loads(body.decode("utf-8"))
         self.assertEqual(services, [])
 
         # SQL Injection attempt in category parameter
         sqli_cat = urllib.parse.quote("' OR '1'='1")
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string=f'__path=services&cat={sqli_cat}'
+            vercel_api.app, path_info="/api/index.py", query_string=f"__path=services&cat={sqli_cat}"
         )
         self.assertEqual(status, 200)
         # Parameterized queries must prevent SQL injection; returns empty list
-        services = json.loads(body.decode('utf-8'))
+        services = json.loads(body.decode("utf-8"))
         self.assertIsInstance(services, list)
 
     def test_04_unauthenticated_endpoints_return_401(self):
         # /api/auth/me specifically returns 200 with authenticated: false by design
-        status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/me'
-        )
+        status, _, _, body, _ = invoke_wsgi(vercel_api.app, path_info="/api/index.py", query_string="__path=auth/me")
         self.assertEqual(status, 200)
-        data = json.loads(body.decode('utf-8'))
-        self.assertFalse(data.get('authenticated'))
+        data = json.loads(body.decode("utf-8"))
+        self.assertFalse(data.get("authenticated"))
 
         unauth_routes = [
-            ('GET', '__path=my-services', b''),
-            ('GET', '__path=profile', b''),
-            ('GET', '__path=orders', b''),
-            ('POST', '__path=orders', json.dumps({'servico_id': 1}).encode('utf-8')),
-            ('POST', '__path=services', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
-            ('PUT', '__path=services/1', json.dumps({'titulo': 'Teste'}).encode('utf-8')),
-            ('DELETE', '__path=services/1', b''),
-            ('GET', '__path=chat/health', b''),
-            ('POST', '__path=chat/support', json.dumps({'message': 'Oi'}).encode('utf-8')),
-            ('POST', '__path=ads/generate-description', json.dumps({'title': 'Pintura'}).encode('utf-8')),
+            ("GET", "__path=my-services", b""),
+            ("GET", "__path=profile", b""),
+            ("GET", "__path=orders", b""),
+            ("POST", "__path=orders", json.dumps({"servico_id": 1}).encode("utf-8")),
+            ("POST", "__path=services", json.dumps({"titulo": "Teste"}).encode("utf-8")),
+            ("PUT", "__path=services/1", json.dumps({"titulo": "Teste"}).encode("utf-8")),
+            ("DELETE", "__path=services/1", b""),
+            ("GET", "__path=chat/health", b""),
+            ("POST", "__path=chat/support", json.dumps({"message": "Oi"}).encode("utf-8")),
+            ("POST", "__path=ads/generate-description", json.dumps({"title": "Pintura"}).encode("utf-8")),
         ]
         for method, qs, body in unauth_routes:
-            req_headers = {'Content-Type': 'application/json'}
-            if method in ('POST', 'PUT', 'PATCH', 'DELETE'):
-                req_headers['Origin'] = 'http://localhost'
+            req_headers = {"Content-Type": "application/json"}
+            if method in ("POST", "PUT", "PATCH", "DELETE"):
+                req_headers["Origin"] = "http://localhost"
             status, _, _, resp_body, _ = invoke_wsgi(
                 vercel_api.app,
-                path_info='/api/index.py',
+                path_info="/api/index.py",
                 query_string=qs,
                 method=method,
                 body=body,
-                headers=req_headers
+                headers=req_headers,
             )
             self.assertIn(
                 status,
                 [401, 403],
-                f"Expected 401 or 403 for unauthenticated {method} with {qs}, got {status}: {resp_body}"
+                f"Expected 401 or 403 for unauthenticated {method} with {qs}, got {status}: {resp_body}",
             )
 
     def test_05_auth_login_invalid_credentials_returns_401(self):
-        payload = json.dumps({'email': 'invalid@user.com', 'senha': 'wrongpassword'}).encode('utf-8')
+        payload = json.dumps({"email": "invalid@user.com", "senha": "wrongpassword"}).encode("utf-8")
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/login',
-            method='POST',
+            path_info="/api/index.py",
+            query_string="__path=auth/login",
+            method="POST",
             body=payload,
-            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+            headers={"Content-Type": "application/json", "Origin": "http://localhost"},
         )
         self.assertEqual(status, 401)
-        data = json.loads(body.decode('utf-8'))
-        self.assertIn('error', data)
+        data = json.loads(body.decode("utf-8"))
+        self.assertIn("error", data)
 
     def test_06_auth_register_validation_errors(self):
         # Empty payload
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/register',
-            method='POST',
-            body=b'{}',
-            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+            path_info="/api/index.py",
+            query_string="__path=auth/register",
+            method="POST",
+            body=b"{}",
+            headers={"Content-Type": "application/json", "Origin": "http://localhost"},
         )
         self.assertIn(status, [400, 422])
 
         # Missing required fields
-        incomplete = json.dumps({'nome': 'Test'}).encode('utf-8')
+        incomplete = json.dumps({"nome": "Test"}).encode("utf-8")
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/register',
-            method='POST',
+            path_info="/api/index.py",
+            query_string="__path=auth/register",
+            method="POST",
             body=incomplete,
-            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+            headers={"Content-Type": "application/json", "Origin": "http://localhost"},
         )
         self.assertIn(status, [400, 422])
 
     def test_07_bare_api_and_nonexistent_routes_return_404(self):
         # Bare /api
-        status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path='
-        )
+        status, _, _, body, _ = invoke_wsgi(vercel_api.app, path_info="/api/index.py", query_string="__path=")
         self.assertEqual(status, 404)
-        data = json.loads(body.decode('utf-8'))
-        self.assertEqual(data.get('error'), 'Endpoint da API não encontrado.')
+        data = json.loads(body.decode("utf-8"))
+        self.assertEqual(data.get("error"), "Endpoint da API não encontrado.")
 
         # Random nonexistent API route
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=nonexistent_xyz_987'
+            vercel_api.app, path_info="/api/index.py", query_string="__path=nonexistent_xyz_987"
         )
         self.assertEqual(status, 404)
-        data = json.loads(body.decode('utf-8'))
-        self.assertEqual(data.get('error'), 'Endpoint da API não encontrado.')
+        data = json.loads(body.decode("utf-8"))
+        self.assertEqual(data.get("error"), "Endpoint da API não encontrado.")
 
     def test_08_path_traversal_returns_404_not_500(self):
         traversals = [
-            '__path=../../etc/passwd',
-            '__path=services/../../../etc/shadow',
-            '__path=..%2F..%2Fetc%2Fpasswd',
+            "__path=../../etc/passwd",
+            "__path=services/../../../etc/shadow",
+            "__path=..%2F..%2Fetc%2Fpasswd",
         ]
         for qs in traversals:
-            status, _, _, body, _ = invoke_wsgi(
-                vercel_api.app,
-                path_info='/api/index.py',
-                query_string=qs
-            )
+            status, _, _, body, _ = invoke_wsgi(vercel_api.app, path_info="/api/index.py", query_string=qs)
             # Must safely return 404 or 400, NEVER 500 or 200 with file contents
             self.assertIn(status, [400, 404], f"Unexpected status {status} for traversal {qs}")
 
     def test_09_full_session_flow_through_normalizer(self):
         # 1. Login with seeded provider Carlos
-        login_payload = json.dumps({'email': 'carlos@pertoja.com', 'senha': '123456'}).encode('utf-8')
+        login_payload = json.dumps({"email": "carlos@pertoja.com", "senha": "123456"}).encode("utf-8")
         status, _, headers, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/login',
-            method='POST',
+            path_info="/api/index.py",
+            query_string="__path=auth/login",
+            method="POST",
             body=login_payload,
-            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+            headers={"Content-Type": "application/json", "Origin": "http://localhost"},
         )
         self.assertEqual(status, 200, f"Login failed: {body}")
-        cookie_parts = [v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie']
+        cookie_parts = [v.split(";")[0] for k, v in headers if k.lower() == "set-cookie"]
         self.assertTrue(cookie_parts, "No Set-Cookie header received upon login.")
-        cookie_header = '; '.join(cookie_parts)
+        cookie_header = "; ".join(cookie_parts)
 
-        auth_headers = {'Cookie': cookie_header, 'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+        auth_headers = {"Cookie": cookie_header, "Content-Type": "application/json", "Origin": "http://localhost"}
 
         # 2. Check /api/auth/me with session
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/me',
-            headers=auth_headers
+            vercel_api.app, path_info="/api/index.py", query_string="__path=auth/me", headers=auth_headers
         )
         self.assertEqual(status, 200)
-        data = json.loads(body.decode('utf-8'))
-        self.assertEqual(data['user']['email'], 'carlos@pertoja.com')
-        self.assertEqual(data['user']['tipo'], 'prestador')
+        data = json.loads(body.decode("utf-8"))
+        self.assertEqual(data["user"]["email"], "carlos@pertoja.com")
+        self.assertEqual(data["user"]["tipo"], "prestador")
 
         # 3. Check /api/my-services
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=my-services',
-            headers=auth_headers
+            vercel_api.app, path_info="/api/index.py", query_string="__path=my-services", headers=auth_headers
         )
         self.assertEqual(status, 200)
-        my_services = json.loads(body.decode('utf-8'))
+        my_services = json.loads(body.decode("utf-8"))
         self.assertIsInstance(my_services, list)
         self.assertGreater(len(my_services), 0)
 
         # 4. Check /api/profile
         status, _, _, body, _ = invoke_wsgi(
-            vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=profile',
-            headers=auth_headers
+            vercel_api.app, path_info="/api/index.py", query_string="__path=profile", headers=auth_headers
         )
         self.assertEqual(status, 200)
 
         # 5. Check /api/chat/health, /api/chat/support and /api/ads/generate-description through Vercel normalizer
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=chat/health',
-            method='GET',
-            headers=auth_headers
+            path_info="/api/index.py",
+            query_string="__path=chat/health",
+            method="GET",
+            headers=auth_headers,
         )
         self.assertEqual(status, 200)
-        health_data = json.loads(body.decode('utf-8'))
-        for field in ('configured', 'mode', 'active_provider', 'model', 'available_providers', 'serverless', 'warning', 'hint'):
+        health_data = json.loads(body.decode("utf-8"))
+        for field in (
+            "configured",
+            "mode",
+            "active_provider",
+            "model",
+            "available_providers",
+            "serverless",
+            "warning",
+            "hint",
+        ):
             self.assertIn(field, health_data)
 
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=chat/support',
-            method='POST',
-            body=json.dumps({'message': 'Como funciona o Escrow e o PIN?'}).encode('utf-8'),
-            headers=auth_headers
+            path_info="/api/index.py",
+            query_string="__path=chat/support",
+            method="POST",
+            body=json.dumps({"message": "Como funciona o Escrow e o PIN?"}).encode("utf-8"),
+            headers=auth_headers,
         )
         self.assertEqual(status, 200)
-        chat_data = json.loads(body.decode('utf-8'))
-        self.assertIn('reply', chat_data)
+        chat_data = json.loads(body.decode("utf-8"))
+        self.assertIn("reply", chat_data)
 
         status, _, _, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=ads/generate-description',
-            method='POST',
-            body=json.dumps({'title': 'Instalação Elétrica Residencial', 'category': 'Elétrica', 'price': 150}).encode('utf-8'),
-            headers=auth_headers
+            path_info="/api/index.py",
+            query_string="__path=ads/generate-description",
+            method="POST",
+            body=json.dumps({"title": "Instalação Elétrica Residencial", "category": "Elétrica", "price": 150}).encode(
+                "utf-8"
+            ),
+            headers=auth_headers,
         )
         self.assertEqual(status, 200)
-        ad_data = json.loads(body.decode('utf-8'))
-        self.assertIn('generated_description', ad_data)
+        ad_data = json.loads(body.decode("utf-8"))
+        self.assertIn("generated_description", ad_data)
 
         # 6. Logout
         status, _, _, _, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/logout',
-            method='POST',
-            headers=auth_headers
+            path_info="/api/index.py",
+            query_string="__path=auth/logout",
+            method="POST",
+            headers=auth_headers,
         )
         self.assertEqual(status, 200)
 
@@ -633,100 +609,129 @@ class TestBackendAPIEndpointsAdversarial(unittest.TestCase):
         from unittest.mock import patch
 
         # Unauthenticated via both __path=chat/health and stripped /chat/health -> 401
-        for path_info, qs in (('/api/index.py', '__path=chat/health'), ('/chat/health', '')):
+        for path_info, qs in (("/api/index.py", "__path=chat/health"), ("/chat/health", "")):
             status, _, _, body, _ = invoke_wsgi(
                 vercel_api.app,
                 path_info=path_info,
                 query_string=qs,
-                method='GET',
+                method="GET",
             )
             self.assertEqual(status, 401, f"Expected 401 for {path_info}?{qs}, got {status}: {body}")
 
         # Login to obtain session cookie
-        login_payload = json.dumps({'email': 'cliente@pertoja.com', 'senha': '123456'}).encode('utf-8')
+        login_payload = json.dumps({"email": "cliente@pertoja.com", "senha": "123456"}).encode("utf-8")
         status, _, headers, body, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/login',
-            method='POST',
+            path_info="/api/index.py",
+            query_string="__path=auth/login",
+            method="POST",
             body=login_payload,
-            headers={'Content-Type': 'application/json', 'Origin': 'http://localhost'}
+            headers={"Content-Type": "application/json", "Origin": "http://localhost"},
         )
         self.assertEqual(status, 200, f"Login failed: {body}")
-        cookie_parts = [v.split(';')[0] for k, v in headers if k.lower() == 'set-cookie']
+        cookie_parts = [v.split(";")[0] for k, v in headers if k.lower() == "set-cookie"]
         self.assertTrue(cookie_parts)
-        cookie_header = '; '.join(cookie_parts)
-        auth_headers = {'Cookie': cookie_header, 'Accept': 'application/json', 'Origin': 'http://localhost'}
+        cookie_header = "; ".join(cookie_parts)
+        auth_headers = {"Cookie": cookie_header, "Accept": "application/json", "Origin": "http://localhost"}
 
         def _serverless_env(**overrides):
             env = dict(os.environ)
             for key in (
-                'FREELLM_API_BASE_URL', 'FREELLM_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_API_KEY',
-                'LLM_MODEL', 'LLAMA_MODEL', 'GROQ_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY',
-                'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'MISTRAL_API_KEY', 'APIFREELLM_API_KEY',
-                'GITHUB_MODELS_TOKEN', 'VERCEL', 'VERCEL_ENV', 'AWS_LAMBDA_FUNCTION_NAME',
+                "FREELLM_API_BASE_URL",
+                "FREELLM_API_KEY",
+                "OPENAI_BASE_URL",
+                "OPENAI_API_KEY",
+                "LLM_MODEL",
+                "LLAMA_MODEL",
+                "GROQ_API_KEY",
+                "GEMINI_API_KEY",
+                "GOOGLE_API_KEY",
+                "OPENROUTER_API_KEY",
+                "CEREBRAS_API_KEY",
+                "MISTRAL_API_KEY",
+                "APIFREELLM_API_KEY",
+                "GITHUB_MODELS_TOKEN",
+                "VERCEL",
+                "VERCEL_ENV",
+                "AWS_LAMBDA_FUNCTION_NAME",
             ):
                 env.pop(key, None)
             env.update(overrides)
             return env
 
         expected_keys = {
-            'configured', 'mode', 'active_provider', 'model',
-            'available_providers', 'serverless', 'warning', 'hint',
+            "configured",
+            "mode",
+            "active_provider",
+            "model",
+            "available_providers",
+            "serverless",
+            "warning",
+            "hint",
         }
 
         # Serverless with localhost configured and no cloud keys -> fallback + localhost warning
-        with patch.dict(os.environ, _serverless_env(
-            VERCEL='1',
-            FREELLM_API_BASE_URL='http://localhost:3001/v1',
-        ), clear=True), patch('database.ensure_production_database'):
+        with (
+            patch.dict(
+                os.environ,
+                _serverless_env(
+                    VERCEL="1",
+                    FREELLM_API_BASE_URL="http://localhost:3001/v1",
+                ),
+                clear=True,
+            ),
+            patch("database.ensure_production_database"),
+        ):
             status, _, _, body, _ = invoke_wsgi(
-                vercel_api.app,
-                path_info='/chat/health',
-                query_string='',
-                method='GET',
-                headers=auth_headers
+                vercel_api.app, path_info="/chat/health", query_string="", method="GET", headers=auth_headers
             )
             self.assertEqual(status, 200)
-            data_fb = json.loads(body.decode('utf-8'))
+            data_fb = json.loads(body.decode("utf-8"))
             self.assertTrue(expected_keys.issubset(data_fb.keys()))
-            self.assertFalse(data_fb['configured'])
-            self.assertEqual(data_fb['mode'], 'fallback')
-            self.assertTrue(data_fb['serverless'])
-            self.assertIn('localhost', (data_fb['warning'] or '').lower())
+            self.assertFalse(data_fb["configured"])
+            self.assertEqual(data_fb["mode"], "fallback")
+            self.assertTrue(data_fb["serverless"])
+            self.assertIn("localhost", (data_fb["warning"] or "").lower())
 
         # Serverless with localhost + GROQ_API_KEY -> skips localhost, uses groq, never leaks key
-        secret_key = 'gsk_vercel_adv_secret_987654'
-        with patch.dict(os.environ, _serverless_env(
-            VERCEL='1',
-            FREELLM_API_BASE_URL='http://localhost:3001/v1',
-            GROQ_API_KEY=secret_key,
-        ), clear=True), patch('database.ensure_production_database'):
+        secret_key = "gsk_vercel_adv_secret_987654"
+        with (
+            patch.dict(
+                os.environ,
+                _serverless_env(
+                    VERCEL="1",
+                    FREELLM_API_BASE_URL="http://localhost:3001/v1",
+                    GROQ_API_KEY=secret_key,
+                ),
+                clear=True,
+            ),
+            patch("database.ensure_production_database"),
+        ):
             status, _, _, body, _ = invoke_wsgi(
                 vercel_api.app,
-                path_info='/api/index.py',
-                query_string='__path=chat/health',
-                method='GET',
-                headers=auth_headers
+                path_info="/api/index.py",
+                query_string="__path=chat/health",
+                method="GET",
+                headers=auth_headers,
             )
             self.assertEqual(status, 200)
-            raw_text = body.decode('utf-8')
+            raw_text = body.decode("utf-8")
             self.assertNotIn(secret_key, raw_text)
             data_live = json.loads(raw_text)
             self.assertTrue(expected_keys.issubset(data_live.keys()))
-            self.assertTrue(data_live['configured'])
-            self.assertEqual(data_live['mode'], 'live')
-            self.assertEqual(data_live['active_provider'], 'groq')
-            self.assertEqual(data_live['available_providers'], ['groq'])
-            self.assertTrue(data_live['serverless'])
+            self.assertTrue(data_live["configured"])
+            self.assertEqual(data_live["mode"], "live")
+            self.assertEqual(data_live["active_provider"], "groq")
+            self.assertEqual(data_live["available_providers"], ["groq"])
+            self.assertTrue(data_live["serverless"])
 
         # Logout cleanup
         status, _, _, _, _ = invoke_wsgi(
             vercel_api.app,
-            path_info='/api/index.py',
-            query_string='__path=auth/logout',
-            method='POST',
-            headers=auth_headers
+            path_info="/api/index.py",
+            query_string="__path=auth/logout",
+            method="POST",
+            headers=auth_headers,
         )
         self.assertEqual(status, 200)
 
@@ -770,22 +775,17 @@ except Exception as ne:
     print('UNEXPECTED_EXCEPTION:', type(ne).__name__, ne)
 """
         clean_env = os.environ.copy()
-        clean_env.pop('MARKETPLACE_DB', None)
+        clean_env.pop("MARKETPLACE_DB", None)
         res = subprocess.run(
-            [sys.executable, '-c', script],
-            cwd=REPO_ROOT,
-            env=clean_env,
-            capture_output=True,
-            text=True
+            [sys.executable, "-c", script], cwd=REPO_ROOT, env=clean_env, capture_output=True, text=True
         )
         # Validacao: nao deve gerar NameError, deve retornar 500 com JSON
         output = res.stdout + res.stderr
-        self.assertIn('RESPONSE_STATUS: 500 INTERNAL SERVER ERROR', output, "Esperado 500 INTERNAL SERVER ERROR")
-        self.assertIn('RESPONSE_BODY_OK', output)
-        self.assertNotIn('NameError', output, "NameError nao deveria ocorrer com a correcao")
+        self.assertIn("RESPONSE_STATUS: 500 INTERNAL SERVER ERROR", output, "Esperado 500 INTERNAL SERVER ERROR")
+        self.assertIn("RESPONSE_BODY_OK", output)
+        self.assertNotIn("NameError", output, "NameError nao deveria ocorrer com a correcao")
         self.assertNotIn("cannot access free variable 'exc'", output)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -239,6 +239,7 @@ function scanFile(filePath) {
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(content)) !== null) {
+      /* eslint-disable-next-line no-script-url -- literal usada na detecção estática de URLs perigosas */
       if (rule.msg.includes('javascript:') && /\/\^\(javascript\|/.test(content.slice(Math.max(0, m.index - 20), m.index + 30))) {
         continue;
       }

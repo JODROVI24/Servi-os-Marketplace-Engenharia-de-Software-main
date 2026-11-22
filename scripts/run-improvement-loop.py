@@ -13,10 +13,11 @@ O loop:
   3. Gera reports/last-run.md com o resultado.
   4. Imprime um resumo na tela para interceptar.
 """
+
+import json
 import os
 import subprocess
 import sys
-import json
 from datetime import datetime, timezone
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -130,7 +131,7 @@ def run_status(cmd):
 def run_tests():
     py = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
     codes = {}
-    codes["root_suit"] = run_status(f'{py} -m unittest discover -s tests -v')[0]
+    codes["root_suit"] = run_status(f"{py} -m unittest discover -s tests -v")[0]
     codes["api_import"] = run_status(f'"{py}" -c "import api.index; print(\'OK entrypoint Vercel\')"')[0]
     return codes
 
@@ -156,7 +157,7 @@ def write_report(results, env):
     state = load_state()
     head = run_git_head()
     if state.get("head") and state.get("head") != head:
-        lines.append(f"- **Commits**: {head[:8]} (antes era {state["head"][:8]})")
+        lines.append(f"- **Commits**: {head[:8]} (antes era {state['head'][:8]})")
         changed = git_diff_summary(state["head"], head)
         if changed:
             for item in changed:

@@ -317,6 +317,7 @@
         trEmpty.appendChild(tdEmpty);
         tbody.replaceChildren(trEmpty);
       } else {
+        /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
         tbody.innerHTML = listaPedidos.map(p => {
           const bruto = Number(p.preco_total || 0);
           const escrowSt = String(p.escrow_status || '').toLowerCase();
@@ -365,6 +366,7 @@
         return;
       }
 
+      /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
       div.innerHTML = listaMeusServicos.map(s => {
         const endSvc = s.endereco
           ? [s.endereco + (s.numero ? ', ' + s.numero : ''), s.bairro || '', s.cidade || 'SP'].filter(Boolean).join(' · ')
@@ -626,6 +628,7 @@
       return;
     }
 
+    /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
     div.innerHTML = filtrados.map(p => {
       const enderecoProtegido = p.status === 'solicitado' || Boolean(p.endereco_protegido);
       const enderecoRegiao = [p.bairro_cliente, p.cidade_cliente].filter(Boolean).join(' / ');
@@ -1314,6 +1317,7 @@
       } else {
         contraHtml = `<div class="p-3 rounded-xl bg-perto-bg border border-perto-road text-perto-ink/80">O cliente ainda não registrou uma avaliação.</div>`;
       }
+      /* eslint-disable-next-line no-unsanitized/property -- interpolações auditadas por scripts/check_xss_lint.js */
       box.innerHTML = minhaHtml + contraHtml;
     } catch (e) {
       setStatusText(box, 'Erro de comunicação ao carregar avaliações.');
@@ -1664,7 +1668,7 @@
         document.getElementById('perfilLng').value = pos.coords.longitude.toFixed(6);
         toast('Coordenadas GPS obtidas com sucesso!');
       },
-      err => {
+      _err => {
         toast('Não foi possível obter a posição GPS.');
       }
     );
