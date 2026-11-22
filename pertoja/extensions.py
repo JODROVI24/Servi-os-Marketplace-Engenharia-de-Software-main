@@ -8,7 +8,7 @@ import secrets
 import threading
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -76,7 +76,8 @@ def is_review_revealed(rev_row) -> bool:
     if row_get(rev_row, "revealed_at") is not None:
         return True
     dt = parse_dt(row_get(rev_row, "criado_em"))
-    return bool(dt is not None and (datetime.utcnow() - dt) >= timedelta(days=7))
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    return bool(dt is not None and (now_naive - dt) >= timedelta(days=7))
 
 
 def mask_phone(phone) -> str:
