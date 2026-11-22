@@ -94,6 +94,32 @@
       </div>
     </div>
 
+    <!-- Banner de Verificação de E-mail (Item 5.2) -->
+    <div id="bannerVerificarEmailCliente" class="panel bg-[#fff7dd] border-2 border-perto-sun rounded-2xl p-4 sm:p-5 shadow-sm" role="region" aria-label="Verificação de e-mail" hidden>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-perto-ink text-2xl shrink-0" aria-hidden="true">mark_email_unread</span>
+          <div>
+            <h2 class="text-sm font-black text-perto-ink m-0">Confirme seu e-mail para solicitar serviços</h2>
+            <p class="text-xs text-perto-ink/85 mt-0.5 mb-0 font-body">
+              Reenvie o código de verificação ou cole o token recebido para ativar completamente sua conta.
+            </p>
+            <p id="statusVerificacaoEmailCliente" class="text-xs font-semibold text-perto-sea mt-1 mb-0" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <button type="button" id="btnReenviarVerificacaoEmailCliente" class="btn2 px-4 py-2 rounded-full text-xs font-bold">
+            Reenviar e-mail de verificação
+          </button>
+          <label for="inputTokenEmailCliente" class="sr-only">Token de verificação de e-mail</label>
+          <input type="text" id="inputTokenEmailCliente" placeholder="Cole o token..." class="input-form text-xs py-1.5 px-3 w-44">
+          <button type="button" id="btnConfirmarEmailCliente" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink">
+            Confirmar token
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Navegação por Abas (Contrato DOM: #tabBtnPedidos, #tabBtnPerfil, #contPedidos) -->
     <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
       <div class="chips flex flex-wrap gap-2">

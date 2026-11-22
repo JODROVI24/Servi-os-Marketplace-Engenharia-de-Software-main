@@ -125,6 +125,32 @@
       </div>
     </section>
 
+    <!-- Banner de Verificação de E-mail (Item 5.2) -->
+    <div id="bannerVerificarEmailPrestador" class="panel bg-[#fff7dd] border-2 border-perto-sun rounded-2xl p-4 sm:p-5 shadow-sm" role="region" aria-label="Verificação de e-mail" hidden>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-perto-ink text-2xl shrink-0" aria-hidden="true">mark_email_unread</span>
+          <div>
+            <h2 class="text-sm font-black text-perto-ink m-0">Confirme seu e-mail profissional</h2>
+            <p class="text-xs text-perto-ink/85 mt-0.5 mb-0 font-body">
+              Reenvie o e-mail de verificação ou informe o token recebido para validar sua conta.
+            </p>
+            <p id="statusVerificacaoEmailPrestador" class="text-xs font-semibold text-perto-sea mt-1 mb-0" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <button type="button" id="btnReenviarVerificacaoEmailPrestador" class="btn2 px-4 py-2 rounded-full text-xs font-bold">
+            Reenviar e-mail de verificação
+          </button>
+          <label for="inputTokenEmailPrestador" class="sr-only">Token de verificação de e-mail</label>
+          <input type="text" id="inputTokenEmailPrestador" placeholder="Cole o token..." class="input-form text-xs py-1.5 px-3 w-44">
+          <button type="button" id="btnConfirmarEmailPrestador" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink">
+            Confirmar token
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Navegação por Abas (Contrato DOM: #tabBtnServicos, #tabBtnPedidos, #tabBtnPerfil, #tabBtnFinanceiro, #contPedidos, #contServicos) -->
     <div class="panel filters p-3 sm:p-4 mb-2 bg-white rounded-2xl border border-perto-road">
       <div class="chips flex flex-wrap gap-2" role="tablist" aria-label="Navegação do Painel do Prestador">
@@ -197,6 +223,28 @@
           <button type="button" class="chip" data-filtro="novos">Novos</button>
           <button type="button" class="chip" data-filtro="andamento">Em andamento</button>
           <button type="button" class="chip" data-filtro="finalizados">Finalizados</button>
+        </div>
+
+        <!-- Controle de Envio GPS em Tempo Real durante Em Trânsito (Item 5.1) -->
+        <div id="gpsTrackingPrestadorBar" class="mb-5 p-4 rounded-2xl bg-perto-bg border border-perto-road flex flex-col sm:flex-row sm:items-center justify-between gap-3" role="region" aria-label="Compartilhamento de localização GPS em tempo real" hidden>
+          <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined text-perto-sea text-xl shrink-0" aria-hidden="true">share_location</span>
+            <div>
+              <div class="text-xs font-black text-perto-ink uppercase tracking-wider">Deslocamento Ativo (GPS a cada 12s)</div>
+              <p id="statusGpsEmTransito" class="text-xs text-perto-ink/85 mt-0.5 mb-0 font-body" role="status" aria-live="polite">
+                Você possui chamado em trânsito. Ative o envio de GPS em tempo real para o cliente acompanhar no mapa.
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button type="button" id="btnToggleGpsEmTransito" aria-pressed="false" class="btn px-4 py-2 rounded-full text-xs font-extrabold text-perto-ink inline-flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm" aria-hidden="true">my_location</span>
+              <span id="txtToggleGpsEmTransito">Ativar GPS ao vivo (12s)</span>
+            </button>
+            <button type="button" id="btnEnviarGpsAgora" class="btn2 px-3.5 py-2 rounded-full text-xs font-bold">
+              Enviar posição agora
+            </button>
+          </div>
         </div>
 
         <div id="listaPedidosRecebidos">
@@ -348,6 +396,48 @@
               </button>
             </div>
           </form>
+        </div>
+
+        <!-- Verificação de Telefone via OTP SMS / WhatsApp (Item 5.4) -->
+        <div class="mt-8 pt-6 border-t border-perto-road space-y-4" id="blocoOtpTelefonePrestador">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-base font-black text-perto-ink m-0 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-perto-sea text-lg" aria-hidden="true">sms</span>
+                Verificação de Telefone (OTP)
+              </h3>
+              <p class="text-xs text-perto-ink/80 font-body mt-0.5">Valide seu telefone comercial via SMS ou WhatsApp para aumentar a confiança dos clientes.</p>
+            </div>
+            <span id="phoneVerifiedBadge" class="tag tabular-nums">Não verificado</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div class="campo-form">
+              <label for="otpCanalSelect" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Canal</label>
+              <select id="otpCanalSelect" class="input-form text-sm font-medium">
+                <option value="sms">SMS</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+            <div>
+              <button type="button" id="btnEnviarOtpTelefone" class="btn2 w-full py-2.5 px-4 rounded-xl text-xs font-extrabold">
+                Enviar código OTP
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div class="campo-form sm:col-span-2">
+              <label for="inputOtpCodigo" class="text-xs font-bold text-perto-ink uppercase tracking-wider">Código de 6 dígitos</label>
+              <input type="text" id="inputOtpCodigo" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="000000" class="input-form text-sm font-bold tracking-widest tabular-nums">
+            </div>
+            <div>
+              <button type="button" id="btnValidarOtpTelefone" class="btn w-full py-2.5 px-4 rounded-xl text-xs font-extrabold text-perto-ink">
+                Validar código
+              </button>
+            </div>
+          </div>
+          <p id="statusOtpTelefone" class="text-xs font-semibold text-perto-sea m-0" role="status" aria-live="polite"></p>
         </div>
 
         <!-- Recurso / Revisão Humana -->

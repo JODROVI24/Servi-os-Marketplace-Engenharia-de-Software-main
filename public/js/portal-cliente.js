@@ -38,6 +38,7 @@ function mudarAba(aba) {
       }
 
       dadosCliente = data.user;
+      atualizarBannerVerificacaoEmailCliente();
       document.getElementById('clienteNome').textContent = `Olá, ${dadosCliente.nome}!`;
       document.getElementById('clienteEmail').textContent = `${dadosCliente.email} · ${dadosCliente.telefone || 'Telefone não informado'}`;
 
@@ -865,6 +866,80 @@ function mudarAba(aba) {
   });
 
   // Bindings externos (substituição de atributos HTML inline)
+  function atualizarBannerVerificacaoEmailCliente() {
+    const banner = document.getElementById('bannerVerificarEmailCliente');
+    if (!banner || !dadosCliente) return;
+    banner.hidden = dadosCliente.email_verified !== false;
+  }
+
+  async function reenviarVerificacaoEmailCliente() {
+    const btn = document.getElementById('btnReenviarVerificacaoEmailCliente');
+    const statusEl = document.getElementById('statusVerificacaoEmailCliente');
+    const inputEl = document.getElementById('inputTokenEmailCliente');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/send-verification-email', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Não foi possível enviar o e-mail de verificação.';
+        toast(data.error || 'Erro ao enviar e-mail de verificação.');
+        return;
+      }
+      if (data.already_verified) {
+        dadosCliente.email_verified = true;
+        atualizarBannerVerificacaoEmailCliente();
+        toast('Seu e-mail já está verificado!');
+        return;
+      }
+      if (data.verification_token) {
+        if (inputEl) inputEl.value = data.verification_token;
+        if (statusEl) statusEl.textContent = `Token de teste (dev): ${data.verification_token}`;
+      } else if (statusEl) {
+        statusEl.textContent = data.message || 'E-mail de verificação enviado. Confira sua caixa de entrada.';
+      }
+      toast('E-mail de verificação enviado!');
+    } catch (_) {
+      toast('Erro de conexão ao enviar verificação.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function confirmarTokenEmailCliente() {
+    const inputEl = document.getElementById('inputTokenEmailCliente');
+    const btn = document.getElementById('btnConfirmarEmailCliente');
+    const statusEl = document.getElementById('statusVerificacaoEmailCliente');
+    const token = inputEl ? inputEl.value.trim() : '';
+    if (!token) {
+      toast('Informe o token de verificação.');
+      if (inputEl) inputEl.focus();
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Token inválido ou expirado.';
+        toast(data.error || 'Token inválido ou expirado.');
+        return;
+      }
+      if (dadosCliente) dadosCliente.email_verified = true;
+      atualizarBannerVerificacaoEmailCliente();
+      toast('E-mail verificado com sucesso!');
+    } catch (_) {
+      toast('Erro de conexão ao verificar token.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  document.getElementById('btnReenviarVerificacaoEmailCliente')?.addEventListener('click', reenviarVerificacaoEmailCliente);
+  document.getElementById('btnConfirmarEmailCliente')?.addEventListener('click', confirmarTokenEmailCliente);
   document.getElementById('tabBtnPedidos')?.addEventListener('click', () => mudarAba('pedidos'));
   document.getElementById('tabBtnPerfil')?.addEventListener('click', () => mudarAba('perfil'));
   document.getElementById('btnAbrirSuporteIA')?.addEventListener('click', abrirModalSuporteIA);

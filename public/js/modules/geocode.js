@@ -80,12 +80,16 @@ export async function buscarPorEnderecoCliente(withLoadingButton = null) {
 
           for (const cand of cands) {
             try {
-              const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cand)}&limit=1`);
-              if (rNom.ok) {
-                const resNom = await rNom.json();
-                if (resNom && resNom.length > 0) {
-                  lat = parseFloat(resNom[0].lat);
-                  lng = parseFloat(resNom[0].lon);
+              const resG = await fetch(`/api/geocode?q=${encodeURIComponent(cand)}`);
+              if (resG.status === 429 || resG.status >= 500) {
+                exibirAlertaRetry(resG.status);
+                break;
+              }
+              if (resG.ok) {
+                const dG = await resG.json();
+                if (dG && dG.lat != null && dG.lng != null) {
+                  lat = parseFloat(dG.lat);
+                  lng = parseFloat(dG.lng);
                   break;
                 }
               }
@@ -107,19 +111,6 @@ export async function buscarPorEnderecoCliente(withLoadingButton = null) {
             }
           }
         } catch (_) {}
-
-        if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
-          try {
-            const rNom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q + ', Brasil')}&limit=1`);
-            if (rNom.ok) {
-              const resNom = await rNom.json();
-              if (resNom && resNom.length > 0) {
-                lat = parseFloat(resNom[0].lat);
-                lng = parseFloat(resNom[0].lon);
-              }
-            }
-          } catch (_) {}
-        }
       }
 
       if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {

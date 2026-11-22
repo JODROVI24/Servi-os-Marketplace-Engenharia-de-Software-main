@@ -211,6 +211,10 @@ export function pararPollingPedido() {
     clearInterval(store.orderPollTimer);
     store.orderPollTimer = null;
   }
+  if (store.orderLocationTimer) {
+    clearInterval(store.orderLocationTimer);
+    store.orderLocationTimer = null;
+  }
 }
 
 export function mapStatusToStep(status) {
@@ -354,6 +358,52 @@ export function driveVisualOnly(best) {
   store.simulationTimers.push(store.timer);
 }
 
+export function atualizarModoRastreamento(data) {
+  const badge = document.getElementById('trackingModeBadge');
+  const hasRealCoords = Boolean(
+    data && (
+      data.tracking_mode === 'real_gps' ||
+      (data.lat != null && data.lng != null) ||
+      (data.prestador_lat_atual != null && data.prestador_lng_atual != null)
+    )
+  );
+  const lat = data ? Number(data.lat ?? data.prestador_lat_atual) : NaN;
+  const lng = data ? Number(data.lng ?? data.prestador_lng_atual) : NaN;
+  const isRealGps = hasRealCoords && Number.isFinite(lat) && Number.isFinite(lng);
+
+  if (badge) {
+    if (isRealGps) {
+      badge.textContent = 'Posição GPS em tempo real';
+      badge.className = 'tag bg-perto-ok/15 text-perto-ok border border-perto-ok/40';
+    } else {
+      badge.textContent = 'Posição estimada';
+      badge.className = 'tag bg-perto-bg text-perto-ink border border-perto-road';
+    }
+  }
+
+  if (isRealGps && store.order) {
+    clearAllSimulationTimers();
+    store.order.realGpsActive = true;
+    store.order.pos = { lat, lng };
+    renderMap(store.order.pos);
+  } else if (store.order && data && data.tracking_mode === 'estimated') {
+    store.order.realGpsActive = false;
+  }
+}
+
+export async function buscarLocalizacaoPedidoReal(orderDbId) {
+  if (!orderDbId) return null;
+  try {
+    const res = await fetch(`/api/orders/${orderDbId}/location`);
+    if (!res.ok) return null;
+    const loc = await res.json();
+    atualizarModoRastreamento(loc);
+    return loc;
+  } catch (_) {
+    return null;
+  }
+}
+
 export function atualizarUIStatusPedido(pedidoApi, best) {
   if (!pedidoApi || !store.order) return;
   store.currentOrderData = pedidoApi;
@@ -372,6 +422,7 @@ export function atualizarUIStatusPedido(pedidoApi, best) {
   const stepIdx = mapStatusToStep(status);
   renderSteps(stepIdx);
   atualizarPaineisSegurancaPedido(status, pedidoApi);
+  atualizarModoRastreamento(pedidoApi);
   if (store.order.db_id && ['confirmado', 'em_transito', 'em_execucao', 'em_disputa', 'finalizado', 'cancelado'].includes(status)) {
     carregarMensagensPedido(store.order.db_id);
   }
@@ -383,11 +434,15 @@ export function atualizarUIStatusPedido(pedidoApi, best) {
   } else if (status === 'em_transito') {
     if (precisaPagar) {
       info([{ bold: best.n }, ' está a caminho.', avisoPgSeg]);
+    } else if (store.order.realGpsActive) {
+      info([{ bold: best.n }, ' está a caminho (GPS em tempo real ativo).']);
     }
     if (!store.order.drivingStarted) {
       store.order.drivingStarted = true;
       toast(`${best.n} iniciou o deslocamento até seu endereço.`);
-      driveVisualOnly(best);
+      if (!store.order.realGpsActive) {
+        driveVisualOnly(best);
+      }
     }
   } else if (status === 'em_execucao') {
     clearAllSimulationTimers();
@@ -441,6 +496,16 @@ export function iniciarPollingPedido(orderDbId, best) {
       atualizarUIStatusPedido(found, best);
     }
   }, 8000);
+  store.orderLocationTimer = setInterval(async () => {
+    if (!store.order || String(store.order.db_id) !== String(orderDbId)) {
+      pararPollingPedido();
+      return;
+    }
+    const st = String((store.currentOrderData && store.currentOrderData.status) || '').toLowerCase();
+    if (['confirmado', 'em_transito', 'em_execucao'].includes(st)) {
+      await buscarLocalizacaoPedidoReal(orderDbId);
+    }
+  }, 12000);
 }
 
 export function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
@@ -450,7 +515,8 @@ export function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
     pos: { lat: best.lat != null ? best.lat : store.centerLat, lng: best.lng != null ? best.lng : store.centerLng },
     gps: 0,
     db_id: orderDbId,
-    drivingStarted: false
+    drivingStarted: false,
+    realGpsActive: false
   };
   best.a = false;
 
@@ -505,6 +571,10 @@ export function iniciarTrackingPedido(orderDbId, best, initialData = {}) {
 
   renderAll();
   atualizarUIStatusPedido({ status: initialData.status || 'solicitado', ...initialData }, best);
+  const initSt = String(initialData.status || 'solicitado').toLowerCase();
+  if (orderDbId && ['confirmado', 'em_transito', 'em_execucao'].includes(initSt)) {
+    buscarLocalizacaoPedidoReal(orderDbId);
+  }
   iniciarPollingPedido(orderDbId, best);
 }
 
@@ -633,6 +703,10 @@ export function abrirModalConfirmarPedido(sel, user) {
       if (res.status === 401) {
         toast('Sua sessão expirou. Redirecionando para login...');
         setTimeout(() => { window.location.href = 'login.html?redirect=pedido.html&pending_order=true'; }, 1200);
+        return;
+      }
+      if (res.status === 403 && data && data.code === 'EMAIL_NOT_VERIFIED') {
+        toast('⚠️ Confirme seu e-mail no Meu Portal antes de solicitar serviços.');
         return;
       }
       if (!res.ok) {

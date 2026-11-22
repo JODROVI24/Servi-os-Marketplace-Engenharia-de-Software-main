@@ -24,6 +24,8 @@ let filtroPedidosAtual = 'todos';
 let alertaSonoroAtivo = false;
 let idsSolicitadosConhecidos = new Set();
 let primeiraCargaPedidos = true;
+let gpsTransitoTimer = null;
+let gpsTransitoAtivo = false;
 
 function tocarAlertaSonoro() {
     try {
@@ -106,6 +108,8 @@ function tocarAlertaSonoro() {
       document.getElementById('perfilLng').value = dadosPrestador.lng || -46.6517;
 
       atualizarStatusKycEConta();
+      atualizarBannerVerificacaoEmailPrestador();
+      atualizarStatusOtpTelefone();
 
       await carregarServicos();
       await carregarPedidos();
@@ -710,6 +714,7 @@ function tocarAlertaSonoro() {
       atualizarKPIsEFinanceiro();
       carregarFinancialSummary();
       renderizarPedidos();
+      sincronizarControleGpsEmTransito();
     } catch (e) {
       setStatusText(div, 'Erro ao carregar chamados.', 'text-sm text-perto-ink/80');
     }
@@ -1335,6 +1340,8 @@ function tocarAlertaSonoro() {
         if (data.kyc_tier != null) dadosPrestador.kyc_tier = data.kyc_tier;
         if (data.kyc_status) dadosPrestador.kyc_status = data.kyc_status;
         atualizarStatusKycEConta();
+      atualizarBannerVerificacaoEmailPrestador();
+      atualizarStatusOtpTelefone();
       } else {
         toast(data.error || 'Erro ao enviar verificação KYC.');
       }
@@ -1536,6 +1543,255 @@ function tocarAlertaSonoro() {
   });
 
   // Bindings externos (substituição de todos os atributos HTML inline)
+  function atualizarBannerVerificacaoEmailPrestador() {
+    const banner = document.getElementById('bannerVerificarEmailPrestador');
+    if (!banner || !dadosPrestador) return;
+    banner.hidden = dadosPrestador.email_verified !== false;
+  }
+
+  async function reenviarVerificacaoEmailPrestador() {
+    const btn = document.getElementById('btnReenviarVerificacaoEmailPrestador');
+    const statusEl = document.getElementById('statusVerificacaoEmailPrestador');
+    const inputEl = document.getElementById('inputTokenEmailPrestador');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/send-verification-email', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Não foi possível enviar o e-mail de verificação.';
+        toast(data.error || 'Erro ao enviar e-mail de verificação.');
+        return;
+      }
+      if (data.already_verified) {
+        dadosPrestador.email_verified = true;
+        atualizarBannerVerificacaoEmailPrestador();
+        toast('Seu e-mail já está verificado!');
+        return;
+      }
+      if (data.verification_token) {
+        if (inputEl) inputEl.value = data.verification_token;
+        if (statusEl) statusEl.textContent = `Token de teste (dev): ${data.verification_token}`;
+      } else if (statusEl) {
+        statusEl.textContent = data.message || 'E-mail de verificação enviado. Confira sua caixa de entrada.';
+      }
+      toast('E-mail de verificação enviado!');
+    } catch (_) {
+      toast('Erro de conexão ao enviar verificação.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function confirmarTokenEmailPrestador() {
+    const inputEl = document.getElementById('inputTokenEmailPrestador');
+    const btn = document.getElementById('btnConfirmarEmailPrestador');
+    const statusEl = document.getElementById('statusVerificacaoEmailPrestador');
+    const token = inputEl ? inputEl.value.trim() : '';
+    if (!token) {
+      toast('Informe o token de verificação.');
+      if (inputEl) inputEl.focus();
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Token inválido ou expirado.';
+        toast(data.error || 'Token inválido ou expirado.');
+        return;
+      }
+      if (dadosPrestador) dadosPrestador.email_verified = true;
+      atualizarBannerVerificacaoEmailPrestador();
+      toast('E-mail verificado com sucesso!');
+    } catch (_) {
+      toast('Erro de conexão ao verificar token.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function atualizarStatusOtpTelefone() {
+    const badge = document.getElementById('phoneVerifiedBadge');
+    if (!badge || !dadosPrestador) return;
+    const verificado = Boolean(dadosPrestador.phone_verified);
+    if (verificado) {
+      badge.textContent = 'Telefone verificado';
+      badge.className = 'tag bg-perto-ok/15 text-perto-ok border border-perto-ok/40 tabular-nums';
+    } else {
+      badge.textContent = 'Não verificado';
+      badge.className = 'tag tabular-nums';
+    }
+  }
+
+  async function enviarOtpTelefone() {
+    const canalEl = document.getElementById('otpCanalSelect');
+    const btn = document.getElementById('btnEnviarOtpTelefone');
+    const statusEl = document.getElementById('statusOtpTelefone');
+    const telInput = document.getElementById('perfilTelefone');
+    const canal = canalEl ? canalEl.value : 'sms';
+    const telefone = telInput ? telInput.value.trim() : '';
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/phone/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ canal, telefone: telefone || undefined })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Não foi possível enviar o código OTP.';
+        toast(data.error || 'Erro ao enviar código OTP.');
+        return;
+      }
+      if (statusEl) {
+        statusEl.textContent = data.dev_otp
+          ? `Código enviado via ${canal.toUpperCase()}. Dica dev: ${data.dev_otp}`
+          : `Código OTP enviado via ${canal.toUpperCase()}.`;
+      }
+      toast('Código OTP enviado!');
+    } catch (_) {
+      toast('Erro de conexão ao enviar código OTP.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function validarOtpTelefone() {
+    const inputEl = document.getElementById('inputOtpCodigo');
+    const btn = document.getElementById('btnValidarOtpTelefone');
+    const statusEl = document.getElementById('statusOtpTelefone');
+    const code = inputEl ? inputEl.value.trim() : '';
+    if (!code) {
+      toast('Digite o código OTP de 6 dígitos.');
+      if (inputEl) inputEl.focus();
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/phone/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = data.error || 'Código OTP inválido.';
+        toast(data.error || 'Código OTP inválido.');
+        return;
+      }
+      if (dadosPrestador) dadosPrestador.phone_verified = true;
+      atualizarStatusOtpTelefone();
+      if (statusEl) statusEl.textContent = 'Telefone verificado com sucesso!';
+      toast('Telefone verificado com sucesso!');
+    } catch (_) {
+      toast('Erro de conexão ao validar código OTP.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function pararGpsEmTransito() {
+    if (gpsTransitoTimer) {
+      clearInterval(gpsTransitoTimer);
+      gpsTransitoTimer = null;
+    }
+    gpsTransitoAtivo = false;
+    const btn = document.getElementById('btnToggleGpsEmTransito');
+    const txt = document.getElementById('txtToggleGpsEmTransito');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
+    if (txt) txt.textContent = 'Ativar GPS ao vivo (12s)';
+  }
+
+  function sincronizarControleGpsEmTransito() {
+    const bar = document.getElementById('gpsTrackingPrestadorBar');
+    const emTransito = listaPedidos.filter(p => p.status === 'em_transito');
+    if (!emTransito.length) {
+      pararGpsEmTransito();
+      if (bar) bar.hidden = true;
+      return;
+    }
+    if (bar) bar.hidden = false;
+  }
+
+  function enviarPosicaoGpsParaPedidosEmTransito() {
+    const emTransito = listaPedidos.filter(p => p.status === 'em_transito');
+    if (!emTransito.length) {
+      sincronizarControleGpsEmTransito();
+      return;
+    }
+    const statusEl = document.getElementById('statusGpsEmTransito');
+    if (!navigator.geolocation) {
+      if (statusEl) statusEl.textContent = 'Geolocalização não suportada neste navegador.';
+      toast('Navegador não suporta geolocalização.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy;
+        let okCount = 0;
+        for (const pedido of emTransito) {
+          try {
+            const res = await fetch(`/api/orders/${pedido.order_id}/location`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lat, lng, accuracy })
+            });
+            if (res.ok) okCount += 1;
+          } catch (_) {}
+        }
+        const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        if (statusEl) {
+          statusEl.textContent = okCount > 0
+            ? `GPS enviado às ${hora} (±${Math.round(accuracy || 0)} m) para ${okCount} chamado(s) em trânsito.`
+            : 'Falha ao enviar posição GPS ao servidor.';
+        }
+      },
+      (err) => {
+        if (statusEl) {
+          statusEl.textContent = err.code === err.PERMISSION_DENIED
+            ? 'Permissão de GPS negada pelo navegador.'
+            : 'Não foi possível obter sinal GPS no momento.';
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  }
+
+  function alternarGpsEmTransito() {
+    if (gpsTransitoAtivo) {
+      pararGpsEmTransito();
+      const statusEl = document.getElementById('statusGpsEmTransito');
+      if (statusEl) statusEl.textContent = 'Envio automático de GPS pausado.';
+      return;
+    }
+    const emTransito = listaPedidos.filter(p => p.status === 'em_transito');
+    if (!emTransito.length) {
+      toast('Nenhum chamado em trânsito no momento.');
+      sincronizarControleGpsEmTransito();
+      return;
+    }
+    gpsTransitoAtivo = true;
+    const btn = document.getElementById('btnToggleGpsEmTransito');
+    const txt = document.getElementById('txtToggleGpsEmTransito');
+    if (btn) btn.setAttribute('aria-pressed', 'true');
+    if (txt) txt.textContent = 'Pausar GPS ao vivo';
+    enviarPosicaoGpsParaPedidosEmTransito();
+    gpsTransitoTimer = setInterval(enviarPosicaoGpsParaPedidosEmTransito, 12000);
+  }
+
+  document.getElementById('btnReenviarVerificacaoEmailPrestador')?.addEventListener('click', reenviarVerificacaoEmailPrestador);
+  document.getElementById('btnConfirmarEmailPrestador')?.addEventListener('click', confirmarTokenEmailPrestador);
+  document.getElementById('btnEnviarOtpTelefone')?.addEventListener('click', enviarOtpTelefone);
+  document.getElementById('btnValidarOtpTelefone')?.addEventListener('click', validarOtpTelefone);
+  document.getElementById('btnToggleGpsEmTransito')?.addEventListener('click', alternarGpsEmTransito);
+  document.getElementById('btnEnviarGpsAgora')?.addEventListener('click', enviarPosicaoGpsParaPedidosEmTransito);
   document.getElementById('chkDisponivel')?.addEventListener('change', alternarDisponibilidade);
   document.getElementById('tabBtnServicos')?.addEventListener('click', () => mudarAba('servicos'));
   document.getElementById('tabBtnPedidos')?.addEventListener('click', () => mudarAba('pedidos'));
