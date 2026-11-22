@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import unittest
 from io import BytesIO
 
 # Ensure repo root and submodules are in sys.path
@@ -17,191 +18,160 @@ if repo_root not in sys.path:
 
 import database
 
-_saved_env = {k: os.environ.get(k) for k in ("VERCEL", "FLASK_ENV", "MARKETPLACE_DB", "ENABLE_DEMO_SEED")}
-_orig_db_path = database.DB_PATH
-_fd, _wsgi_tmp_db = tempfile.mkstemp(suffix=".db")
-os.close(_fd)
 
-try:
-    os.environ["MARKETPLACE_DB"] = _wsgi_tmp_db
-    os.environ["ENABLE_DEMO_SEED"] = "1"
-    os.environ.pop("VERCEL", None)
-    os.environ.pop("FLASK_ENV", None)
-    database.DB_PATH = _wsgi_tmp_db
-    database.init_db()
+class TestWsgiApiAdversarial(unittest.TestCase):
+    """Testes adversariais do entrypoint WSGI Vercel (api/index.py)."""
 
-    from api.index import VercelPathNormalizerWSGI, app, application, handler
+    def test_wsgi_adversarial_suite(self):
+        saved_env = {k: os.environ.get(k) for k in ("VERCEL", "FLASK_ENV", "MARKETPLACE_DB", "ENABLE_DEMO_SEED")}
+        orig_db_path = database.DB_PATH
+        fd, wsgi_tmp_db = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
 
-    print("=" * 64)
-    print("CHALLENGER 1: ADVERSARIAL PYTHON WSGI API TEST SUITE")
-    print("=" * 64)
-
-    # Test 1: Verify AST top-level exports
-    print("\n[Test 1] Verifying top-level exports for @vercel/python AST parser...")
-    assert app is not None, "FAIL: 'app' is None"
-    assert application is app, "FAIL: 'application' does not match 'app'"
-    assert handler is app, "FAIL: 'handler' does not match 'app'"
-    assert isinstance(app.wsgi_app, VercelPathNormalizerWSGI), (
-        "FAIL: wsgi_app is not wrapped in VercelPathNormalizerWSGI"
-    )
-    print("  PASS: Top-level exports verified (app, application, handler all exist and point to WSGI app).")
-
-    def make_wsgi_request(method="GET", path_info="/api/index.py", query_string="", headers=None, body=b""):
-        """Executes a direct raw WSGI call to app.wsgi_app mimicking Vercel gateway"""
-        env = {
-            "REQUEST_METHOD": method,
-            "SCRIPT_NAME": "",
-            "PATH_INFO": path_info,
-            "QUERY_STRING": query_string,
-            "SERVER_NAME": "test-marketplace.vercel.app",
-            "SERVER_PORT": "443",
-            "SERVER_PROTOCOL": "HTTP/1.1",
-            "wsgi.version": (1, 0),
-            "wsgi.url_scheme": "https",
-            "wsgi.input": BytesIO(body),
-            "wsgi.errors": sys.stderr,
-            "wsgi.multithread": False,
-            "wsgi.multiprocess": False,
-            "wsgi.run_once": False,
-            "CONTENT_LENGTH": str(len(body)),
-        }
-        if headers:
-            for k, v in headers.items():
-                header_key = "HTTP_" + k.upper().replace("-", "_")
-                env[header_key] = v
-
-        response_status = None
-        response_headers = None
-
-        def start_response(status, res_headers, exc_info=None):
-            nonlocal response_status, response_headers
-            response_status = status
-            response_headers = res_headers
-
-        res_body_chunks = app.wsgi_app(env, start_response)
-        res_body = b"".join(res_body_chunks)
-        status_code = int(response_status.split()[0])
-
-        # Try parsing JSON
-        json_data = None
         try:
-            json_data = json.loads(res_body.decode("utf-8"))
-        except Exception:
-            pass
+            os.environ["MARKETPLACE_DB"] = wsgi_tmp_db
+            os.environ["ENABLE_DEMO_SEED"] = "1"
+            os.environ.pop("VERCEL", None)
+            os.environ.pop("FLASK_ENV", None)
+            database.DB_PATH = wsgi_tmp_db
+            database.init_db()
 
-        return status_code, response_headers, res_body, json_data
+            from api.index import VercelPathNormalizerWSGI, app, application, handler
 
-    # Test 2: Standard rewritten routes
-    print("\n[Test 2] Testing standard rewritten routes (mimicking Vercel rewrites)...")
+            self.assertIsNotNone(app, "FAIL: 'app' is None")
+            self.assertIs(application, app, "FAIL: 'application' does not match 'app'")
+            self.assertIs(handler, app, "FAIL: 'handler' does not match 'app'")
+            self.assertIsInstance(
+                app.wsgi_app,
+                VercelPathNormalizerWSGI,
+                "FAIL: wsgi_app is not wrapped in VercelPathNormalizerWSGI",
+            )
 
-    # 2a: Healthcheck
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=health")
-    assert status == 200, f"Expected 200, got {status}: {body}"
-    assert jdata.get("status") == "healthy", f"Expected status healthy, got {jdata}"
-    print(f"  PASS: /api/health returned 200 OK (status={jdata.get('status')}, db={jdata.get('database')})")
+            def make_wsgi_request(method="GET", path_info="/api/index.py", query_string="", headers=None, body=b""):
+                """Executes a direct raw WSGI call to app.wsgi_app mimicking Vercel gateway."""
+                env = {
+                    "REQUEST_METHOD": method,
+                    "SCRIPT_NAME": "",
+                    "PATH_INFO": path_info,
+                    "QUERY_STRING": query_string,
+                    "SERVER_NAME": "test-marketplace.vercel.app",
+                    "SERVER_PORT": "443",
+                    "SERVER_PROTOCOL": "HTTP/1.1",
+                    "wsgi.version": (1, 0),
+                    "wsgi.url_scheme": "https",
+                    "wsgi.input": BytesIO(body),
+                    "wsgi.errors": sys.stderr,
+                    "wsgi.multithread": False,
+                    "wsgi.multiprocess": False,
+                    "wsgi.run_once": False,
+                    "CONTENT_LENGTH": str(len(body)),
+                }
+                if headers:
+                    for k, v in headers.items():
+                        header_key = "HTTP_" + k.upper().replace("-", "_")
+                        env[header_key] = v
 
-    # 2b: Services list
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=services")
-    assert status == 200, f"Expected 200, got {status}: {body}"
-    assert isinstance(jdata, list), f"Expected list of services, got {type(jdata)}"
-    assert len(jdata) > 0, "Expected at least 1 service"
-    print(f"  PASS: /api/services returned 200 OK ({len(jdata)} services returned)")
+                response_status = None
+                response_headers = None
 
-    # Test 3: Complex query parameters and sanitation
-    print("\n[Test 3] Testing complex query parameters and __path sanitization...")
+                def start_response(status, res_headers, exc_info=None):
+                    nonlocal response_status, response_headers
+                    response_status = status
+                    response_headers = res_headers
 
-    # 3a: Query with filtering
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "cat=Marcenaria&sort=price_asc&__path=services")
-    assert status == 200, f"Expected 200, got {status}: {body}"
-    assert isinstance(jdata, list), "Expected list of services"
-    for svc in jdata:
-        assert svc["categoria"] == "Marcenaria", f"Expected Marcenaria, got {svc['categoria']}"
-    print(f"  PASS: /api/services?cat=Marcenaria&sort=price_asc returned {len(jdata)} Marcenaria services (sorted).")
+                res_body_chunks = app.wsgi_app(env, start_response)
+                res_body = b"".join(res_body_chunks)
+                status_code = int(response_status.split()[0])
 
-    # 3b: Query with price range
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "min_price=100&max_price=300&__path=services")
-    assert status == 200, f"Expected 200, got {status}"
-    print(f"  PASS: /api/services with price range filtering returned {len(jdata)} services.")
+                json_data = None
+                try:
+                    json_data = json.loads(res_body.decode("utf-8"))
+                except Exception:
+                    pass
 
-    # 3c: Special characters and encoded UTF-8 in query string
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "cat=El%C3%A9trica&__path=services")
-    assert status == 200, f"Expected 200, got {status}"
-    assert all(s["categoria"] == "Elétrica" for s in jdata), "Expected Elétrica category"
-    print(f"  PASS: /api/services?cat=El%C3%A9trica properly decoded UTF-8 query param ({len(jdata)} services).")
+                return status_code, response_headers, res_body, json_data
 
-    # Test 4: Bare /api and /api/
-    print("\n[Test 4] Testing bare /api and /api/ rewrites...")
+            # Test 2: Standard rewritten routes
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=health")
+            self.assertEqual(status, 200, f"Expected 200, got {status}: {body}")
+            self.assertEqual(jdata.get("status"), "healthy")
 
-    # 4a: Bare /api with __path=
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=")
-    assert status == 404, f"Expected 404 for bare /api, got {status}"
-    assert jdata and "error" in jdata, f"Expected JSON error for bare /api, got {jdata}"
-    print(f"  PASS: Bare /api returned expected 404 JSON response: {jdata}")
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=services")
+            self.assertEqual(status, 200, f"Expected 200, got {status}: {body}")
+            self.assertIsInstance(jdata, list)
+            self.assertGreater(len(jdata), 0)
 
-    # Test 5: Authentication & Security boundaries
-    print("\n[Test 5] Testing protected routes security enforcement...")
+            # Test 3: Complex query parameters and __path sanitization
+            status, _, body, jdata = make_wsgi_request(
+                "GET", "/api/index.py", "cat=Marcenaria&sort=price_asc&__path=services"
+            )
+            self.assertEqual(status, 200, f"Expected 200, got {status}: {body}")
+            self.assertIsInstance(jdata, list)
+            for svc in jdata:
+                self.assertEqual(svc["categoria"], "Marcenaria")
 
-    # 5a: Unauthenticated orders
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=orders")
-    assert status == 401, f"Expected 401, got {status}: {body}"
-    print(f"  PASS: Unauthenticated GET /api/orders returned 401 Unauthorized: {jdata}")
+            status, _, body, jdata = make_wsgi_request(
+                "GET", "/api/index.py", "min_price=100&max_price=300&__path=services"
+            )
+            self.assertEqual(status, 200, f"Expected 200, got {status}")
 
-    # 5b: Unauthenticated profile
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=profile")
-    assert status == 401, f"Expected 401, got {status}: {body}"
-    print(f"  PASS: Unauthenticated GET /api/profile returned 401 Unauthorized: {jdata}")
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "cat=El%C3%A9trica&__path=services")
+            self.assertEqual(status, 200, f"Expected 200, got {status}")
+            self.assertTrue(all(s["categoria"] == "Elétrica" for s in jdata))
 
-    # 5c: Dynamic nested route orders pay (CSRF without Origin -> 403; with same-origin -> 401)
-    status, _, body, jdata = make_wsgi_request("POST", "/api/index.py", "__path=orders/999/pay")
-    assert status == 403, f"Expected 403 without Origin/Referer, got {status}: {body}"
-    print(f"  PASS: POST /api/orders/999/pay without Origin/Referer blocked with 403 CSRF: {jdata}")
+            # Test 4: Bare /api and /api/
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=")
+            self.assertEqual(status, 404, f"Expected 404 for bare /api, got {status}")
+            self.assertTrue(jdata and "error" in jdata)
 
-    status, _, body, jdata = make_wsgi_request(
-        "POST", "/api/index.py", "__path=orders/999/pay", headers={"Origin": "https://test-marketplace.vercel.app"}
-    )
-    assert status == 401, f"Expected 401, got {status}: {body}"
-    print(f"  PASS: Unauthenticated POST /api/orders/999/pay with Origin returned 401 Unauthorized: {jdata}")
+            # Test 5: Authentication & Security boundaries
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=orders")
+            self.assertEqual(status, 401, f"Expected 401, got {status}: {body}")
 
-    # Test 6: Adversarial / Malicious WSGI parameters
-    print("\n[Test 6] Adversarial parameter stress testing...")
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=profile")
+            self.assertEqual(status, 401, f"Expected 401, got {status}: {body}")
 
-    # 6a: Leading slashes in __path: __path=/health
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=/health")
-    assert status == 200, f"Expected 200 for leading slash __path, got {status}: {body}"
-    print("  PASS: Leading slash (__path=/health) stripped and resolved to /api/health (200 OK)")
+            status, _, body, jdata = make_wsgi_request("POST", "/api/index.py", "__path=orders/999/pay")
+            self.assertEqual(status, 403, f"Expected 403 without Origin/Referer, got {status}: {body}")
 
-    # 6b: Multiple slashes in __path: __path=///services
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=///services")
-    assert status == 200, f"Expected 200 for triple slash __path, got {status}: {body}"
-    print("  PASS: Multiple slashes (__path=///services) handled cleanly (200 OK)")
+            status, _, body, jdata = make_wsgi_request(
+                "POST",
+                "/api/index.py",
+                "__path=orders/999/pay",
+                headers={"Origin": "https://test-marketplace.vercel.app"},
+            )
+            self.assertEqual(status, 401, f"Expected 401, got {status}: {body}")
 
-    # 6c: Direct PATH_INFO fallback mechanism 2 (HTTP_X_MATCHED_PATH)
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "", headers={"X-Matched-Path": "/api/health"})
-    assert status == 200, f"Expected 200 via X-Matched-Path, got {status}: {body}"
-    print("  PASS: Fallback via HTTP_X_MATCHED_PATH succeeded (200 OK)")
+            # Test 6: Adversarial / Malicious WSGI parameters
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=/health")
+            self.assertEqual(status, 200, f"Expected 200 for leading slash __path, got {status}: {body}")
 
-    # 6d: Direct PATH_INFO fallback mechanism 3 (unprefixed path)
-    status, _, body, jdata = make_wsgi_request("GET", "/health", "")
-    assert status == 200, f"Expected 200 via unprefixed PATH_INFO, got {status}: {body}"
-    print("  PASS: Fallback via unprefixed PATH_INFO /health succeeded (200 OK)")
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=///services")
+            self.assertEqual(status, 200, f"Expected 200 for triple slash __path, got {status}: {body}")
 
-    # 6e: Nonexistent API subpath
-    status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=doesnotexist12345")
-    assert status == 404, f"Expected 404 for nonexistent subpath, got {status}: {body}"
-    print(f"  PASS: Nonexistent API subpath returned clean 404 JSON: {jdata}")
+            status, _, body, jdata = make_wsgi_request(
+                "GET", "/api/index.py", "", headers={"X-Matched-Path": "/api/health"}
+            )
+            self.assertEqual(status, 200, f"Expected 200 via X-Matched-Path, got {status}: {body}")
 
-    print("\n" + "=" * 64)
-    print("ALL ADVERSARIAL WSGI API TESTS PASSED SUCCESSFULLY!")
-    print("=" * 64)
-finally:
-    database.DB_PATH = _orig_db_path
-    for _k, _v in _saved_env.items():
-        if _v is None:
-            os.environ.pop(_k, None)
-        else:
-            os.environ[_k] = _v
-    try:
-        if os.path.exists(_wsgi_tmp_db):
-            os.remove(_wsgi_tmp_db)
-    except OSError:
-        pass
+            status, _, body, jdata = make_wsgi_request("GET", "/health", "")
+            self.assertEqual(status, 200, f"Expected 200 via unprefixed PATH_INFO, got {status}: {body}")
+
+            status, _, body, jdata = make_wsgi_request("GET", "/api/index.py", "__path=doesnotexist12345")
+            self.assertEqual(status, 404, f"Expected 404 for nonexistent subpath, got {status}: {body}")
+        finally:
+            database.DB_PATH = orig_db_path
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            try:
+                if os.path.exists(wsgi_tmp_db):
+                    os.remove(wsgi_tmp_db)
+            except OSError:
+                pass
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
