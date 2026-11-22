@@ -1,6 +1,7 @@
 """Blueprint de autenticação, sessão, recuperação de senha e recurso de conta."""
 
 import hashlib
+import os
 import re
 import secrets
 import sqlite3
@@ -10,12 +11,17 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request, se
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from pertoja._compat import resolve_compat
+from pertoja.blueprints.auth_verification import (
+    create_email_verification_token,
+    register_auth_verification_routes,
+)
 from pertoja.blueprints.profile_routes import register_profile_routes
 from pertoja.config import (
     CATEGORIAS_PERMITIDAS,
     CATEGORIAS_TECNICAS,
     CSRF_COOKIE_NAME,
     PROF_REG_REGEX,
+    is_production_runtime,
 )
 from pertoja.db.connection import PG_DB_ERRORS
 from pertoja.extensions import (
@@ -31,6 +37,7 @@ from pertoja.extensions import (
     set_csrf_cookie,
 )
 from pertoja.services.geo import geocode_address
+from pertoja.services.notifications import send_transactional_email
 from pertoja.services.passwords import validate_password_policy
 
 auth_bp = Blueprint("auth", __name__)
@@ -115,6 +122,11 @@ def register():
             {"error": "Categorias técnicas (Elétrica/Encanamento) exigem registro profissional e KYC Tier 2."}
         ), 403
 
+    require_email_verif = bool(data.get("require_email_verification")) or (
+        os.environ.get("REQUIRE_EMAIL_VERIFICATION") == "1"
+    )
+    email_verified_val = 0 if require_email_verif else 1
+
     conn = compat_get_db_connection()
     try:
         user_exist = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
@@ -125,8 +137,8 @@ def register():
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_status, kyc_documento_tipo, registro_profissional, cpf, status_conta)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aprovado', ?, ?, ?, 'ativo')
+            INSERT INTO users (nome, email, senha_hash, tipo, plano, telefone, bio, cep, endereco, numero, complemento, bairro, cidade, estado, lat, lng, kyc_tier, kyc_status, kyc_documento_tipo, registro_profissional, cpf, status_conta, email_verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aprovado', ?, ?, ?, 'ativo', ?)
         """,
             (
                 nome,
@@ -149,6 +161,7 @@ def register():
                 kyc_documento_tipo,
                 registro_profissional,
                 cpf_limpo,
+                email_verified_val,
             ),
         )
         user_id = cursor.lastrowid
@@ -194,7 +207,22 @@ def register():
                 ),
             )
 
+        verif_token = create_email_verification_token(conn, user_id, email) if require_email_verif else None
         conn.commit()
+
+        if verif_token:
+            base_url = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+            v_url = (
+                f"{base_url}/api/auth/verify-email?token={verif_token}"
+                if base_url
+                else f"/api/auth/verify-email?token={verif_token}"
+            )
+            send_transactional_email(
+                email,
+                "Confirme seu e-mail - PertoJá",
+                f'<p>Confirme seu e-mail no <strong>PertoJá</strong>: <a href="{v_url}">Confirmar</a> ou código <code>{verif_token}</code></p>',
+                f"Confirme seu e-mail no PertoJá: {v_url} (código: {verif_token})",
+            )
 
         session.permanent = True
         session["user_id"] = user_id
@@ -202,36 +230,37 @@ def register():
         session["user_nome"] = nome
         session["session_version"] = 1
 
-        resp = make_response(
-            jsonify(
-                {
-                    "message": "Cadastro realizado com sucesso!",
-                    "user": {
-                        "id": user_id,
-                        "nome": nome,
-                        "email": email,
-                        "tipo": tipo,
-                        "plano": plano,
-                        "telefone": telefone,
-                        "cep": cep,
-                        "endereco": endereco,
-                        "numero": numero,
-                        "bairro": bairro,
-                        "cidade": cidade,
-                        "estado": estado,
-                        "lat": lat,
-                        "lng": lng,
-                        "kyc_tier": kyc_tier,
-                        "kyc_status": "aprovado",
-                        "kyc_documento_tipo": kyc_documento_tipo,
-                        "registro_profissional": registro_profissional,
-                        "cpf": cpf_limpo,
-                        "status_conta": "ativo",
-                    },
-                }
-            ),
-            201,
-        )
+        reg_payload: dict = {
+            "message": "Cadastro realizado com sucesso!",
+            "user": {
+                "id": user_id,
+                "nome": nome,
+                "email": email,
+                "tipo": tipo,
+                "plano": plano,
+                "telefone": telefone,
+                "cep": cep,
+                "endereco": endereco,
+                "numero": numero,
+                "bairro": bairro,
+                "cidade": cidade,
+                "estado": estado,
+                "lat": lat,
+                "lng": lng,
+                "kyc_tier": kyc_tier,
+                "kyc_status": "aprovado",
+                "kyc_documento_tipo": kyc_documento_tipo,
+                "registro_profissional": registro_profissional,
+                "cpf": cpf_limpo,
+                "status_conta": "ativo",
+                "email_verified": bool(email_verified_val),
+                "phone_verified": False,
+            },
+        }
+        if verif_token and not is_production_runtime():
+            reg_payload["verification_token"] = verif_token
+
+        resp = make_response(jsonify(reg_payload), 201)
         set_csrf_cookie(resp)
         return resp
     except (sqlite3.Error, ValueError, RuntimeError, *PG_DB_ERRORS) as exc:
@@ -301,6 +330,8 @@ def login():
                     "kyc_documento_tipo": row_get(user, "kyc_documento_tipo", "RG"),
                     "registro_profissional": row_get(user, "registro_profissional"),
                     "status_conta": row_get(user, "status_conta", "ativo"),
+                    "email_verified": bool(row_get(user, "email_verified", 1)),
+                    "phone_verified": bool(row_get(user, "phone_verified", 0)),
                 },
             }
         )
@@ -336,6 +367,7 @@ def forgot_password():
     """Gera token de redefinição de senha com validade temporária."""
     data = request.get_json(silent=True) or {}
     email = str(data.get("email") or "").strip().lower()
+    issued_token = None
     if email:
         rl_resp = check_email_rate_limit("forgot_password", email, 10, 60)
         if rl_resp is not None:
@@ -345,8 +377,9 @@ def forgot_password():
             conn.execute("DELETE FROM password_reset_tokens WHERE expires_at < ?", (time.time() - 86400,))
             user = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
             if user:
-                token = secrets.token_urlsafe(24)
-                token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+                conn.execute("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0", (user["id"],))
+                issued_token = secrets.token_urlsafe(24)
+                token_hash = hashlib.sha256(issued_token.encode("utf-8")).hexdigest()
                 expires_at = time.time() + 1800
                 conn.execute(
                     "INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)",
@@ -356,7 +389,24 @@ def forgot_password():
         finally:
             conn.close()
 
-    return jsonify({"message": "Se o e-mail estiver cadastrado, as instruções de redefinição foram geradas."}), 200
+        if issued_token:
+            base_url = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+            reset_url = (
+                f"{base_url}/reset-password?token={issued_token}"
+                if base_url
+                else f"/reset-password?token={issued_token}"
+            )
+            send_transactional_email(
+                email,
+                "Redefinição de senha - PertoJá",
+                f'<p>Redefina sua senha no <strong>PertoJá</strong>: <a href="{reset_url}">Redefinir</a> ou token <code>{issued_token}</code></p>',
+                f"Redefina sua senha no PertoJá: {reset_url} (token: {issued_token})",
+            )
+
+    payload: dict = {"message": "Se o e-mail estiver cadastrado, as instruções de redefinição foram geradas."}
+    if issued_token and not is_production_runtime():
+        payload["reset_token"] = issued_token
+    return jsonify(payload), 200
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
@@ -432,6 +482,8 @@ def me():
                 "kyc_documento_tipo": row_get(user, "kyc_documento_tipo", "RG"),
                 "registro_profissional": row_get(user, "registro_profissional"),
                 "status_conta": row_get(user, "status_conta", "ativo"),
+                "email_verified": bool(row_get(user, "email_verified", 1)),
+                "phone_verified": bool(row_get(user, "phone_verified", 0)),
             },
         }
     )
@@ -471,3 +523,4 @@ def create_account_appeal():
 
 
 register_profile_routes(auth_bp)
+register_auth_verification_routes(auth_bp)

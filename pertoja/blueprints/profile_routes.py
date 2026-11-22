@@ -58,6 +58,8 @@ def register_profile_routes(auth_bp) -> None:
                     "kyc_documento_tipo": row_get(user, "kyc_documento_tipo", "RG"),
                     "registro_profissional": row_get(user, "registro_profissional"),
                     "status_conta": row_get(user, "status_conta", "ativo"),
+                    "email_verified": bool(row_get(user, "email_verified", 1)),
+                    "phone_verified": bool(row_get(user, "phone_verified", 0)),
                 }
             )
 
