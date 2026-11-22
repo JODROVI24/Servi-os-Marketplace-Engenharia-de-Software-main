@@ -1,0 +1,83 @@
+"""API pública do subpacote de LLM em pertoja/llm."""
+
+from pertoja.llm.client import (
+    LLMUnavailableError,
+    _classify_exception,
+    _extract_json_content,
+    _extract_openai_sdk_content,
+    _flatten_messages_to_prompt,
+    call_llm,
+    clear_last_call_meta,
+    get_last_call_meta,
+    get_llm_health_status,
+)
+from pertoja.llm.discovery import (
+    _discover_active_chat_models,
+    _get_cached_discovered_models,
+    _rank_discovered_chat_model,
+    clear_discovered_models_cache,
+)
+from pertoja.llm.fallback import fallback_ad_description, fallback_chat_support_reply
+from pertoja.llm.pii import redact_pii_for_llm, sanitize_user_context_for_llm
+from pertoja.llm.prompts import (
+    build_support_messages,
+    build_support_system_prompt,
+    sanitize_history,
+)
+from pertoja.llm.providers import (
+    DEFAULT_FREELM_BASE_URL,
+    DEFAULT_FREELM_MODEL,
+    DEFAULT_OPENAI_BASE_URL,
+    VALID_UNAVAILABLE_REASONS,
+    _build_primary_model_and_fallbacks,
+    _detect_explicit_provider_name,
+    _first_configured_cloud_spec,
+    _sanitize_error_text,
+    get_active_provider_name,
+    get_llm_api_key,
+    get_llm_base_url,
+    get_llm_model,
+    is_localhost_url,
+    is_serverless_env,
+    normalize_base_url,
+    resolve_provider_chain,
+)
+
+__all__ = [
+    "DEFAULT_FREELM_BASE_URL",
+    "DEFAULT_FREELM_MODEL",
+    "DEFAULT_OPENAI_BASE_URL",
+    "VALID_UNAVAILABLE_REASONS",
+    "LLMUnavailableError",
+    "_build_primary_model_and_fallbacks",
+    "_classify_exception",
+    "_detect_explicit_provider_name",
+    "_discover_active_chat_models",
+    "_extract_json_content",
+    "_extract_openai_sdk_content",
+    "_first_configured_cloud_spec",
+    "_flatten_messages_to_prompt",
+    "_get_cached_discovered_models",
+    "_rank_discovered_chat_model",
+    "_sanitize_error_text",
+    "build_support_messages",
+    "build_support_system_prompt",
+    "call_llm",
+    "clear_discovered_models_cache",
+    "clear_last_call_meta",
+    "fallback_ad_description",
+    "fallback_chat_support_reply",
+    "get_active_provider_name",
+    "get_last_call_meta",
+    "get_llm_api_key",
+    "get_llm_base_url",
+    "get_llm_health_status",
+    "get_llm_model",
+    "is_localhost_url",
+    "is_serverless_env",
+    "normalize_base_url",
+    "redact_pii_for_llm",
+    "resolve_provider_chain",
+    "sanitize_history",
+    "sanitize_user_context_for_llm",
+]
