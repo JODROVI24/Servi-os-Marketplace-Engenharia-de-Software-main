@@ -323,6 +323,116 @@ def register_order_extra_routes(orders_bp) -> None:
             }
         ), 201
 
+    @orders_bp.route("/api/orders/<int:order_id>/location", methods=["POST", "GET"])
+    @rate_limit(120, 60)
+    def order_location(order_id):
+        user = get_current_user()
+        if not user:
+            return jsonify({"error": "Autenticação obrigatória."}), 401
+
+        conn = compat_get_db_connection()
+        try:
+            order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if not order:
+                return jsonify({"error": "Pedido não encontrado."}), 404
+
+            active_statuses = ("confirmado", "em_transito", "em_execucao")
+
+            if request.method == "GET":
+                if user["id"] not in (order["cliente_id"], order["prestador_id"]):
+                    return jsonify({"error": "Sem permissão para visualizar localização deste pedido."}), 403
+
+                lat_val = row_get(order, "prestador_lat_atual")
+                lng_val = row_get(order, "prestador_lng_atual")
+                has_real_gps = lat_val is not None and lng_val is not None and order["status"] in active_statuses
+                if has_real_gps:
+                    acc_val = row_get(order, "prestador_gps_accuracy")
+                    upd_val = row_get(order, "prestador_gps_updated_at")
+                    return jsonify(
+                        {
+                            "order_id": order_id,
+                            "tracking_mode": "real_gps",
+                            "is_estimated": False,
+                            "label": "Posição GPS em tempo real",
+                            "lat": float(lat_val),
+                            "lng": float(lng_val),
+                            "accuracy": float(acc_val) if acc_val is not None else None,
+                            "updated_at": str(upd_val) if upd_val else None,
+                            "recommended_poll_seconds": 12,
+                        }
+                    ), 200
+                return jsonify(
+                    {
+                        "order_id": order_id,
+                        "tracking_mode": "estimated",
+                        "is_estimated": True,
+                        "label": "Posição estimada",
+                        "lat": None,
+                        "lng": None,
+                        "accuracy": None,
+                        "updated_at": None,
+                        "recommended_poll_seconds": 12,
+                    }
+                ), 200
+
+            if user["tipo"] != "prestador" or int(order["prestador_id"]) != int(user["id"]):
+                return jsonify({"error": "Apenas o prestador responsável pode atualizar a localização."}), 403
+            if order["status"] not in active_statuses:
+                return jsonify({"error": "Atualização de GPS permitida apenas para pedidos em andamento."}), 400
+
+            data = request.get_json(silent=True) or {}
+            raw_lat = data.get("lat")
+            raw_lng = data.get("lng")
+            if raw_lat is None or raw_lng is None or isinstance(raw_lat, bool) or isinstance(raw_lng, bool):
+                return jsonify({"error": "Coordenadas lat e lng são obrigatórias."}), 400
+            try:
+                lat = float(raw_lat)
+                lng = float(raw_lng)
+            except (ValueError, TypeError):
+                return jsonify({"error": "Coordenadas lat/lng inválidas."}), 400
+            if not (math.isfinite(lat) and math.isfinite(lng) and -90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+                return jsonify({"error": "Coordenadas lat/lng fora dos limites geográficos."}), 400
+
+            accuracy = None
+            raw_acc = data.get("accuracy")
+            if raw_acc is not None:
+                if isinstance(raw_acc, bool):
+                    return jsonify({"error": "Precisão GPS inválida."}), 400
+                try:
+                    accuracy = float(raw_acc)
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Precisão GPS inválida."}), 400
+                if not math.isfinite(accuracy) or accuracy < 0.0:
+                    return jsonify({"error": "Precisão GPS deve ser não negativa."}), 400
+
+            conn.execute(
+                """
+                UPDATE orders
+                SET prestador_lat_atual = ?,
+                    prestador_lng_atual = ?,
+                    prestador_gps_accuracy = ?,
+                    prestador_gps_updated_at = CURRENT_TIMESTAMP,
+                    atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (lat, lng, accuracy, order_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        return jsonify(
+            {
+                "order_id": order_id,
+                "lat": lat,
+                "lng": lng,
+                "accuracy": accuracy,
+                "tracking_mode": "real_gps",
+                "is_estimated": False,
+                "label": "Posição GPS em tempo real",
+            }
+        ), 200
+
     @orders_bp.route("/api/orders/<int:order_id>/share-route", methods=["POST"])
     def share_order_route(order_id):
         user = get_current_user()
@@ -352,6 +462,7 @@ def register_order_extra_routes(orders_bp) -> None:
             row = conn.execute(
                 """
                 SELECT o.id AS order_id, o.status, o.bairro_cliente, o.cidade_cliente,
+                       o.prestador_lat_atual, o.prestador_lng_atual,
                        o.atualizado_em, s.titulo AS servico_titulo, u.nome AS prestador_nome
                 FROM orders o
                 LEFT JOIN services s ON o.servico_id = s.id
@@ -368,6 +479,14 @@ def register_order_extra_routes(orders_bp) -> None:
         if row["status"] in ("finalizado", "cancelado"):
             return jsonify({"error": "Link de compartilhamento expirado pois o pedido foi encerrado."}), 410
 
+        lat_atual = row_get(row, "prestador_lat_atual")
+        lng_atual = row_get(row, "prestador_lng_atual")
+        has_real_gps = (
+            lat_atual is not None
+            and lng_atual is not None
+            and row["status"] in ("confirmado", "em_transito", "em_execucao")
+        )
+
         return jsonify(
             {
                 "order_id": row["order_id"],
@@ -376,6 +495,10 @@ def register_order_extra_routes(orders_bp) -> None:
                 "prestador_nome": row["prestador_nome"],
                 "bairro_cliente": row["bairro_cliente"],
                 "cidade_cliente": row["cidade_cliente"],
+                "tracking_mode": "real_gps" if has_real_gps else "estimated",
+                "posicao_estimada": not has_real_gps,
+                "prestador_lat_atual": float(lat_atual) if has_real_gps else None,
+                "prestador_lng_atual": float(lng_atual) if has_real_gps else None,
                 "atualizado_em": str(row["atualizado_em"]),
             }
         ), 200

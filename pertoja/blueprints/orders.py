@@ -56,6 +56,9 @@ def create_order():
             {"error": "Conta em revisão cadastral (KYC) ou reprovada não pode criar chamados.", "code": "FORBIDDEN"}
         ), 403
 
+    if int(row_get(user, "email_verified", 1) or 0) == 0:
+        return jsonify({"error": "Confirme seu e-mail antes de solicitar serviços.", "code": "EMAIL_NOT_VERIFIED"}), 403
+
     data = request.get_json() or {}
 
     aceite_termos = data.get("aceite_termos")
@@ -360,6 +363,10 @@ def list_orders():
                 o.share_token,
                 o.confirmado_cliente,
                 o.release_due_at,
+                o.prestador_lat_atual,
+                o.prestador_lng_atual,
+                o.prestador_gps_accuracy,
+                o.prestador_gps_updated_at,
                 EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'cliente') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
@@ -409,6 +416,10 @@ def list_orders():
                 o.share_token,
                 o.confirmado_cliente,
                 o.release_due_at,
+                o.prestador_lat_atual,
+                o.prestador_lng_atual,
+                o.prestador_gps_accuracy,
+                o.prestador_gps_updated_at,
                 EXISTS(SELECT 1 FROM reviews r WHERE r.order_id = o.id AND COALESCE(r.autor_tipo, 'cliente') = 'prestador') AS ja_avaliado,
                 o.criado_em,
                 COALESCE(s.titulo, 'Serviço Solicitado') AS servico_titulo,
@@ -457,6 +468,23 @@ def list_orders():
         item["taxa_deslocamento"] = float(item.get("taxa_deslocamento") or 0.0)
         item["valor_estornado"] = float(item.get("valor_estornado") or 0.0)
         item["em_disputa"] = item.get("status") == "em_disputa"
+
+        has_real_gps = (
+            item.get("prestador_lat_atual") is not None
+            and item.get("prestador_lng_atual") is not None
+            and item.get("status") in ("confirmado", "em_transito", "em_execucao")
+        )
+        item["tracking_mode"] = "real_gps" if has_real_gps else "estimated"
+        item["posicao_estimada"] = not has_real_gps
+        if has_real_gps:
+            item["prestador_gps_updated_at"] = (
+                str(item["prestador_gps_updated_at"]) if item.get("prestador_gps_updated_at") else None
+            )
+        else:
+            item["prestador_lat_atual"] = None
+            item["prestador_lng_atual"] = None
+            item["prestador_gps_accuracy"] = None
+            item["prestador_gps_updated_at"] = None
 
         if user["tipo"] == "prestador":
             item["codigo_confirmacao"] = None

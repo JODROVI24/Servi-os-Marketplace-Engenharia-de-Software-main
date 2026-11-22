@@ -3,7 +3,6 @@
 import os
 import re
 import sqlite3
-import time
 
 from werkzeug.security import generate_password_hash
 
@@ -16,24 +15,34 @@ from pertoja.db.connection import (
     get_db_connection,
     is_demo_seed_enabled,
 )
+from pertoja.db.migrations_tables import (
+    _get_table_columns,
+    _retire_legacy_table,
+    cleanup_legacy_payment_tables,
+    ensure_phase5_tables,
+    table_exists,
+)
 from pertoja.db.schema_postgres import POSTGRES_SCHEMA_SQL
 from pertoja.db.schema_sqlite import SQLITE_SCHEMA_SQL
 from pertoja.db.seed import sincronizar_todos_prestadores
 from pertoja.logging_config import get_logger
 
 _logger = get_logger("pertoja.db.migrations")
-
-
-def _table_exists(cursor, table_name: str, engine: str) -> bool:
-    """Verifica se uma tabela já existe no banco ativo."""
-    if engine == "postgresql":
-        row = cursor.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
-            (table_name,),
-        ).fetchone()
-    else:
-        row = cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone()
-    return row is not None
+_table_exists = table_exists
+_cleanup_legacy_payment_tables = cleanup_legacy_payment_tables
+__all__ = [
+    "_cleanup_legacy_payment_tables",
+    "_ensure_columns",
+    "_ensure_migrations_table",
+    "_ensure_orders_status_check",
+    "_get_table_columns",
+    "_retire_legacy_table",
+    "_seed_demo_accounts",
+    "_table_exists",
+    "init_db",
+    "list_migration_files",
+    "run_migrations",
+]
 
 
 def _ensure_migrations_table(cursor) -> None:
@@ -129,6 +138,10 @@ def _ensure_columns(conn, cursor, engine: str) -> None:
             ("cpf", "TEXT"),
             ("status_conta", "TEXT DEFAULT 'ativo'"),
             ("session_version", "INTEGER DEFAULT 1"),
+            ("email_verified", "INTEGER DEFAULT 1"),
+            ("email_verified_at", "TIMESTAMP"),
+            ("phone_verified", "INTEGER DEFAULT 0"),
+            ("phone_verified_at", "TIMESTAMP"),
         ],
         "orders": [
             ("complemento_cliente", "TEXT"),
@@ -147,6 +160,10 @@ def _ensure_columns(conn, cursor, engine: str) -> None:
             ("release_due_at", "TIMESTAMP"),
             ("confirmado_cliente", "INTEGER DEFAULT 0"),
             ("pin_tentativas", "INTEGER DEFAULT 0"),
+            ("prestador_lat_atual", real_type),
+            ("prestador_lng_atual", real_type),
+            ("prestador_gps_accuracy", real_type),
+            ("prestador_gps_updated_at", "TIMESTAMP"),
         ],
         "reviews": [
             ("autor_tipo", "TEXT DEFAULT 'cliente'"),
@@ -251,6 +268,10 @@ def _ensure_orders_status_check(conn, cursor, engine: str) -> None:
         "release_due_at",
         "confirmado_cliente",
         "pin_tentativas",
+        "prestador_lat_atual",
+        "prestador_lng_atual",
+        "prestador_gps_accuracy",
+        "prestador_gps_updated_at",
         "criado_em",
         "atualizado_em",
     ]
@@ -291,6 +312,10 @@ def _ensure_orders_status_check(conn, cursor, engine: str) -> None:
             release_due_at TIMESTAMP,
             confirmado_cliente INTEGER DEFAULT 0,
             pin_tentativas INTEGER DEFAULT 0,
+            prestador_lat_atual REAL,
+            prestador_lng_atual REAL,
+            prestador_gps_accuracy REAL,
+            prestador_gps_updated_at TIMESTAMP,
             criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -307,125 +332,6 @@ def _ensure_orders_status_check(conn, cursor, engine: str) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
     cursor.execute("PRAGMA foreign_keys = ON;")
     conn.commit()
-
-
-def _get_table_columns(cursor, table_name: str, engine: str) -> set[str]:
-    """Retorna o conjunto de nomes de colunas existentes em uma tabela."""
-    if engine == "postgresql":
-        rows = cursor.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ?",
-            (table_name,),
-        ).fetchall()
-        cols = set()
-        for r in rows:
-            try:
-                cols.add(r["column_name"])
-            except (KeyError, TypeError, IndexError):
-                cols.add(r[0])
-        return cols
-    info_rows = cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
-    cols = set()
-    for r in info_rows:
-        try:
-            cols.add(r["name"])
-        except (KeyError, TypeError, IndexError):
-            cols.add(r[1])
-    return cols
-
-
-def _retire_legacy_table(cursor, table_name: str, engine: str, ts_suffix: str) -> None:
-    """Remove tabela legada vazia ou renomeia preservando dados sem colisão de índices/constraints."""
-    row = cursor.execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()
-    try:
-        count = int(row["cnt"])
-    except (KeyError, TypeError, IndexError):
-        count = int(row[0]) if row else 0
-    if count == 0:
-        if engine == "postgresql":
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
-        else:
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-        return
-
-    legacy_name = f"{table_name}_legacy_{ts_suffix}"
-    cursor.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_name}")
-
-    if engine == "postgresql":
-        con_rows = cursor.execute(
-            "SELECT c.conname FROM pg_constraint c "
-            "JOIN pg_class cl ON c.conrelid = cl.oid "
-            "JOIN pg_namespace n ON cl.relnamespace = n.oid "
-            "WHERE n.nspname = 'public' AND cl.relname = ?",
-            (legacy_name,),
-        ).fetchall()
-        for r in con_rows:
-            try:
-                conname = r["conname"]
-            except (KeyError, TypeError, IndexError):
-                conname = r[0]
-            if conname and not str(conname).endswith(f"_legacy_{ts_suffix}"):
-                new_con = f"{str(conname)[:40]}_legacy_{ts_suffix}"
-                cursor.execute(f"ALTER TABLE {legacy_name} RENAME CONSTRAINT {conname} TO {new_con}")
-
-        idx_rows = cursor.execute(
-            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ?",
-            (legacy_name,),
-        ).fetchall()
-        for r in idx_rows:
-            try:
-                idx_name = r["indexname"]
-            except (KeyError, TypeError, IndexError):
-                idx_name = r[0]
-            if idx_name and (str(idx_name).startswith("idx_pay_") or str(idx_name).startswith("idx_payment_")):
-                new_idx = f"{str(idx_name)[:40]}_legacy_{ts_suffix}"
-                cursor.execute(f"ALTER INDEX IF EXISTS {idx_name} RENAME TO {new_idx}")
-    else:
-        idx_rows = cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex_%'",
-            (legacy_name,),
-        ).fetchall()
-        for r in idx_rows:
-            try:
-                idx_name = r["name"]
-            except (KeyError, TypeError, IndexError):
-                idx_name = r[0]
-            if idx_name and (str(idx_name).startswith("idx_pay_") or str(idx_name).startswith("idx_payment_")):
-                cursor.execute(f"DROP INDEX IF EXISTS {idx_name}")
-
-
-def _cleanup_legacy_payment_tables(conn, cursor, engine: str) -> None:
-    """Remove ou arquiva tabelas de pagamento legadas incompatíveis antes das migrations."""
-    ts_suffix = str(int(time.time()))
-    changed = False
-
-    tx_exists = _table_exists(cursor, "payment_transactions", engine)
-    tx_is_legacy = False
-    if tx_exists:
-        tx_cols = _get_table_columns(cursor, "payment_transactions", engine)
-        tx_is_legacy = "amount_cents" not in tx_cols
-
-    if tx_is_legacy:
-        for extra_legacy in ("payment_tokens", "idempotency_keys", "payment_payment_refs"):
-            if _table_exists(cursor, extra_legacy, engine):
-                _retire_legacy_table(cursor, extra_legacy, engine, ts_suffix)
-                changed = True
-
-    legacy_checks = (
-        ("payment_refunds", "payment_id"),
-        ("payment_idempotency_keys", "scope"),
-        ("payment_webhooks", "event_id"),
-        ("payment_transactions", "amount_cents"),
-        ("payment_methods", "gateway_token"),
-    )
-    for tbl_name, required_col in legacy_checks:
-        if _table_exists(cursor, tbl_name, engine):
-            cols = _get_table_columns(cursor, tbl_name, engine)
-            if required_col not in cols:
-                _retire_legacy_table(cursor, tbl_name, engine, ts_suffix)
-                changed = True
-
-    if changed:
-        conn.commit()
 
 
 def _seed_demo_accounts(conn, cursor) -> None:
@@ -493,7 +399,7 @@ def init_db() -> None:
             cursor.execute("SELECT pg_advisory_lock(7391042)")
             conn.commit()
 
-        _cleanup_legacy_payment_tables(conn, cursor, engine)
+        cleanup_legacy_payment_tables(conn, cursor, engine)
 
         core_tables = (
             "users",
@@ -516,6 +422,7 @@ def init_db() -> None:
             conn.commit()
 
         ensure_cols_fn(conn, cursor, engine)
+        ensure_phase5_tables(conn, cursor, engine)
         _ensure_orders_status_check(conn, cursor, engine)
         run_mig_fn(conn=conn, dry_run=False)
 

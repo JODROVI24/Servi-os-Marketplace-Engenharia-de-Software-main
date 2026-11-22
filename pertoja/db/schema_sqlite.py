@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS users (
     cpf TEXT,
     status_conta TEXT DEFAULT 'ativo',
     session_version INTEGER DEFAULT 1,
+    email_verified INTEGER DEFAULT 1,
+    email_verified_at TIMESTAMP,
+    phone_verified INTEGER DEFAULT 0,
+    phone_verified_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -87,6 +91,10 @@ CREATE TABLE IF NOT EXISTS orders (
     release_due_at TIMESTAMP,
     confirmado_cliente INTEGER DEFAULT 0,
     pin_tentativas INTEGER DEFAULT 0,
+    prestador_lat_atual REAL,
+    prestador_lng_atual REAL,
+    prestador_gps_accuracy REAL,
+    prestador_gps_updated_at TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cliente_id) REFERENCES users(id),
@@ -328,4 +336,31 @@ CREATE TABLE IF NOT EXISTS payment_refunds (
 
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_payment ON payment_refunds(payment_id);
 CREATE INDEX IF NOT EXISTS idx_pay_refunds_order ON payment_refunds(order_id);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    email TEXT NOT NULL,
+    expires_at REAL NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verif_user ON email_verification_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS phone_otp_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    telefone TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    canal TEXT DEFAULT 'sms',
+    expires_at REAL NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    used INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_otp_user ON phone_otp_tokens(user_id);
 """

@@ -1,6 +1,9 @@
 """Serviços de consulta de CEP e geocodificação multinível com cache."""
 
+import os
 import re
+import threading
+import time
 
 import requests
 
@@ -9,6 +12,32 @@ from pertoja.logging_config import get_logger
 from pertoja.repositories.geocode import get_cached_geocode, save_cached_geocode
 
 _logger = get_logger("pertoja.services.geo")
+
+NOMINATIM_USER_AGENT = (
+    os.environ.get("NOMINATIM_USER_AGENT") or "PertoJaMarketplace/2.0 (+https://pertoja.com.br; suporte@pertoja.com.br)"
+)
+NOMINATIM_MIN_INTERVAL_SECONDS = 1.0
+_nominatim_lock = threading.Lock()
+_last_nominatim_request_at: float | None = None
+
+
+def reset_nominatim_throttle() -> None:
+    """Reseta o estado do throttle do Nominatim para testes isolados."""
+    global _last_nominatim_request_at
+    with _nominatim_lock:
+        _last_nominatim_request_at = None
+
+
+def _throttle_nominatim_request() -> None:
+    """Garante no máximo 1 requisição por segundo para o Nominatim de forma thread-safe."""
+    global _last_nominatim_request_at
+    with _nominatim_lock:
+        now = time.monotonic()
+        if _last_nominatim_request_at is not None:
+            elapsed = now - _last_nominatim_request_at
+            if elapsed < NOMINATIM_MIN_INTERVAL_SECONDS:
+                time.sleep(NOMINATIM_MIN_INTERVAL_SECONDS - elapsed)
+        _last_nominatim_request_at = time.monotonic()
 
 
 def geocode_address(
@@ -68,7 +97,7 @@ def geocode_address(
             add(f"{parts[-1]}, Brasil", False)
 
     req_mod = resolve_compat("app", "requests", requests)
-    headers = {"User-Agent": "PertoJaMarketplace/2.0 (suporte@pertoja.com.br)"}
+    headers = {"User-Agent": NOMINATIM_USER_AGENT}
     for cand, precise in candidates:
         if precise_only and not precise:
             continue
@@ -77,6 +106,7 @@ def geocode_address(
             return cached_cand
         try:
             url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(cand)}&limit=1"
+            _throttle_nominatim_request()
             resp = req_mod.get(url, headers=headers, timeout=3.0)
             if resp.status_code == 200:
                 res = resp.json()
