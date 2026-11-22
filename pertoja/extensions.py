@@ -15,14 +15,16 @@ from urllib.parse import urlparse
 import requests
 from flask import current_app, g, jsonify, make_response, request, session
 
-from pertoja._compat import resolve_compat
+from pertoja._compat import resolve_compat, resolve_db_connection_factory
 from pertoja.config import (
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
     CSRF_ORDER_PAY_RE,
     hash_ip_with_secret,
 )
+from pertoja.db.connection import get_db_connection
 from pertoja.logging_config import get_logger
+from pertoja.repositories.users import find_user_by_id
 from pertoja.security_headers import apply_security_headers
 
 _logger = get_logger("pertoja.extensions")
@@ -456,6 +458,41 @@ def add_response_headers_and_compression(response):
             response.headers["Vary"] = "Accept-Encoding"
 
     return response
+
+
+def compat_get_db_connection():
+    """Abre conexão via get_db_connection respeitando eventuais patches nos testes."""
+    return resolve_db_connection_factory(get_db_connection)()
+
+
+def get_current_user():
+    """Obtém o usuário autenticado na sessão validando status e session_version."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    conn = compat_get_db_connection()
+    try:
+        user = find_user_by_id(conn, user_id)
+    finally:
+        conn.close()
+    if not user:
+        session.clear()
+        return None
+    status_conta = row_get(user, "status_conta", "ativo")
+    if status_conta in ("bloqueado", "anonimizado"):
+        session.clear()
+        return None
+    db_sv = int(row_get(user, "session_version", 1) or 1)
+    sess_sv = session.get("session_version")
+    try:
+        sess_sv_int = int(sess_sv) if sess_sv is not None else 1
+    except (ValueError, TypeError):
+        session.clear()
+        return None
+    if sess_sv_int != db_sv:
+        session.clear()
+        return None
+    return user
 
 
 def require_active_account(user):
