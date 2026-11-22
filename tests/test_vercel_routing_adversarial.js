@@ -9,14 +9,9 @@ const path = require('path');
 let routingUtils;
 try {
   routingUtils = require('@vercel/routing-utils');
-} catch (e) {
-  try {
-    const workerNodeModules = path.resolve(__dirname, '../.agents/teamwork/worker_m1/node_modules');
-    routingUtils = require(path.join(workerNodeModules, '@vercel/routing-utils'));
-  } catch (err2) {
-    console.log('[INFO] @vercel/routing-utils não instalado no ambiente global. Instale @vercel/routing-utils para executar a compilação formal de rotas.');
-    process.exit(0);
-  }
+} catch (_e) {
+  console.error('[FAIL] @vercel/routing-utils não instalado. Execute "npm ci" antes de rodar este teste.');
+  process.exit(1);
 }
 
 const rootDir = path.resolve(__dirname, '..');
@@ -130,6 +125,19 @@ function simulateVercelRequest(requestUrl) {
         status: 200,
         type: 'DIRECTORY_INDEX',
         file: path.join(cleanFsPath, 'index.html')
+      };
+    }
+  }
+
+  // 2d. Zero-config Python Serverless Function entrypoint (/api -> api/index.py)
+  if (pathname === '/api') {
+    const apiIndexPath = path.join(rootDir, 'api', 'index.py');
+    if (fs.existsSync(apiIndexPath) && fs.statSync(apiIndexPath).isFile()) {
+      return {
+        status: 200,
+        type: 'SERVERLESS_FUNCTION',
+        file: 'api/index.py',
+        absolutePath: apiIndexPath
       };
     }
   }
@@ -376,51 +384,51 @@ const testCases = [
     url: '/api/services?cat=Marcenaria&sort=price_asc',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=services&cat=Marcenaria&sort=price_asc'
+    expectedTarget: '/api?cat=Marcenaria&sort=price_asc'
   },
   {
     name: '5b. Complex API with multiple filters',
     url: '/api/services?cat=Limpeza&min_price=50&max_price=200',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=services&cat=Limpeza&min_price=50&max_price=200'
+    expectedTarget: '/api?cat=Limpeza&min_price=50&max_price=200'
   },
   {
     name: '5c. Nested resource "/api/orders/123/pay"',
     url: '/api/orders/123/pay',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=orders/123/pay'
+    expectedTarget: '/api'
   },
   {
     name: '5d. Dynamic param "/api/cep/01001000"',
     url: '/api/cep/01001000',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=cep/01001000'
+    expectedTarget: '/api'
   },
   {
     name: '5e. Geocode query "/api/geocode?address=Av+Paulista"',
     url: '/api/geocode?address=Av+Paulista',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=geocode&address=Av+Paulista'
+    expectedTarget: '/api?address=Av+Paulista'
   },
 
   // --- Category 6: Bare /api and /api/ ---
   {
     name: '6a. Bare "/api"',
     url: '/api',
-    expectedType: 'REWRITE',
+    expectedType: 'SERVERLESS_FUNCTION',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path='
+    expectedTarget: 'api/index.py'
   },
   {
     name: '6b. Bare "/api/" with trailing slash',
     url: '/api/',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path='
+    expectedTarget: '/api'
   },
 
   // --- Category 7: Nonexistent static routes ---
@@ -467,7 +475,7 @@ const testCases = [
     url: '/api/v1/deep/nested/endpoint',
     expectedType: 'REWRITE',
     expectedStatus: 200,
-    expectedTarget: '/api/index.py?__path=v1/deep/nested/endpoint'
+    expectedTarget: '/api'
   }
 ];
 
