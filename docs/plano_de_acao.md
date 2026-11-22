@@ -7,7 +7,8 @@ Repositório: https://github.com/JODROVI24/Servi-os-Marketplace-Engenharia-de-So
 > - **Fase 0 – Preparação:** Concluída (`docs/baseline.md`, branch `melhorias`, Neon Prod + Supabase Dev)
 > - **Fase 1 – Segurança crítica:** Concluída (commits até `bf3b8db`)
 > - **Fase 2 – Segurança do frontend e performance:** Concluída (commits `32f2a99`..`2c507e7`, medições pós-Fase 2 na Seção 8 de `docs/baseline.md`)
-> - **Fases 3, 4 e 5:** Pendentes.
+> - **Fase 4 – CI, dependências e deploy:** Concluída (commits `d59ff70`..`20f9dc8`)
+> - **Fases 3 e 5:** Pendentes.
 
 ```mermaid
 flowchart LR
@@ -81,7 +82,7 @@ flowchart LR
 
 ---
 
-## Fase 4 – CI, dependências e deploy (≈ 1–2 dias) 🔵 Pendente
+## Fase 4 – CI, dependências e deploy (≈ 1–2 dias) ✅ Concluída
 
 *(pode rodar em paralelo à Fase 2 ou 3)*
 
