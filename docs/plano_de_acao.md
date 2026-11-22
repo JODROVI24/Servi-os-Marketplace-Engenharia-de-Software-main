@@ -7,8 +7,9 @@ Repositório: https://github.com/JODROVI24/Servi-os-Marketplace-Engenharia-de-So
 > - **Fase 0 – Preparação:** Concluída (`docs/baseline.md`, branch `melhorias`, Neon Prod + Supabase Dev)
 > - **Fase 1 – Segurança crítica:** Concluída (commits até `bf3b8db`)
 > - **Fase 2 – Segurança do frontend e performance:** Concluída (commits `32f2a99`..`2c507e7`, medições pós-Fase 2 na Seção 8 de `docs/baseline.md`)
+> - **Fase 3 – Refatoração da arquitetura:** Concluída (commits `a277fad`..`ae74b0b`; `app.py` com 80 linhas, 60 arquivos Python de produção ≤ 541 linhas, 8 Blueprints em `pertoja/blueprints/` e 8 ES modules em `public/js/modules/`)
 > - **Fase 4 – CI, dependências e deploy:** Concluída (commits `d59ff70`..`20f9dc8`)
-> - **Fases 3 e 5:** Pendentes.
+> - **Fase 5:** Pendente.
 
 ```mermaid
 flowchart LR
@@ -62,23 +63,26 @@ flowchart LR
 
 ---
 
-## Fase 3 – Refatoração da arquitetura (≈ 5–7 dias) 🟡 Pendente
+## Fase 3 – Refatoração da arquitetura (≈ 5–7 dias) ✅ Concluída
 
 > [!WARNING]
 > É a fase mais arriscada. Faça a refatoração **sem mudar comportamento** e confie nos testes. Mova um Blueprint por vez.
 
-| # | Item | O que fazer |
-|---|---|---|
-| 3.1 | Estrutura em pacote | Criar `pertoja/` com `__init__.py` (padrão application factory `create_app()`), `config.py`, `extensions.py` |
-| 3.2 | Blueprints | Dividir as 55 rotas do `app.py` em `auth`, `providers`, `services`, `orders`, `payments`, `webhooks`, `llm`, `pages` |
-| 3.3 | Camada de dados | Separar `database.py` em `db/connection.py`, `db/migrations.py`, `db/seed.py` e `repositories/*.py` |
-| 3.4 | Pagamentos | Dividir `payment_adapters.py` em um arquivo por gateway (`mercadopago.py`, `stripe.py`, `pagseguro.py`, `sandbox.py`) sob uma interface comum |
-| 3.5 | Frontend modular | Dividir o `script.js` (2.814 linhas) em módulos ES (`map.js`, `geocode.js`, `orders.js`, `ui.js`) e extrair o JS dos portais |
-| 3.6 | Logging | Trocar os `print()` por `logging` estruturado em JSON; revisar os 19 `except Exception` (capturar exceções específicas e logar com contexto); integrar o Sentry (opcional) |
-| 3.7 | Fonte única de cabeçalhos | Manter os cabeçalhos de segurança só no Flask **ou** só no `vercel.json`, nunca nos dois |
-| 3.8 | LLM | Substituir o gateway "FreeLLMAPI" pela API oficial (Gemini ou OpenAI) com chave própria; não enviar dados pessoais nos prompts |
+| # | Item | O que fazer | Status |
+|---|---|---|---|
+| 3.1 | Estrutura em pacote | Criar `pertoja/` com `__init__.py` (padrão application factory `create_app()`), `config.py`, `extensions.py` | ✅ Concluído |
+| 3.2 | Blueprints | Dividir as rotas do `app.py` em `auth`, `providers`, `services`, `orders`, `payments`, `webhooks`, `llm`, `pages` | ✅ Concluído |
+| 3.3 | Camada de dados | Separar `database.py` em `db/connection.py`, `db/migrations.py`, `db/seed.py` e `repositories/*.py` | ✅ Concluído |
+| 3.4 | Pagamentos | Dividir `payment_adapters.py` em um arquivo por gateway (`mercadopago.py`, `stripe.py`, `pagseguro.py`, `sandbox.py`) sob uma interface comum | ✅ Concluído |
+| 3.5 | Frontend modular | Dividir o `script.js` em módulos ES (`map.js`, `geocode.js`, `orders.js`, `ui.js`, etc.) e extrair o JS compartilhado dos portais | ✅ Concluído |
+| 3.6 | Logging | Trocar os `print()` por `logging` estruturado em JSON; revisar `except Exception` (capturar exceções específicas e logar com contexto); integrar o Sentry (opcional) | ✅ Concluído |
+| 3.7 | Fonte única de cabeçalhos | Manter os cabeçalhos de segurança só no `vercel.json` carregados dinamicamente via `pertoja/security_headers.py` | ✅ Concluído |
+| 3.8 | LLM | Priorizar APIs oficiais (OpenAI ou Gemini) com chave própria sobre FreeLLMAPI e garantir zero dados pessoais (PII) nos prompts | ✅ Concluído |
 
 **Pronto quando:** `app.py` tiver menos de 100 linhas, nenhum arquivo Python passar de cerca de 600 linhas e todos os testes passarem.
+
+> [!TIP]
+> **Entregue na Fase 3:** `app.py` reduzido para 80 linhas, 60 arquivos Python de produção todos ≤ 541 linhas (`0` `print()` e `0` `except Exception` genéricos), cabeçalhos únicos carregados de `vercel.json`, frontend modularizado em `public/js/modules/` (`type="module"`) e suíte estrutural em `tests/test_phase3_architecture.py` (152 testes com cobertura acima de 80%).
 
 ---
 
