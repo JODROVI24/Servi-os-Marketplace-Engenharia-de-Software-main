@@ -46,8 +46,15 @@ venv/
 env/
 ENV/
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+coverage.xml
+
+# ==============================================================================
+# Node.js (Build Tailwind / ESLint / Testes JS)
+# ==============================================================================
+node_modules/
 
 # ==============================================================================
 # Vercel & IDEs / Sistema Operacional
