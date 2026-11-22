@@ -1,40 +1,25 @@
 // public/js/portal-cliente.js - Painel do Consumidor PertoJá
-(function () {
-  let dadosCliente = null;
 
-  function toast(t) {
-    const container = document.getElementById('toasts');
-    if (!container) return;
-    const d = document.createElement('div');
-    d.className = 'toast toast-animated flex items-center gap-2 transition-all duration-300 ease-out';
-    const msg = String(t || '');
-    const lower = msg.toLowerCase();
-    let icon = 'check_circle';
-    if (lower.includes('erro') || lower.includes('falha') || lower.includes('indisponível') || lower.includes('não foi possível')) {
-      icon = 'error';
-    } else if (lower.includes('buscando') || lower.includes('obtendo') || lower.includes('calculando') || lower.includes('carregando')) {
-      icon = 'autorenew';
-    } else if (lower.includes('atenção') || lower.includes('encerrado')) {
-      icon = 'warning';
-    }
-    const iconSpan = document.createElement('span');
-    iconSpan.className = 'material-symbols-outlined text-base shrink-0';
-    iconSpan.setAttribute('aria-hidden', 'true');
-    iconSpan.textContent = icon;
-    const textSpan = document.createElement('span');
-    textSpan.textContent = msg;
-    d.append(iconSpan, textSpan);
-    container.appendChild(d);
-    setTimeout(() => {
-      d.style.opacity = '0';
-      d.style.transform = 'translateY(6px)';
-      setTimeout(() => d.remove(), 250);
-    }, 3750);
-  }
+import {
+  brl,
+  buscarCepPortal,
+  capturarLocalizacaoPortal,
+  escapeHtml,
+  exportarDadosLgpdPortal,
+  formatarMetodoPagamento,
+  geocodificarEnderecoPortal,
+  limparArmazenamentoSessaoPortal,
+  onDomReady,
+  sanitizarUrlSegura,
+  setStatusText,
+  toast,
+  vincularModalAcessivel
+} from './modules/portal-common.js';
+import { createPortalSupportController } from './modules/portal-support.js';
 
-  const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+let dadosCliente = null;
 
-  function mudarAba(aba) {
+function mudarAba(aba) {
     document.getElementById('aba-pedidos-cliente').style.display = aba === 'pedidos' ? 'block' : 'none';
     document.getElementById('aba-perfil-cliente').style.display = aba === 'perfil' ? 'block' : 'none';
 
@@ -77,140 +62,34 @@
     }
   }
 
-  async function buscarCepCliente(cepVal) {
-    if (!cepVal) return;
-    const clean = cepVal.replace(/\D/g, '');
-    if (clean.length !== 8) return;
-    const statusEl = document.getElementById('clienteCepStatus');
-    if (statusEl) statusEl.textContent = 'Buscando CEP...';
-    try {
-      const res = await fetch(`/api/cep/${clean}`);
-      if (res.ok) {
-        const d = await res.json();
-        document.getElementById('clienteFormEndereco').value = d.logradouro || '';
-        document.getElementById('clienteFormBairro').value = d.bairro || '';
-        document.getElementById('clienteFormCidade').value = d.localidade || '';
-        document.getElementById('clienteFormEstado').value = d.uf || '';
-        if (d.lat && d.lng) {
-          document.getElementById('clienteFormLat').value = d.lat.toFixed(6);
-          document.getElementById('clienteFormLng').value = d.lng.toFixed(6);
-        }
-        if (statusEl) statusEl.textContent = '✓ Endereço preenchido!';
-        document.getElementById('clienteFormNumero').focus();
-      } else {
-        if (statusEl) statusEl.textContent = 'CEP não encontrado.';
-      }
-    } catch (e) {
-      if (statusEl) statusEl.textContent = 'Erro ao consultar CEP.';
-    }
+  const CLIENTE_ENDERECO_FIELDS = {
+    statusId: 'clienteCepStatus',
+    cepId: 'clienteFormCep',
+    enderecoId: 'clienteFormEndereco',
+    numeroId: 'clienteFormNumero',
+    bairroId: 'clienteFormBairro',
+    cidadeId: 'clienteFormCidade',
+    estadoId: 'clienteFormEstado',
+    latId: 'clienteFormLat',
+    lngId: 'clienteFormLng'
+  };
+
+  function buscarCepCliente(cepVal) {
+    return buscarCepPortal(cepVal, CLIENTE_ENDERECO_FIELDS);
   }
 
   function capturarLocalizacaoCliente() {
-    if (!navigator.geolocation) {
-      toast('Geolocalização não suportada neste navegador.');
-      return;
-    }
-    toast('Obtendo coordenadas do dispositivo...');
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        document.getElementById('clienteFormLat').value = pos.coords.latitude.toFixed(6);
-        document.getElementById('clienteFormLng').value = pos.coords.longitude.toFixed(6);
-        toast('Coordenadas GPS obtidas com sucesso!');
-      },
-      _err => {
-        toast('Não foi possível obter a localização.');
-      }
-    );
+    capturarLocalizacaoPortal({
+      latId: 'clienteFormLat',
+      lngId: 'clienteFormLng',
+      startMessage: 'Obtendo coordenadas do dispositivo...',
+      successMessage: 'Coordenadas GPS obtidas com sucesso!',
+      errorMessage: 'Não foi possível obter a localização.'
+    });
   }
 
-  async function geocodificarEnderecoCliente() {
-    const cep = (document.getElementById('clienteFormCep').value || '').replace(/\D/g, '');
-    const end = document.getElementById('clienteFormEndereco').value;
-    const num = document.getElementById('clienteFormNumero').value;
-    const bairro = document.getElementById('clienteFormBairro').value;
-    const cid = document.getElementById('clienteFormCidade').value;
-    const uf = document.getElementById('clienteFormEstado').value;
-    const q = `${end} ${num}, ${bairro}, ${cid} - ${uf}, Brasil`;
-    toast('Calculando coordenadas pelo endereço...');
-    try {
-      const params = new URLSearchParams({
-        q,
-        street: end,
-        neighborhood: bairro,
-        city: cid,
-        state: uf
-      });
-      const res = await fetch(`/api/geocode?${params.toString()}`);
-      if (res.ok) {
-        const d = await res.json();
-        if (d.lat != null && d.lng != null) {
-          document.getElementById('clienteFormLat').value = Number(d.lat).toFixed(6);
-          document.getElementById('clienteFormLng').value = Number(d.lng).toFixed(6);
-          toast('Coordenadas calculadas!');
-          return;
-        }
-      }
-      if (cep.length === 8) {
-        const cepRes = await fetch(`/api/cep/${cep}`);
-        if (cepRes.ok) {
-          const cd = await cepRes.json();
-          if (cd.lat != null && cd.lng != null) {
-            document.getElementById('clienteFormLat').value = Number(cd.lat).toFixed(6);
-            document.getElementById('clienteFormLng').value = Number(cd.lng).toFixed(6);
-            toast('Coordenadas atualizadas pelo CEP!');
-            return;
-          }
-        }
-      }
-      toast('Endereço não localizado com precisão; mantendo coordenadas atuais.');
-    } catch (e) {
-      toast('Erro ao buscar coordenadas.');
-    }
-  }
-
-  function escapeHtml(str) {
-    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function' && window.escapeHtml !== escapeHtml) {
-      return window.escapeHtml(str);
-    }
-    if (str == null) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  function sanitizarUrlSegura(url, fallback = '#') {
-    if (typeof window !== 'undefined' && typeof window.sanitizarUrlSegura === 'function' && window.sanitizarUrlSegura !== sanitizarUrlSegura) {
-      return window.sanitizarUrlSegura(url, fallback);
-    }
-    if (typeof url !== 'string') return fallback;
-    const trimmed = url.trim();
-    if (!trimmed || /[\u0000-\u001F\u007F\\]/.test(trimmed)) return fallback;
-    if (/^(javascript|data|vbscript|file):/i.test(trimmed) || trimmed.startsWith('//')) {
-      return fallback;
-    }
-    return trimmed;
-  }
-
-  function setStatusText(el, text, className = 'text-xs text-perto-ink/80') {
-    if (!el) return;
-    const p = document.createElement('p');
-    p.className = className;
-    p.textContent = text;
-    el.replaceChildren(p);
-  }
-
-  function formatarMetodoPagamento(metodo) {
-    const mapa = {
-      escrow: 'Escrow no Local',
-      escrow_local: 'Escrow no Local',
-      pix: 'Pix (Escrow)',
-      cartao: 'Cartão (Escrow)',
-      boleto: 'Boleto Bancário (Escrow)'
-    };
-    return mapa[String(metodo || '').toLowerCase()] || metodo || 'Escrow no Local';
+  function geocodificarEnderecoCliente() {
+    return geocodificarEnderecoPortal(CLIENTE_ENDERECO_FIELDS);
   }
 
   let avaliacaoTriggerEl = null;
@@ -630,39 +509,6 @@
     }
   }
 
-  function vincularModalAcessivel(modalId, closeBtnIds, onEscapeExtra) {
-    const modal = document.getElementById(modalId);
-    if (!modal) return { abrir: () => {}, fechar: () => {} };
-    let triggerEl = null;
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        fechar();
-      }
-    };
-    const fechar = () => {
-      modal.style.display = 'none';
-      document.removeEventListener('keydown', onKeyDown);
-      if (onEscapeExtra) onEscapeExtra();
-      if (triggerEl && typeof triggerEl.focus === 'function') triggerEl.focus();
-    };
-    const abrir = (focusSelector) => {
-      triggerEl = document.activeElement;
-      modal.style.display = 'flex';
-      document.addEventListener('keydown', onKeyDown);
-      if (focusSelector) {
-        const el = modal.querySelector(focusSelector);
-        if (el) setTimeout(() => el.focus(), 0);
-      }
-    };
-    closeBtnIds.forEach(id => {
-      const b = document.getElementById(id);
-      if (b) b.addEventListener('click', fechar);
-    });
-    modal.addEventListener('click', (e) => { if (e.target === modal) fechar(); });
-    return { abrir, fechar };
-  }
-
   const ctrlChatCliente = vincularModalAcessivel('modalChatPedidoCliente', ['btnFecharModalChatCliente']);
   async function carregarMensagensChatCliente(orderId) {
     const box = document.getElementById('chatClienteMessages');
@@ -965,28 +811,10 @@
   });
 
   // LGPD Art. 18: Exportação JSON e Anonimização Irreversível
-  document.getElementById('btnExportarDadosLgpd').addEventListener('click', async () => {
-    try {
-      const res = await fetch('/api/profile/export');
-      if (!res.ok) {
-        toast('Não foi possível exportar seus dados.');
-        return;
-      }
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'pertoja-meus-dados.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast('Exportação JSON gerada com sucesso!');
-    } catch (err) {
-      toast('Erro de comunicação ao exportar dados.');
-    }
-  });
+  document.getElementById('btnExportarDadosLgpd').addEventListener('click', () => exportarDadosLgpdPortal({
+    errorMessage: 'Não foi possível exportar seus dados.',
+    successMessage: 'Exportação JSON gerada com sucesso!'
+  }));
 
   const ctrlExcluirLgpd = vincularModalAcessivel('modalExcluirContaLgpd', ['btnFecharModalExcluirLgpd', 'btnCancelarExcluirLgpd']);
   document.getElementById('btnAbrirExcluirContaLgpd').addEventListener('click', () => {
@@ -1000,14 +828,7 @@
       const res = await fetch('/api/profile', { method: 'DELETE' });
       const data = await res.json();
       if (res.ok) {
-        try {
-          ['pertoja_pending_order', 'pertoja_active_order_id', 'pertoja_search_loc'].forEach((k) => {
-            localStorage.removeItem(k);
-            sessionStorage.removeItem(k);
-          });
-          localStorage.clear();
-          sessionStorage.clear();
-        } catch (e) {}
+        limparArmazenamentoSessaoPortal();
         toast(data.message || 'Conta anonimizada com sucesso.');
         setTimeout(() => { window.location.href = 'index.html'; }, 800);
       } else {
@@ -1021,264 +842,22 @@
     }
   });
 
-  let historicoSuporteIACliente = [];
-  let suporteIAClienteGen = 0;
-  let suporteIAClienteEmAndamento = false;
-  let suporteIAClienteAbort = null;
-  const ctrlSuporteIACliente = vincularModalAcessivel('modalSuporteIA', ['btnFecharModalSuporteIA']);
-
-  function criarBolhaSuporteIA(wrapperClass, labelClass, senderLabel, bodyText, extraBodyClass = '') {
-    const wrap = document.createElement('div');
-    wrap.className = wrapperClass;
-    const lbl = document.createElement('div');
-    lbl.className = labelClass;
-    lbl.textContent = senderLabel;
-    const p = document.createElement('p');
-    p.className = extraBodyClass ? `m-0 ${extraBodyClass}` : 'm-0';
-    p.textContent = bodyText;
-    wrap.append(lbl, p);
-    return wrap;
-  }
-
-  function criarIndicadorDigitandoSuporteIA() {
-    const wrap = document.createElement('div');
-    wrap.id = 'indicadorDigitandoSuporteIA';
-    wrap.className = 'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink/80 mr-6 flex items-center gap-2';
-    wrap.setAttribute('role', 'status');
-
-    const dots = document.createElement('span');
-    dots.className = 'inline-flex gap-1';
-    dots.setAttribute('aria-hidden', 'true');
-    ['0ms', '150ms', '300ms'].forEach((delay) => {
-      const dot = document.createElement('span');
-      dot.className = 'w-1.5 h-1.5 rounded-full bg-perto-sea motion-safe:animate-bounce';
-      dot.style.animationDelay = delay;
-      dots.appendChild(dot);
-    });
-
-    const label = document.createElement('span');
-    label.className = 'text-xs font-semibold';
-    label.textContent = 'Pensando...';
-
-    wrap.append(dots, label);
-    return wrap;
-  }
-
-  function criarBolhaSaudacaoInicialSuporteIACliente() {
-    return criarBolhaSuporteIA(
-      'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink',
-      'text-[10px] font-bold text-perto-sea mb-1',
-      '🤖 Assistente PertoJá',
+  // Referências preservadas de contrato DOM (modalSuporteIA, badgeStatusSuporteIA, escapeHtml)
+  const suporteCtrl = createPortalSupportController({
+    context: 'cliente',
+    healthEndpoint: '/api/chat/health',
+    supportEndpoint: '/api/chat/support',
+    offlineBadgeText: '🟡 Modo Offline (FAQ Local)',
+    offlineSenderLabel: 'Assistente PertoJá · Modo Offline',
+    thinkingLabel: 'Pensando...',
+    trimHistory: (items) => items.slice(-10),
+    greetingText:
       'Olá! Sou o assistente do PertoJá. Posso tirar dúvidas sobre pagamento protegido em Escrow, PIN presencial de 4 dígitos, garantia de 48h, disputas e segurança. Como posso ajudar?'
-    );
-  }
-
-  function aplicarBadgeStatusSuporteIA(data) {
-    const badgeEl = document.getElementById('badgeStatusSuporteIA');
-    if (!badgeEl || !data) return;
-    const isLive = data.mode === 'live' || (data.mode == null && data.fallback === false && data.provider !== 'fallback');
-    if (isLive) {
-      const provider = String(data.active_provider || (data.provider && data.provider !== 'fallback' ? data.provider : '') || data.model || 'LLM');
-      const modelInfo = data.model ? `Modelo: ${data.model}` : '';
-      const hintInfo = data.hint || '';
-      badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 border border-emerald-300 text-emerald-900';
-      badgeEl.textContent = `🟢 IA Online (${provider})`;
-      badgeEl.title = [modelInfo, hintInfo].filter(Boolean).join(' · ') || 'IA conectada em tempo real';
-    } else {
-      const reasonMap = {
-        unconfigured: 'Nenhuma chave de IA configurada no servidor.',
-        localhost_in_serverless: 'Endpoint localhost inacessível em ambiente serverless.',
-        auth_error: 'Falha de autenticação no provedor de IA.',
-        model_not_found: 'Modelo de IA não encontrado no provedor.',
-        rate_limited: 'Limite temporário de requisições da IA atingido.',
-        timeout: 'Tempo limite esgotado ao contatar a IA.',
-        connection_error: 'Não foi possível conectar ao provedor de IA.',
-        provider_error: 'Provedor de IA temporariamente indisponível.'
-      };
-      const fallbackDetail = data.warning || data.hint || (data.fallback_reason ? (reasonMap[data.fallback_reason] || `Motivo: ${data.fallback_reason}`) : '');
-      badgeEl.className = 'inline-flex items-center gap-1 self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-perto-sun/25 border border-perto-sun text-perto-ink';
-      badgeEl.textContent = '🟡 Modo Offline (FAQ Local)';
-      badgeEl.title = fallbackDetail || 'Assistente operando com FAQ local offline.';
-    }
-  }
-
-  async function atualizarStatusSuporteIA() {
-    const badgeEl = document.getElementById('badgeStatusSuporteIA');
-    if (!badgeEl) return;
-    try {
-      const res = await fetch('/api/chat/health', { headers: { 'Accept': 'application/json' } });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        aplicarBadgeStatusSuporteIA({
-          mode: 'fallback',
-          warning: data.error || 'Não foi possível verificar o status da IA.'
-        });
-        return;
-      }
-      aplicarBadgeStatusSuporteIA(data);
-    } catch (err) {
-      aplicarBadgeStatusSuporteIA({
-        mode: 'fallback',
-        warning: 'Falha de conexão ao verificar o status da IA.'
-      });
-    }
-  }
-
-  function alternarEstadoEnvioSuporteIA(carregando) {
-    const btnEl = document.getElementById('btnEnviarSuporteIA');
-    if (btnEl) {
-      if (carregando) {
-        if (!btnEl.dataset.origText) btnEl.dataset.origText = btnEl.textContent || 'Enviar';
-        btnEl.classList.add('is-loading');
-        btnEl.disabled = true;
-        btnEl.textContent = 'Consultando...';
-      } else {
-        btnEl.classList.remove('is-loading');
-        btnEl.disabled = false;
-        btnEl.textContent = btnEl.dataset.origText || 'Enviar';
-      }
-    }
-    document.querySelectorAll('#chipsPerguntasRapidasSuporteIA .chip-suporte-rapido').forEach(chip => {
-      chip.disabled = Boolean(carregando);
-    });
-  }
-
-  function limparConversaSuporteIA() {
-    suporteIAClienteGen += 1;
-    if (suporteIAClienteAbort) {
-      try { suporteIAClienteAbort.abort(); } catch (_) {}
-      suporteIAClienteAbort = null;
-    }
-    suporteIAClienteEmAndamento = false;
-    historicoSuporteIACliente = [];
-
-    const listaEl = document.getElementById('listaMensagensSuporteIA');
-    if (listaEl) {
-      listaEl.removeAttribute('aria-busy');
-      listaEl.replaceChildren(criarBolhaSaudacaoInicialSuporteIACliente());
-      listaEl.scrollTop = 0;
-    }
-    alternarEstadoEnvioSuporteIA(false);
-    const inputEl = document.getElementById('inputMensagemSuporteIA');
-    if (inputEl) {
-      inputEl.value = '';
-      inputEl.focus();
-    }
-  }
-
-  function abrirModalSuporteIA() {
-    ctrlSuporteIACliente.abrir('#inputMensagemSuporteIA');
-    atualizarStatusSuporteIA();
-  }
-
-  function enviarPerguntaRapidaSuporteIA(btn) {
-    if (!btn || suporteIAClienteEmAndamento) return;
-    const pergunta = (btn.getAttribute('data-pergunta') || btn.textContent || '').trim();
-    if (!pergunta) return;
-    const inputEl = document.getElementById('inputMensagemSuporteIA');
-    if (inputEl) inputEl.value = pergunta;
-    enviarMensagemSuporteIA(pergunta);
-  }
-
-  async function enviarMensagemSuporteIA(textoDireto) {
-    if (suporteIAClienteEmAndamento) return;
-    const inputEl = document.getElementById('inputMensagemSuporteIA');
-    const listaEl = document.getElementById('listaMensagensSuporteIA');
-    const msg = (typeof textoDireto === 'string' ? textoDireto : (inputEl?.value || '')).trim();
-    if (!msg || !listaEl) return;
-
-    if (inputEl) inputEl.value = '';
-    suporteIAClienteEmAndamento = true;
-    const myGen = suporteIAClienteGen;
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    suporteIAClienteAbort = controller;
-
-    alternarEstadoEnvioSuporteIA(true);
-    listaEl.setAttribute('aria-busy', 'true');
-
-    listaEl.appendChild(criarBolhaSuporteIA(
-      'p-2.5 rounded-xl bg-perto-sea/10 border border-perto-sea/30 text-perto-ink ml-6',
-      'text-[10px] font-bold text-perto-ink/80 mb-0.5',
-      'Você',
-      msg,
-      'break-words'
-    ));
-
-    document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-    listaEl.appendChild(criarIndicadorDigitandoSuporteIA());
-    listaEl.scrollTop = listaEl.scrollHeight;
-
-    try {
-      const res = await fetch('/api/chat/support', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller ? controller.signal : undefined,
-        body: JSON.stringify({
-          message: msg,
-          mensagem: msg,
-          context: 'cliente',
-          history: historicoSuporteIACliente.slice(-10)
-        })
-      });
-      if (myGen !== suporteIAClienteGen) return;
-
-      const data = await res.json().catch(() => ({}));
-      if (myGen !== suporteIAClienteGen) return;
-
-      document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-
-      if (res.ok) {
-        const reply = data.reply || data.response || data.message || 'Como posso ajudar com mais detalhes?';
-        const isFallback = data.fallback === true || data.provider === 'fallback';
-        let senderLabel = '🤖 Assistente PertoJá';
-        if (isFallback) {
-          senderLabel = 'Assistente PertoJá · Modo Offline';
-        } else if (data.fallback === false) {
-          senderLabel = `🤖 Assistente PertoJá · IA (${data.model || data.provider || 'LLM'})`;
-        }
-        const bubbleClass = isFallback
-          ? 'p-2.5 rounded-xl bg-white border border-perto-sun/70 text-perto-ink mr-6'
-          : 'p-2.5 rounded-xl bg-white border border-perto-road text-perto-ink mr-6';
-        const labelClass = isFallback
-          ? 'text-[10px] font-bold text-amber-900 mb-0.5'
-          : 'text-[10px] font-bold text-perto-sea mb-0.5';
-
-        aplicarBadgeStatusSuporteIA(data);
-        historicoSuporteIACliente.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-        listaEl.appendChild(criarBolhaSuporteIA(bubbleClass, labelClass, senderLabel, reply, 'break-words whitespace-pre-line'));
-      } else {
-        const errText = data.error || 'Assistente temporariamente indisponível. Tente novamente em instantes.';
-        aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: errText });
-        listaEl.appendChild(criarBolhaSuporteIA(
-          'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
-          'text-[10px] font-bold text-perto-ink mb-0.5',
-          'Aviso do Sistema',
-          errText,
-          'break-words'
-        ));
-      }
-    } catch (err) {
-      if (myGen !== suporteIAClienteGen || (err && err.name === 'AbortError')) return;
-      document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-      aplicarBadgeStatusSuporteIA({ mode: 'fallback', warning: 'Não foi possível contatar o Assistente de Suporte IA no momento.' });
-      listaEl.appendChild(criarBolhaSuporteIA(
-        'p-2.5 rounded-xl bg-perto-sun/25 border border-perto-sun text-perto-ink mr-6',
-        'text-[10px] font-bold text-perto-ink mb-0.5',
-        'Aviso de Conexão',
-        'Não foi possível contatar o Assistente de Suporte IA no momento.'
-      ));
-    } finally {
-      if (myGen === suporteIAClienteGen) {
-        document.getElementById('indicadorDigitandoSuporteIA')?.remove();
-        listaEl.removeAttribute('aria-busy');
-        suporteIAClienteEmAndamento = false;
-        suporteIAClienteAbort = null;
-        alternarEstadoEnvioSuporteIA(false);
-        listaEl.scrollTop = listaEl.scrollHeight;
-        if (inputEl) inputEl.focus();
-      }
-    }
-  }
+  });
+  const limparConversaSuporteIA = () => suporteCtrl.limparConversa();
+  const abrirModalSuporteIA = () => suporteCtrl.abrir();
+  const enviarPerguntaRapidaSuporteIA = (btn) => suporteCtrl.enviarPerguntaRapida(btn);
+  const enviarMensagemSuporteIA = () => suporteCtrl.enviarMensagem();
 
   document.getElementById('formSuporteIA').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1297,9 +876,8 @@
     chip.addEventListener('click', () => enviarPerguntaRapidaSuporteIA(chip));
   });
 
-  document.addEventListener('DOMContentLoaded', () => {
+  onDomReady(() => {
     carregarPortalCliente();
     // Polling em segundo plano para status das ordens a cada 20 segundos
     setInterval(carregarHistoricoPedidos, 20000);
   });
-})();

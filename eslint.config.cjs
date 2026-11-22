@@ -35,10 +35,15 @@ module.exports = [
     rules: sharedSecurityRules,
   },
   {
-    files: ['public/script.js'],
+    files: [
+      'public/script.js',
+      'public/js/portal-cliente.js',
+      'public/js/portal-prestador.js',
+      'public/js/modules/*.js',
+    ],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'script',
+      sourceType: 'module',
       globals: {
         ...globals.browser,
         L: 'readonly',
@@ -52,7 +57,13 @@ module.exports = [
     rules: sharedSecurityRules,
   },
   {
-    files: ['public/js/*.js'],
+    files: [
+      'public/js/cadastro.js',
+      'public/js/como-funciona.js',
+      'public/js/index.js',
+      'public/js/login.js',
+      'public/js/pedido.js',
+    ],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',

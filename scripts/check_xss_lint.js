@@ -7,7 +7,8 @@ const path = require('node:path');
 const REPO_ROOT = path.resolve(__dirname, '..');
 const TARGET_DIRS = [
   path.join(REPO_ROOT, 'public'),
-  path.join(REPO_ROOT, 'public', 'js')
+  path.join(REPO_ROOT, 'public', 'js'),
+  path.join(REPO_ROOT, 'public', 'js', 'modules')
 ];
 
 function collectJsFiles() {
