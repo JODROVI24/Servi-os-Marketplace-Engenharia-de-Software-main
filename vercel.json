@@ -5,7 +5,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.py": {
-      "includeFiles": "**",
+      "includeFiles": "{app.py,database.py,llm_client.py,payment_adapters.py,scripts/migrations/**}",
       "maxDuration": 30
     }
   },

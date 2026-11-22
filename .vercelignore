@@ -1,21 +1,53 @@
+# Segredos e variáveis locais
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+*.crt
+*.p12
+secrets.*
+credentials.*
+
+# Bancos de dados locais
 *.db
 *.sqlite
 *.sqlite3
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Caches, ambientes virtuais e dependências locais
 __pycache__/
 *.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+node_modules/
+
+# Testes, documentação, CI e tooling apenas de desenvolvimento
+tests/
+docs/
+reports/
+.github/
 .agents/
 designs/
-docs/
 .git/
 .gitignore
 .vscode/
 .idea/
-test_app.py
+README.md
+requirements-dev.txt
+.eslintrc.json
+eslint.config.cjs
+scripts/check_xss_lint.js
+scripts/run-improvement-loop.py
+scripts/run-improvement-loop.bat
+*.log
+.DS_Store
+Thumbs.db
