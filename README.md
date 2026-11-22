@@ -1,41 +1,71 @@
 # PertoJá – Marketplace de Serviços Locais Profissionais
 
-Plataforma web completa desenvolvida para conectar clientes a profissionais e prestadores de serviços qualificados locais, com suporte a geolocalização em tempo real, rastreamento dinâmico, portais dedicados de autoatendimento e persistência com backend em Python Flask e banco de dados SQLite.
+Plataforma web completa desenvolvida para conectar clientes a profissionais e prestadores de serviços qualificados locais, com suporte a geolocalização em tempo real, rastreamento dinâmico, portais dedicados de autoatendimento e persistência com backend em Python Flask utilizando **PostgreSQL obrigatório em produção** (Neon / Supabase) e **SQLite apenas para desenvolvimento local e testes**.
 
 ---
 
 ## 🚀 Como Executar o Projeto
 
 ### Pré-requisitos
-* Python 3.10 ou superior (com `Flask` e `Pillow` instalados).
+* **Python 3.11 ou superior** (dependências declaradas em `pyproject.toml` e travadas em `uv.lock` / `requirements*.txt`).
+* **Node.js 20 ou superior** (utilizado para compilar o Tailwind CSS local em `public/dist/app.css` e rodar lint/testes JS).
 
 ### Passo a Passo
-1. **Configurar variáveis de ambiente**:
+1. **Instalar dependências**:
+   ```bash
+   # Python (com uv ou pip)
+   pip install -r requirements-dev.txt
+   # ou: uv sync --frozen --extra dev
+
+   # Node.js (CSS Tailwind + lint/testes frontend)
+   npm ci
+   npm run build
+   ```
+2. **Configurar variáveis de ambiente**:
    Copie o arquivo `.env.example` para `.env` na raiz do projeto e ajuste os valores para o seu ambiente local (nunca faça commit do `.env` real):
    ```env
    SECRET_KEY=exemplo_chave_secreta_gerada_com_secrets_token_hex
    MARKETPLACE_DB=marketplace.db
-   # Opcional (PostgreSQL em nuvem):
+   # Opcional em dev (obrigatório em produção):
    # DATABASE_URL=postgresql://usuario:senha@ep-exemplo.us-east-1.aws.neon.tech/neondb?sslmode=require
    ```
-   Para gerar uma `SECRET_KEY` segura:
+   Para gerar uma `SECRET_KEY` forte (mínimo de 32 caracteres):
    ```bash
    python -c "import secrets; print(secrets.token_hex(32))"
    ```
-2. No terminal, na raiz do projeto, execute o comando:
+3. **Executar localmente**:
    ```bash
    python app.py
    ```
-3. Abra o seu navegador e acesse:
+4. Abra o seu navegador e acesse:
    ```
    http://localhost:5000
    ```
 
 ---
 
+## ⚙️ Variáveis de Ambiente
+
+| Variável | Categoria | Obrigatória em Produção | Descrição |
+| :--- | :--- | :---: | :--- |
+| `SECRET_KEY` | Segurança | **Sim** | Chave de assinatura das sessões Flask (**mínimo 32 caracteres**). A aplicação recusa iniciar em produção se ausente ou fraca. |
+| `DATABASE_URL` / `POSTGRES_URL` / `POSTGRES_URL_NON_POOLING` | Banco de Dados | **Sim** | URI PostgreSQL (Neon/Supabase). Em produção (`VERCEL=1` ou `FLASK_ENV=production`), o fallback para SQLite é bloqueado. |
+| `FLASK_ENV` | Runtime | Recomendada | Define `production` em produção para ativar guardrails de banco, `SECRET_KEY` e cookies seguros. |
+| `ENABLE_DEMO_SEED` | Segurança / Dev | Não (`0` padrão) | Popula usuários/serviços demo apenas localmente (`1`). **Proibido em produção**. |
+| `MARKETPLACE_DB` | Banco Local | Não | Caminho do SQLite em desenvolvimento/testes (`marketplace.db` padrão; ignorado/bloqueado em produção). |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (ou `KV_REST_API_*`) | Rate Limiting | Recomendada | Backend distribuído Redis REST para rate limit sem queries no Postgres (fallback automático em memória em dev). |
+| `PAYMENT_RETURN_BASE_URL` | Pagamentos | Não | URL pública base usada para retornos de checkout e webhooks HTTPS. |
+| `MERCADOPAGO_ACCESS_TOKEN` / `MERCADOPAGO_PUBLIC_KEY` / `MERCADOPAGO_WEBHOOK_SECRET` | Pagamentos | Não | Credenciais do adaptador Mercado Pago (PIX, Cartão e Boleto). |
+| `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_WEBHOOK_SECRET` | Pagamentos | Não | Credenciais do adaptador Stripe. |
+| `PAGSEGURO_TOKEN` / `PAGSEGURO_WEBHOOK_SECRET` | Pagamentos | Não | Credenciais do adaptador PagSeguro. |
+| `ENABLE_PAYMENT_SANDBOX` | Pagamentos | Não | Habilita gateway simulado (`1` em dev por padrão; `0` em produção). |
+| `GROQ_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` / `LLM_MODEL` | LLM / Chat | Não | Chaves opcionais para provedores cloud de IA (com failover e FAQ offline local). |
+
+---
+
 ## 👥 Portais e Funcionalidades
 
-### 🛠️ Portal do Prestador de Serviços (`/portal-prestador.html`)
+### 🛠️ Portal do Prestador de Serviços (`/portal-prestador`)
 * **Gestão de Serviços e Preços:**
   * Cadastro de novos serviços com título, descrição, categoria e preço.
   * **Alteração de preços em tempo real** (com formatação monetária R$).
@@ -49,18 +79,18 @@ Plataforma web completa desenvolvida para conectar clientes a profissionais e pr
 * **Edição de Perfil:**
   * Alteração de nome, telefone/WhatsApp, biografia profissional e coordenadas GPS base.
 
-### 👤 Portal do Cliente (`/portal-cliente.html`)
+### 👤 Portal do Cliente (`/portal-cliente`)
 * **Meus Dados Cadastrais:**
   * Edição de nome completo, telefone e observações de endereço/referência.
 * **Histórico de Pedidos:**
   * Acompanhamento de todas as ordens solicitadas com dados do prestador e status em tempo real.
   * Atalho direto para monitorar a chegada do profissional no mapa interativo.
 
-### 🗺️ Busca e Monitoramento no Mapa (`/pedido.html`)
+### 🗺️ Busca e Monitoramento no Mapa (`/pedido`)
 * Filtros dinâmicos por categoria (Limpeza, Elétrica, Encanamento, Pintura, Jardinagem, Tecnologia e Marcenaria).
 * Slider de raio de busca de 1 a 15 km com ajuste automático de zoom.
 * Cálculo inteligente de pontuação (*Score*) ponderando proximidade, avaliação média e disponibilidade.
-* Animação do prestador em trânsito com simulação de rede e modo de economia de bateria.
+* Acompanhamento de trajeto e atualização de status do atendimento.
 
 ---
 
@@ -68,7 +98,7 @@ Plataforma web completa desenvolvida para conectar clientes a profissionais e pr
 
 Por segurança, o seed de contas de demonstração vem **desabilitado por padrão (`ENABLE_DEMO_SEED=0`)** e é **estritamente proibido em produção (`VERCEL=1` ou `FLASK_ENV=production`)**.
 
-Para popular contas de exemplo **apenas no seu ambiente local de desenvolvimento**, defina `ENABLE_DEMO_SEED=1` no seu `.env` local antes de inicializar o banco:
+Para popular contas de exemplo **apenas no seu ambiente local de desenvolvimento**, defina `ENABLE_DEMO_SEED=1` no seu `.env` local antes de inicializar o banco (novas contas cadastradas pela interface/API exigem política de senha forte com mínimo de **10 caracteres** e checagem k-anonymity contra senhas vazadas no HIBP):
 
 | Perfil | E-mail (somente local) | Senha Local | Especialidade |
 | :--- | :--- | :--- | :--- |
@@ -77,22 +107,37 @@ Para popular contas de exemplo **apenas no seu ambiente local de desenvolvimento
 | **Prestador** | `nina@pertoja.com` | `123456` | Marcenaria e Montagens |
 | **Cliente** | `cliente@pertoja.com` | `123456` | Conta de Cliente |
 
-*Você também pode criar novas contas a qualquer momento pela tela de [Cadastro](http://localhost:5000/cadastro.html).*
+*Você também pode criar novas contas a qualquer momento pela tela de [Cadastro](http://localhost:5000/cadastro).*
 
 ---
 
-## 🧪 Testes Automatizados
+## 🧪 Testes Automatizados, Qualidade e Segurança (CI Local)
 
-A aplicação conta com uma suíte de testes de integração cobrindo fluxos de autenticação, permissões de acesso, CRUD de serviços e preços, atualização de perfil e pedidos.
+A aplicação conta com suíte de testes de integração, unitários, adversariais WSGI/Vercel, lint estático e auditorias de vulnerabilidades executados automaticamente no GitHub Actions (`.github/workflows/ci.yml`):
 
-Para executar os testes:
 ```bash
+# Lint e checagem de formatação Python
+ruff check .
+ruff format --check .
+
+# Suíte de testes Python (unittest) e cobertura mínima de 80% (pytest-cov)
 python -m unittest discover -s tests -v
+pytest --cov --cov-fail-under=80
+
+# Build de CSS, lint anti-XSS + ESLint e testes de roteamento Vercel
+npm run build
+npm run lint:js
+npm run test:routing
+
+# Auditorias de segurança das dependências
+pip-audit -r requirements.txt
+npm audit --audit-level=moderate
 ```
 
 Para executar migrations do banco manualmente ou simular (`--dry-run`):
 ```bash
 python -m scripts.migrate --dry-run
+python -m scripts.migrate
 ```
 
 ---
@@ -103,7 +148,7 @@ O projeto está configurado para deploy na **Vercel** através de Serverless Fun
 
 ### Método 1: Deploy Rápido via GitHub (Recomendado)
 1. **Suba este projeto para um repositório no seu GitHub**:
-   - Envie todos os arquivos do projeto (incluindo `vercel.json`, `api/index.py` e `requirements.txt`).
+   - Envie todos os arquivos do projeto (incluindo `vercel.json`, `api/index.py`, `pyproject.toml`, `uv.lock` e `requirements.txt`).
 2. **Conecte à Vercel**:
    - Acesse [vercel.com](https://vercel.com) e faça login.
    - Clique em **"Add New..."** > **"Project"** e importe o repositório.
@@ -125,7 +170,7 @@ O projeto está configurado para deploy na **Vercel** através de Serverless Fun
      2. Defina `DATABASE_URL` no `.env` (dev) ou na Vercel e rode `python -m scripts.migrate`.
    - Ao subir na Vercel, `GET /api/health` deve retornar `"database": "connected"` e `"engine": "postgresql"`, preservando dados entre redeploys.
 5. **Clique em "Deploy"**:
-   - A Vercel construirá automaticamente a aplicação e gerará uma URL pública (ex: `https://meu-pertoja.vercel.app`).
+   - A Vercel executará `npm run build`, publicará `public/` e empacotará `api/index.py` com as dependências e arquivos de runtime configurados em `vercel.json`.
 
 ### Método 2: Deploy via Vercel CLI (Terminal)
 Se tiver o Node.js e o Vercel CLI instalados:
@@ -162,15 +207,18 @@ vercel --prod
 
 ---
 
+## 🛡️ Arquitetura, Performance e Melhorias Implementadas
+
 1. **Correção de Falhas Críticas:**
    * Blindagem da inicialização do Leaflet no `script.js` para não quebrar em páginas sem mapa (como a home `index.html`).
    * Correção de seletores DOM que quebravam o script no `pedido.html`.
    * Alinhamento da categoria `Marcenaria` entre frontend e dados.
    * Correção da semântica HTML (tags `<footer>` movidas para dentro de `<body>`).
 2. **Otimização de Performance:**
-   * Compressão das imagens da pasta `img/` (redução de **13.5 MB para ~388 KB**, economia de >97% de largura de banda).
-   * Remoção de bibliotecas externas pesadas em páginas que não as utilizam.
+   * Migração do Tailwind CSS de CDN para build local minificado (`public/dist/app.css`).
+   * Imagens otimizadas em WebP com fallback JPG (`<picture>`), dimensões explícitas e `fetchpriority="high"` no hero.
+   * Rate limiting em Upstash Redis REST (sem `DELETE` em banco por requisição).
 3. **Arquitetura & Segurança:**
-   * Backend RESTful com Flask 3.1 e SQLite 3.
-   * Criptografia de senhas com `Werkzeug.security` (`pbkdf2:sha256`).
-   * Sessões HTTP seguras com controle de permissão (ex: clientes impedidos de alterar preços de prestadores).
+   * Backend RESTful com Flask 3, **PostgreSQL obrigatório em produção** e SQLite local para desenvolvimento/testes.
+   * `SECRET_KEY` forte obrigatória em produção, política de senha (10+ caracteres + HIBP k-anonymity), proteção CSRF (`Origin`/`Referer` + double-submit cookie), CSP rígida sem `'unsafe-inline'` em `script-src` e auditoria XSS estática (`check_xss_lint.js` + ESLint `no-unsanitized`).
+   * Criptografia de senhas com `Werkzeug.security` (`pbkdf2:sha256`) e sessões HTTP seguras com `session_version` e controle de permissão por perfil.
