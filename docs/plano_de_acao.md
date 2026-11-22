@@ -9,7 +9,7 @@ Repositório: https://github.com/JODROVI24/Servi-os-Marketplace-Engenharia-de-So
 > - **Fase 2 – Segurança do frontend e performance:** Concluída (commits `32f2a99`..`2c507e7`, medições pós-Fase 2 na Seção 8 de `docs/baseline.md`)
 > - **Fase 3 – Refatoração da arquitetura:** Concluída (commits `a277fad`..`ae74b0b`; `app.py` com 80 linhas, 60 arquivos Python de produção ≤ 541 linhas, 8 Blueprints em `pertoja/blueprints/` e 8 ES modules em `public/js/modules/`)
 > - **Fase 4 – CI, dependências e deploy:** Concluída (commits `d59ff70`..`20f9dc8`)
-> - **Fase 5:** Pendente.
+> - **Fase 5 – Produto e UX:** Concluída (commits `89097b5`..`4d5a4c3`; rastreamento honesto + GPS em tempo real a cada 12 s, verificação de e-mail Resend/SendGrid com trava em pedidos, recuperação de senha com token único de 30 min, OTP de telefone por SMS/WhatsApp e proxy Nominatim com cache e limite de 1 req/s)
 
 ```mermaid
 flowchart LR
@@ -103,15 +103,18 @@ flowchart LR
 
 ---
 
-## Fase 5 – Produto e UX (≈ 5–10 dias) 🧭 Pendente
+## Fase 5 – Produto e UX (≈ 5–10 dias) ✅ Concluída
 
-| # | Item | O que fazer |
-|---|---|---|
-| 5.1 | Rastreamento honesto | Rotular "posição estimada" **ou** implementar posição real: o prestador envia o GPS a cada 10–15 s e o cliente consulta por polling (ou SSE) |
-| 5.2 | Verificação de e-mail | Token de confirmação por e-mail (Resend, SendGrid); bloquear pedidos até a confirmação |
-| 5.3 | Recuperação de senha | Fluxo "esqueci a senha" com token de uso único que expira em 30 min |
-| 5.4 | Telefone (opcional) | OTP por SMS ou WhatsApp para prestadores |
-| 5.5 | Nominatim | Proxy no backend com cache (tabela `geocode_cache`), User-Agent identificado e no máximo 1 req/s (política de uso do OSM) |
+| # | Item | O que fazer | Status |
+|---|---|---|---|
+| 5.1 | Rastreamento honesto | Rotular "posição estimada" **e** implementar posição real: o prestador envia o GPS a cada 10–15 s (`POST /api/orders/<id>/location`, cadência de 12 s) e o cliente consulta por polling (`GET /api/orders/<id>/location`) | ✅ Concluído |
+| 5.2 | Verificação de e-mail | Token de confirmação por e-mail (Resend, SendGrid e outbox local em dev); bloquear criação de pedidos (`403 EMAIL_NOT_VERIFIED`) até a confirmação | ✅ Concluído |
+| 5.3 | Recuperação de senha | Fluxo "esqueci a senha" com token de uso único que expira em 30 min e envio transacional por e-mail | ✅ Concluído |
+| 5.4 | Telefone (opcional) | OTP de 6 dígitos por SMS ou WhatsApp para prestadores (`POST /api/auth/phone/send-otp` e `verify-otp`, limite de 5 tentativas) | ✅ Concluído |
+| 5.5 | Nominatim | Proxy no backend com cache (tabela `geocode_cache`), `User-Agent` identificado e no máximo 1 req/s (política de uso do OSM), sem chamadas diretas do browser | ✅ Concluído |
+
+> [!TIP]
+> **Entregue na Fase 5:** Migration `008_phase5_product_ux.sql`, telemetria GPS real a cada 12 s com badge honesto (`"Posição estimada"` vs `"Posição GPS em tempo real"`), notificações transacionais (`pertoja/services/notifications.py`), rotas de verificação de e-mail e OTP (`pertoja/blueprints/auth_verification.py`), throttle de 1 req/s no Nominatim (`pertoja/services/geo.py`) e suíte de testes em `tests/test_phase5_product_ux.py`.
 
 ---
 
