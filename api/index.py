@@ -1,7 +1,7 @@
 import importlib.util
+import logging
 import os
 import sys
-import traceback
 from urllib.parse import parse_qs, urlencode
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -104,10 +104,15 @@ def _init_marketplace_app():
         return target_app
     except RuntimeError:
         raise
-    except Exception as exc:
-        err_detail = str(exc)
-        print(f"❌ [CRITICAL] Falha ao importar aplicação Flask no Serverless Vercel: {err_detail}", file=sys.stderr)
-        traceback.print_exc()
+    except (OSError, ImportError, SyntaxError, ValueError, TypeError, AttributeError):
+        try:
+            from pertoja.logging_config import configure_logging, get_logger
+
+            configure_logging()
+            logger = get_logger("api.index")
+        except ImportError:
+            logger = logging.getLogger("api.index")
+        logger.exception("Falha ao importar aplicação Flask no Serverless Vercel")
         from flask import Flask, jsonify
 
         err_app = Flask(__name__)
