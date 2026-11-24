@@ -860,7 +860,7 @@ class TestMarketplaceFull(unittest.TestCase):
             self.assertEqual(data_pg.get("status"), "healthy")
 
     def test_23_provider_seeding_optimization(self):
-        from unittest.mock import MagicMock
+        from unittest.mock import MagicMock, patch
 
         import database
 
@@ -870,22 +870,23 @@ class TestMarketplaceFull(unittest.TestCase):
         count = conn.execute("SELECT COUNT(*) FROM users WHERE tipo = 'prestador'").fetchone()[0]
         self.assertGreaterEqual(count, 35)
 
-        # Verify real database execution skips batch updates cleanly
-        database.sincronizar_todos_prestadores(conn)
-        conn.close()
+        with patch.dict(os.environ, {"ENABLE_DEMO_SEED": "1"}):
+            # Verify real database execution skips batch updates cleanly
+            database.sincronizar_todos_prestadores(conn)
+            conn.close()
 
-        # Verify with mock that only 1 query (COUNT) runs when provider count >= 35
-        mock_cursor = MagicMock()
-        mock_cursor.execute.return_value.fetchone.return_value = (35,)
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+            # Verify with mock that only 1 query (COUNT) runs when provider count >= 35
+            mock_cursor = MagicMock()
+            mock_cursor.execute.return_value.fetchone.return_value = (35,)
+            mock_conn = MagicMock()
+            mock_conn.cursor.return_value = mock_cursor
 
-        database.sincronizar_todos_prestadores(mock_conn)
+            database.sincronizar_todos_prestadores(mock_conn)
 
-        # Only the initial COUNT check query was executed; batch updates skipped
-        self.assertEqual(mock_cursor.execute.call_count, 1)
-        executed_sql = mock_cursor.execute.call_args[0][0]
-        self.assertIn("SELECT COUNT(*)", executed_sql)
+            # Only the initial COUNT check query was executed; batch updates skipped
+            self.assertEqual(mock_cursor.execute.call_count, 1)
+            executed_sql = mock_cursor.execute.call_args[0][0]
+            self.assertIn("SELECT COUNT(*)", executed_sql)
 
     def test_24_services_order_by_score(self):
         res_dist = self.client.get("/api/services?order=distance")
@@ -2019,7 +2020,7 @@ class TestMarketplaceFull(unittest.TestCase):
         self.assertIsNotNone(alvo_open["cliente_review_id"])
 
     def test_52_et10_et14_et15_geocode_ttl_shared_route_410_e_chat_readonly(self):
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
         import database
 
@@ -2030,7 +2031,7 @@ class TestMarketplaceFull(unittest.TestCase):
         database.save_cached_geocode(q_com_num, -23.5555, -46.6622, origem="ttl-test")
         self.assertEqual(database.get_cached_geocode(q_sem_num), (-23.5555, -46.6622))
 
-        expired_dt = (datetime.utcnow() - timedelta(days=35)).strftime("%Y-%m-%d %H:%M:%S")
+        expired_dt = (datetime.now(UTC) - timedelta(days=35)).strftime("%Y-%m-%d %H:%M:%S")
         conn = database.get_db_connection()
         conn.execute(
             "UPDATE geocode_cache SET criado_em = ? WHERE query = ?",
@@ -3459,11 +3460,12 @@ class TestMarketplaceFull(unittest.TestCase):
         try:
             database.DB_PATH = tmp_db
 
-            # 4a) Default sem ENABLE_DEMO_SEED -> 0 usuários
+            # 4a) Default sem ENABLE_DEMO_SEED -> 0 usuários (inclusive chamada direta ao seed de prestadores)
             with patch.dict(os.environ, {**clean_env, "MARKETPLACE_DB": tmp_db}, clear=True):
                 database.init_db()
                 conn = database.get_db_connection()
                 try:
+                    database.sincronizar_todos_prestadores(conn)
                     cnt = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
                 finally:
                     conn.close()
