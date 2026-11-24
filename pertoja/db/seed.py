@@ -3,12 +3,14 @@
 from werkzeug.security import generate_password_hash
 
 from pertoja._compat import resolve_compat
-from pertoja.db.connection import is_demo_seed_enabled
+from pertoja.db.connection import is_demo_seed_enabled, is_production_env
 from pertoja.db.seed_data import PRESTADORES_SEED_35
 
 
 def sincronizar_todos_prestadores(conn) -> None:
     """Insere prestadores e serviços de demonstração quando ENABLE_DEMO_SEED=1 fora de produção."""
+    if is_production_env():
+        return
     demo_enabled_fn = resolve_compat("database", "is_demo_seed_enabled", is_demo_seed_enabled)
     if not demo_enabled_fn():
         return

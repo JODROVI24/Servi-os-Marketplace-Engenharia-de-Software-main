@@ -3484,6 +3484,8 @@ class TestMarketplaceFull(unittest.TestCase):
                 conn = database.get_db_connection()
                 try:
                     database.sincronizar_todos_prestadores(conn)
+                    with patch("database.is_demo_seed_enabled", return_value=True):
+                        database.sincronizar_todos_prestadores(conn)
                     cnt_prod = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
                 finally:
                     conn.close()
